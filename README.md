@@ -105,3 +105,149 @@ Migration and seed scripts load `.env.local` and `.env`, so they target the same
 | `comments` | Task-scoped, author (defaults to “You”), body, timestamp. |
 
 All foreign keys cascade on delete. Timestamps are stored as Unix epoch milliseconds for consistent behavior across local SQLite and Turso. Ordering is persisted as integer positions and updated inside transactions by the reorder endpoints.
+
+## Deploying to Vercel
+
+Kanso requires a hosted Turso/libSQL database in production.
+
+1. **Create the database**
+
+   ```bash
+   turso db create kanso
+   turso db show kanso --url
+   turso db tokens create kanso
+   ```
+
+2. **Apply migrations to Turso**
+
+   Run this once before the first deployment, and again whenever migrations are added:
+
+   ```bash
+   DATABASE_URL="libsql://kanso-<org>.turso.io" \
+   TURSO_AUTH_TOKEN="<token>" \
+   npm run db:migrate
+   ```
+
+   The same command works from CI. Optionally seed demo data with `npm run db:seed` (use `-- --force` only when you intend to replace production data).
+
+3. **Configure Vercel**
+
+   Add `DATABASE_URL` and `TURSO_AUTH_TOKEN` to the project’s Production and Preview environment variables. Deploy the repository normally; `next build` is the build command and `next start` is the runtime.
+
+4. **Verify**
+
+   Visit `/api/health`. A healthy deployment returns:
+
+   ```json
+   { "status": "ok", "database": "connected" }
+   ```
+
+If the database variables are missing, point at a local file, or omit the token, the deployment fails loudly with an actionable error rather than silently using ephemeral storage.
+
+> Migrations are intentionally not run during `next build`: build machines should not mutate production data. Apply them as an explicit deploy/CI step.
+
+## Architecture
+
+```
+src/
+  app/                 App Router pages, layouts, error/loading states, API routes
+  components/
+    board/             Board view, columns, cards, filters, dialogs, task detail sheet
+    layout/            App shell and responsive sidebar
+    search/            Command palette and shortcut guide
+    shared/            Cross-feature UI and task metadata
+    ui/                Tailwind + Radix primitives
+  db/                  Schema, client, and runtime configuration
+  lib/
+    server/            Server-only queries and services (boards, tasks, columns, …)
+    api.ts             Route-handler helpers and typed errors
+    client-api.ts      Browser fetch wrapper
+    validation.ts      Zod schemas for every write boundary
+    task-utils.ts      Ordering, filtering, sorting, completion math
+    dates.ts           Date-only and relative-time helpers
+drizzle/               Generated SQL migrations and metadata
+scripts/               Migrate, seed, reset, E2E reset, env loading
+tests/                 Vitest unit and database integration tests
+e2e/                   Playwright end-to-end suite
+```
+
+Key design decisions:
+
+- **Server-only data access.** Query and service modules import the Drizzle client and are used from Server Components and Route Handlers. The browser talks to the app through validated JSON APIs.
+- **Status is structural.** A task’s status is its column. Moving into the completion column sets `completedAt`; moving out clears it. Setting a completion column clears the flag on any previous one, so each board has exactly one.
+- **Complete-set reordering.** Reorder APIs require the full ordered ID set for a board (or column list), which keeps positions deterministic and rejects partial/stale client state.
+- **Single-user by design.** There is no authentication or multi-tenant isolation. Assignees and comment authors are free text, and comments default to “You”. Add auth and ownership columns before exposing an instance to multiple users.
+- **Mutations are serialized in the task sheet.** Detail edits, subtasks, comments, and labels queue behind one another and apply to the latest snapshot, so a slow response cannot overwrite a newer edit.
+
+## API overview
+
+All write endpoints accept JSON and validate it with Zod. Errors return a consistent `{ error: string }` shape with an appropriate status code; validation failures also include a `fieldErrors` map. Boards are loaded with their columns, tasks, and labels in one response, so there are no separate collection `GET` routes for those nested resources.
+
+| Endpoint | Methods |
+| --- | --- |
+| `/api/boards` | `GET`, `POST` |
+| `/api/boards/:boardId` | `GET`, `PATCH`, `DELETE` |
+| `/api/boards/:boardId/columns` | `POST` |
+| `/api/boards/:boardId/columns/reorder` | `POST` |
+| `/api/columns/:columnId` | `PATCH`, `DELETE` |
+| `/api/boards/:boardId/tasks` | `POST` |
+| `/api/boards/:boardId/tasks/reorder` | `POST` |
+| `/api/tasks/:taskId` | `GET`, `PATCH`, `DELETE` |
+| `/api/tasks/:taskId/duplicate` | `POST` |
+| `/api/tasks/:taskId/subtasks` | `POST` |
+| `/api/tasks/:taskId/comments` | `POST` |
+| `/api/subtasks/:subtaskId` | `PATCH`, `DELETE` |
+| `/api/comments/:commentId` | `DELETE` |
+| `/api/boards/:boardId/labels` | `POST` |
+| `/api/labels/:labelId` | `PATCH`, `DELETE` |
+| `/api/search?q=…` | `GET` |
+| `/api/health` | `GET` |
+
+## Testing
+
+```bash
+npm run lint
+npm run typecheck
+npm test              # Vitest: unit + database integration
+npx playwright install chromium
+npm run test:e2e      # resets data/e2e.db, migrates, then runs Playwright
+npm run verify        # lint + typecheck + unit/integration tests + production build
+```
+
+- Vitest uses an isolated temporary SQLite database (`tests/helpers/test-db.ts`), so tests never touch `data/app.db`.
+- Playwright uses a disposable `data/e2e.db`, starts the dev server on port `3100`, and covers board creation, task editing, subtask/comment persistence, filters, views, command-palette search, drag-and-drop persistence, destructive confirmations, dashboard stats, mobile navigation, and dark mode.
+- The E2E suite collects browser page errors and console errors and fails if any are emitted.
+
+## Keyboard shortcuts
+
+| Keys | Action |
+| --- | --- |
+| `⌘K` / `Ctrl K` | Open global search |
+| `N` | Create a task on the current board |
+| `?` | Show the shortcut guide |
+| `Esc` | Close a panel, menu, or dialog |
+| `Space` | Pick up a focused task drag handle |
+| `⌘↵` / `Ctrl ↵` | Submit a comment |
+
+## Scripts
+
+| Script | Description |
+| --- | --- |
+| `npm run dev` | Start the dev server; applies pending migrations first. |
+| `npm run build` | Production build. |
+| `npm start` | Start the production server. |
+| `npm run lint` | ESLint. |
+| `npm run typecheck` | TypeScript with no emit. |
+| `npm test` | Vitest run. |
+| `npm run test:watch` | Vitest watch mode. |
+| `npm run test:e2e` | Reset the E2E database and run Playwright. |
+| `npm run db:generate` | Generate a Drizzle migration. |
+| `npm run db:migrate` | Apply migrations. |
+| `npm run db:seed` | Seed demo data. |
+| `npm run db:reset` | Delete the local database and re-migrate. |
+| `npm run db:studio` | Open Drizzle Studio. |
+| `npm run verify` | Full lint, typecheck, test, and build pipeline. |
+
+## License
+
+Private project. All rights reserved.

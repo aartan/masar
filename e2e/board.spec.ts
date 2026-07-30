@@ -159,4 +159,62 @@ test.describe("board workflows", () => {
       if (boardId) await deleteBoard(request, boardId);
     }
   });
+
+  test("persists a drag-and-drop move across columns", async ({
+    page,
+    request,
+  }) => {
+    const errors = collectPageErrors(page);
+    const boardName = uniqueName("E2E Drag");
+    const taskTitle = "Drag me";
+    let boardId: string | undefined;
+
+    try {
+      const board = await createBoard(request, boardName);
+      boardId = board.id;
+      const detail = await getBoardDetail(request, boardId);
+      const todo = columnByName(detail.columns, "To Do");
+      await createTask(request, boardId, {
+        columnId: todo.id,
+        title: taskTitle,
+      });
+
+      await page.goto(`/boards/${boardId}`);
+      const card = page.getByRole("button", { name: `Open task: ${taskTitle}` });
+      await expect(card).toBeVisible();
+
+      const cardBox = await card.boundingBox();
+      const inProgress = page.getByRole("region", { name: "In Progress column" });
+      const targetBox = await inProgress.boundingBox();
+      expect(cardBox).not.toBeNull();
+      expect(targetBox).not.toBeNull();
+
+      if (!cardBox || !targetBox) throw new Error("Missing drag geometry");
+      await page.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y + 36);
+      await page.mouse.down();
+      await page.mouse.move(cardBox.x + cardBox.width / 2 + 10, cardBox.y + 46, {
+        steps: 4,
+      });
+      await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + 260, {
+        steps: 24,
+      });
+      await page.mouse.up();
+
+      await expect(
+        inProgress.getByRole("button", { name: `Open task: ${taskTitle}` }),
+      ).toBeVisible();
+      await expect(page.getByText("Moved to In Progress")).toBeVisible();
+
+      await page.reload({ waitUntil: "networkidle" });
+      await expect(
+        page
+          .getByRole("region", { name: "In Progress column" })
+          .getByRole("button", { name: `Open task: ${taskTitle}` }),
+      ).toBeVisible();
+
+      expect(errors).toEqual([]);
+    } finally {
+      if (boardId) await deleteBoard(request, boardId);
+    }
+  });
 });

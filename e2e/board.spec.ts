@@ -217,4 +217,119 @@ test.describe("board workflows", () => {
       if (boardId) await deleteBoard(request, boardId);
     }
   });
+
+  test("confirms destructive actions before deleting tasks and boards", async ({
+    page,
+    request,
+  }) => {
+    const errors = collectPageErrors(page);
+    const boardName = uniqueName("E2E Delete");
+    const taskTitle = "Delete me";
+    let boardId: string | undefined;
+
+    try {
+      const board = await createBoard(request, boardName);
+      boardId = board.id;
+      const detail = await getBoardDetail(request, boardId);
+      const todo = columnByName(detail.columns, "To Do");
+      await createTask(request, boardId, { columnId: todo.id, title: taskTitle });
+
+      await page.goto(`/boards/${boardId}`);
+      await page.getByRole("button", { name: `Task actions for ${taskTitle}` }).click();
+      await page.getByRole("menuitem", { name: "Delete task" }).click();
+      const taskDialog = page.getByRole("alertdialog");
+      await expect(taskDialog.getByText("Delete this task?")).toBeVisible();
+      await taskDialog.getByRole("button", { name: "Delete task" }).click();
+      await expect(
+        page.getByRole("button", { name: `Open task: ${taskTitle}` }),
+      ).toHaveCount(0);
+
+      await page.getByRole("button", { name: "Board actions" }).click();
+      await page.getByRole("menuitem", { name: "Delete board" }).click();
+      const boardDialog = page.getByRole("alertdialog");
+      await expect(
+        boardDialog.getByText(`Delete ${boardName}?`),
+      ).toBeVisible();
+      await boardDialog.getByRole("button", { name: "Delete board" }).click();
+      await expect(page).toHaveURL("/");
+      await expect(page.getByRole("link", { name: boardName })).toHaveCount(0);
+
+      boardId = undefined;
+      expect(errors).toEqual([]);
+    } finally {
+      if (boardId) await deleteBoard(request, boardId);
+    }
+  });
+
+  test("dashboard reflects live workspace data", async ({ page, request }) => {
+    const errors = collectPageErrors(page);
+    const boardName = uniqueName("E2E Stats");
+    let boardId: string | undefined;
+
+    try {
+      const board = await createBoard(request, boardName);
+      boardId = board.id;
+      const detail = await getBoardDetail(request, boardId);
+      const todo = columnByName(detail.columns, "To Do");
+      const done = columnByName(detail.columns, "Done");
+      const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+      await createTask(request, boardId, {
+        columnId: todo.id,
+        title: "E2E due soon",
+        priority: "high",
+        dueDate: tomorrow,
+      });
+      await createTask(request, boardId, {
+        columnId: done.id,
+        title: "E2E completed",
+      });
+
+      await page.goto("/");
+      const main = page.getByRole("main");
+      await expect(main.getByText("Active boards")).toBeVisible();
+      await expect(main.getByText(boardName, { exact: true }).first()).toBeVisible();
+      await expect(main.getByText("1/2", { exact: true })).toBeVisible();
+      await expect(main.getByText("E2E due soon").first()).toBeVisible();
+      await expect(main.getByText("E2E completed").first()).toBeVisible();
+      await expect(main.getByText("50%", { exact: true })).toBeVisible();
+
+      expect(errors).toEqual([]);
+    } finally {
+      if (boardId) await deleteBoard(request, boardId);
+    }
+  });
+
+  test("mobile navigation and dark theme work at a phone viewport", async ({
+    page,
+    request,
+  }) => {
+    const errors = collectPageErrors(page);
+    const boardName = uniqueName("E2E Mobile");
+    let boardId: string | undefined;
+
+    try {
+      const board = await createBoard(request, boardName);
+      boardId = board.id;
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`/boards/${boardId}`);
+      await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Backlog column" })).toBeVisible();
+
+      await page.getByRole("button", { name: "Open navigation" }).click();
+      const nav = page.getByRole("dialog", { name: "Navigation" });
+      await expect(nav).toBeVisible();
+      await expect(nav.getByRole("link", { name: boardName })).toBeVisible();
+
+      await nav.getByRole("button", { name: "Change theme" }).click();
+      await page.getByRole("menuitemradio", { name: "Dark" }).click();
+      await expect(page.locator("html")).toHaveClass(/dark/);
+      await page.getByRole("button", { name: "Close navigation" }).click();
+      await expect(nav).toHaveCount(0);
+
+      expect(errors).toEqual([]);
+    } finally {
+      if (boardId) await deleteBoard(request, boardId);
+    }
+  });
 });

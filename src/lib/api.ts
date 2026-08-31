@@ -34,7 +34,7 @@ export function handleRouteError(error: unknown): Response {
     );
   }
 
-  console.error("[kanso] Unhandled API error:", error);
+  console.error("[masar] Unhandled API error:", error);
   return Response.json(
     { error: "Something went wrong on our side. Please try again." },
     { status: 500 },

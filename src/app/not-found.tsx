@@ -14,7 +14,7 @@ export default function NotFound() {
           404
         </p>
         <h1 className="font-display mt-1 text-xl font-semibold">
-          A quiet dead end
+          This path ends here
         </h1>
         <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
           The page you are looking for does not exist. Head back to your

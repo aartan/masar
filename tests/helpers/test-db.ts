@@ -14,7 +14,7 @@ import * as schema from "@/db/schema";
  * developer's ./data/app.db.
  */
 export async function createTestDatabase() {
-  const directory = mkdtempSync(join(tmpdir(), "kanso-test-"));
+  const directory = mkdtempSync(join(tmpdir(), "masar-test-"));
   const client = createClient({ url: `file:${join(directory, "test.db")}` });
   const db = drizzle(client, { schema });
 

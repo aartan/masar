@@ -171,7 +171,7 @@ export function CommandPalette({
         aria-describedby={undefined}
         className="top-[14%] max-w-xl translate-y-0 gap-0 overflow-hidden p-0 sm:top-[18%]"
       >
-        <DialogTitle className="sr-only">Search Kanso</DialogTitle>
+        <DialogTitle className="sr-only">Search Masar</DialogTitle>
         <div className="flex items-center gap-3 border-b border-border/70 px-4">
           <Search className="size-4 shrink-0 text-muted-foreground/70" />
           <input

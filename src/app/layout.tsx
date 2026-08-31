@@ -13,17 +13,17 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: {
-    default: "Kanso — calm project management",
-    template: "%s · Kanso",
+    default: "Masar — Kanban project management",
+    template: "%s · Masar",
   },
   description:
-    "A quiet, keyboard-first Kanban workspace for teams who care about the details.",
-  applicationName: "Kanso",
-  authors: [{ name: "Kanso" }],
+    "A keyboard-first Kanban workspace for planning work and moving it from backlog to completion.",
+  applicationName: "Masar",
+  authors: [{ name: "Masar" }],
   openGraph: {
-    title: "Kanso — calm project management",
+    title: "Masar — Kanban project management",
     description:
-      "A quiet, keyboard-first Kanban workspace for teams who care about the details.",
+      "A keyboard-first Kanban workspace for planning work and moving it from backlog to completion.",
     type: "website",
   },
 };

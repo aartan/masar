@@ -1,8 +1,8 @@
 {
-  "name": "kanso",
+  "name": "masar",
   "version": "1.0.0",
   "private": true,
-  "description": "Kanso — a calm, production-ready Kanban workspace.",
+  "description": "A single-user Kanban app built with Next.js and Drizzle.",
   "scripts": {
     "dev": "next dev",
     "predev": "npm run db:migrate",

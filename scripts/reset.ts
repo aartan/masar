@@ -10,7 +10,7 @@ function main() {
   const config = resolveDatabaseConfig();
   if (config.isRemote) {
     console.error(
-      "[kanso] Refusing to reset a remote database. Use `turso db shell` or run the SQL manually.",
+      "[masar] Refusing to reset a remote database. Use `turso db shell` or run the SQL manually.",
     );
     process.exit(1);
   }
@@ -24,7 +24,7 @@ function main() {
     const target = `${absolutePath}${suffix}`;
     if (existsSync(target)) {
       unlinkSync(target);
-      console.log(`[kanso] Removed ${target}`);
+      console.log(`[masar] Removed ${target}`);
     }
   }
 
@@ -32,7 +32,7 @@ function main() {
     stdio: "inherit",
     env: process.env,
   });
-  console.log("[kanso] Database reset. Run `npm run db:seed` for demo data.");
+  console.log("[masar] Database reset. Run `npm run db:seed` for demo data.");
 }
 
 main();

@@ -10,7 +10,7 @@ for (const suffix of ["", "-wal", "-shm"]) {
   if (existsSync(target)) rmSync(target);
 }
 
-console.log("[kanso] Preparing a clean E2E database.");
+console.log("[masar] Preparing a clean E2E database.");
 execFileSync("npx", ["--no-install", "tsx", "scripts/migrate.ts"], {
   stdio: "inherit",
   env: { ...process.env, DATABASE_URL: url },

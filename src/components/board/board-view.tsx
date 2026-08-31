@@ -89,8 +89,8 @@ type DragData = {
 
 type ViewMode = "board" | "list";
 
-const VIEW_STORAGE_KEY = "kanso:board-view";
-const VIEW_CHANGE_EVENT = "kanso:board-view-change";
+const VIEW_STORAGE_KEY = "masar:board-view";
+const VIEW_CHANGE_EVENT = "masar:board-view-change";
 
 function subscribeToView(onStoreChange: () => void) {
   window.addEventListener("storage", onStoreChange);
@@ -820,7 +820,7 @@ export function BoardView({
       <div className="min-h-0 flex-1">
         {view === "board" ? (
           <DndContext
-            id="kanso-board"
+            id="masar-board"
             sensors={sensors}
             collisionDetection={collisionDetection}
             onDragStart={handleDragStart}

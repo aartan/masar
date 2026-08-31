@@ -13,7 +13,7 @@ async function main() {
   const maskedUrl = config.isRemote
     ? config.url.replace(/\/\/([^@/]+@)?/, "//")
     : config.url;
-  console.log(`[kanso] Running migrations against ${maskedUrl}`);
+  console.log(`[masar] Running migrations against ${maskedUrl}`);
 
   const client = createClient({
     url: config.url,
@@ -25,14 +25,14 @@ async function main() {
     await migrate(db, {
       migrationsFolder: resolve(process.cwd(), "drizzle"),
     });
-    console.log("[kanso] Migrations complete.");
+    console.log("[masar] Migrations complete.");
   } finally {
     client.close();
   }
 }
 
 main().catch((error) => {
-  console.error("[kanso] Migration failed.");
+  console.error("[masar] Migration failed.");
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 });

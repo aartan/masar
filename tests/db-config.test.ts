@@ -12,9 +12,9 @@ afterEach(() => {
 
 describe("isRemoteDatabaseUrl", () => {
   it("recognizes hosted libSQL and HTTP URLs", () => {
-    expect(isRemoteDatabaseUrl("libsql://kanso.turso.io")).toBe(true);
-    expect(isRemoteDatabaseUrl("https://kanso.turso.io")).toBe(true);
-    expect(isRemoteDatabaseUrl("wss://kanso.turso.io")).toBe(true);
+    expect(isRemoteDatabaseUrl("libsql://masar.turso.io")).toBe(true);
+    expect(isRemoteDatabaseUrl("https://masar.turso.io")).toBe(true);
+    expect(isRemoteDatabaseUrl("wss://masar.turso.io")).toBe(true);
   });
 
   it("treats file and memory URLs as local", () => {
@@ -38,11 +38,11 @@ describe("resolveDatabaseConfig", () => {
     ).toBe("file:./tmp/custom.db");
     expect(
       resolveDatabaseConfig({
-        TURSO_DATABASE_URL: "libsql://kanso.turso.io",
+        TURSO_DATABASE_URL: "libsql://masar.turso.io",
         TURSO_AUTH_TOKEN: "token",
       }),
     ).toEqual({
-      url: "libsql://kanso.turso.io",
+      url: "libsql://masar.turso.io",
       authToken: "token",
       isRemote: true,
     });
@@ -50,7 +50,7 @@ describe("resolveDatabaseConfig", () => {
 
   it("accepts DATABASE_AUTH_TOKEN as an alias", () => {
     const config = resolveDatabaseConfig({
-      DATABASE_URL: "libsql://kanso.turso.io",
+      DATABASE_URL: "libsql://masar.turso.io",
       DATABASE_AUTH_TOKEN: "token",
     });
     expect(config.authToken).toBe("token");
@@ -92,7 +92,7 @@ describe("resolveDatabaseConfig", () => {
     expect(() =>
       resolveDatabaseConfig({
         VERCEL: "1",
-        DATABASE_URL: "libsql://kanso.turso.io",
+        DATABASE_URL: "libsql://masar.turso.io",
       }),
     ).toThrow(/Missing TURSO_AUTH_TOKEN/);
   });
@@ -101,11 +101,11 @@ describe("resolveDatabaseConfig", () => {
     expect(
       resolveDatabaseConfig({
         VERCEL: "1",
-        DATABASE_URL: "libsql://kanso.turso.io",
+        DATABASE_URL: "libsql://masar.turso.io",
         TURSO_AUTH_TOKEN: "secret",
       }),
     ).toEqual({
-      url: "libsql://kanso.turso.io",
+      url: "libsql://masar.turso.io",
       authToken: "secret",
       isRemote: true,
     });

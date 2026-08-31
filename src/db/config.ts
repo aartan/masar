@@ -63,7 +63,7 @@ export function resolveDatabaseConfig(
     // A warning (not a failure) keeps `next build` and self-hosted previews
     // working. Production hosts must opt in explicitly or configure a URL.
     console.warn(
-      "[kanso] Using the default local SQLite file in a production runtime. Set DATABASE_URL or ALLOW_LOCAL_DB_IN_PRODUCTION=true.",
+      "[masar] Using the default local SQLite file in a production runtime. Set DATABASE_URL or ALLOW_LOCAL_DB_IN_PRODUCTION=true.",
     );
   }
 

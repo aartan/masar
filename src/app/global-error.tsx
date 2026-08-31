@@ -38,7 +38,7 @@ export default function GlobalError({
               margin: 0,
             }}
           >
-            Kanso
+            Masar
           </p>
           <h1
             style={{
@@ -58,7 +58,7 @@ export default function GlobalError({
               margin: "10px 0 0",
             }}
           >
-            Kanso could not connect to its database. Confirm that{" "}
+            Masar could not connect to its database. Confirm that{" "}
             <code>DATABASE_URL</code> is set correctly, then reload this page.
             {error.digest ? ` Reference: ${error.digest}.` : ""}
           </p>

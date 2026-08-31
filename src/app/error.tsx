@@ -28,7 +28,7 @@ export default function AppError({
           Something went sideways
         </h1>
         <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
-          Kanso could not load this view. Your data is safe — try again, and if
+          Masar could not load this view. Your data is safe — try again, and if
           the problem continues check the database configuration.
         </p>
         {error.digest && (

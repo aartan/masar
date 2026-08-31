@@ -61,8 +61,8 @@ const DEFAULT_LABELS: SeedBoard["labels"] = [
 
 const seedBoards: SeedBoard[] = [
   {
-    name: "Kanso launch",
-    description: "Ship the calm workspace we want to use every day.",
+    name: "Masar launch",
+    description: "Plan and ship the work that moves Masar forward.",
     color: "sage",
     columns: [
       { name: "Backlog" },
@@ -103,7 +103,7 @@ const seedBoards: SeedBoard[] = [
       {
         title: "Design pricing page",
         description:
-          "Three tiers, annual toggle, and a calm comparison table. Keep the visual language close to the board.",
+          "Three tiers, annual toggle, and a clear comparison table. Keep the visual language close to the board.",
         column: "To Do",
         priority: "high",
         assignee: "Priya Raman",
@@ -205,7 +205,7 @@ const seedBoards: SeedBoard[] = [
         comments: [
           {
             author: "Noah Williams",
-            body: "Love the quieter metadata. The due-date chip is much easier to scan now.",
+            body: "Love the tighter metadata. The due-date chip is much easier to scan now.",
             daysAgo: 1,
           },
         ],
@@ -257,7 +257,7 @@ const seedBoards: SeedBoard[] = [
       {
         title: "Ship marketing site",
         description:
-          "A quiet, fast landing page with a live product tour and clear pricing.",
+          "A fast landing page with a live product tour and clear pricing.",
         column: "Done",
         priority: "medium",
         assignee: "Noah Williams",
@@ -269,7 +269,7 @@ const seedBoards: SeedBoard[] = [
   },
   {
     name: "Website refresh",
-    description: "A quieter, faster home for the Kanso story.",
+    description: "A faster, clearer home for the Masar story.",
     color: "sky",
     columns: [
       { name: "Backlog" },
@@ -282,7 +282,7 @@ const seedBoards: SeedBoard[] = [
       {
         title: "Rewrite homepage copy",
         description:
-          "Lead with the feeling of a calm workspace, not a feature list. Three short sections, one CTA.",
+          "Lead with the product, not a feature list. Three short sections, one CTA.",
         column: "To Do",
         priority: "high",
         assignee: "Noah Williams",
@@ -367,7 +367,7 @@ async function main() {
 
     if ((existing?.value ?? 0) > 0 && !force) {
       console.log(
-        `[kanso] Seed skipped: ${existing?.value} board(s) already exist. Use \`npm run db:seed -- --force\` to replace all data.`,
+        `[masar] Seed skipped: ${existing?.value} board(s) already exist. Use \`npm run db:seed -- --force\` to replace all data.`,
       );
       return;
     }
@@ -505,7 +505,7 @@ async function main() {
     });
 
     console.log(
-      `[kanso] Seeded ${boardRows.length} boards, ${taskRows.length} tasks, ${labelRows.length} labels.`,
+      `[masar] Seeded ${boardRows.length} boards, ${taskRows.length} tasks, ${labelRows.length} labels.`,
     );
   } finally {
     client.close();
@@ -513,7 +513,7 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error("[kanso] Seed failed.");
+  console.error("[masar] Seed failed.");
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 });

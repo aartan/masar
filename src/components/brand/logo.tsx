@@ -14,7 +14,7 @@ export function Logo({
   return (
     <Link
       href={href}
-      aria-label="Kanso home"
+      aria-label="Masar home"
       className={cn(
         "group inline-flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
         className,
@@ -52,10 +52,10 @@ export function Logo({
       {!compact && (
         <span className="flex items-baseline gap-2">
           <span className="font-display text-[17px] font-semibold text-foreground">
-            kanso
+            masar
           </span>
           <span className="hidden text-[9px] font-medium tracking-[0.18em] text-muted-foreground/70 uppercase sm:inline">
-            studio
+            workspace
           </span>
         </span>
       )}

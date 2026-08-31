@@ -12,7 +12,7 @@ interface DatabaseBundle {
 }
 
 const globalForDatabase = globalThis as unknown as {
-  __kansoDatabase?: DatabaseBundle;
+  __masarDatabase?: DatabaseBundle;
 };
 
 export function createDatabase(
@@ -25,14 +25,14 @@ export function createDatabase(
 }
 
 export function getDatabaseBundle(): DatabaseBundle {
-  if (!globalForDatabase.__kansoDatabase) {
+  if (!globalForDatabase.__masarDatabase) {
     const config = resolveDatabaseConfig();
-    globalForDatabase.__kansoDatabase = createDatabase(
+    globalForDatabase.__masarDatabase = createDatabase(
       config.url,
       config.authToken,
     );
   }
-  return globalForDatabase.__kansoDatabase;
+  return globalForDatabase.__masarDatabase;
 }
 
 export function getDb(): AppDatabase {

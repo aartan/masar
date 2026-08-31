@@ -31,7 +31,7 @@ export function ShortcutsDialog({
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogDescription>
-            Move through Kanso without reaching for the mouse.
+            Move through Masar without reaching for the mouse.
           </DialogDescription>
         </DialogHeader>
         <div className="divide-y divide-border/60">

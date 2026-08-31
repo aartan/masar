@@ -67,7 +67,7 @@ export default async function OverviewPage() {
             </h1>
             <p className="mt-1.5 max-w-lg text-[13.5px] leading-relaxed text-muted-foreground">
               {data.totals.boards > 0
-                ? `A calm view of ${data.totals.boards} ${data.totals.boards === 1 ? "board" : "boards"} and ${data.totals.open} open ${data.totals.open === 1 ? "task" : "tasks"}.`
+                ? `A clear view of ${data.totals.boards} ${data.totals.boards === 1 ? "board" : "boards"} and ${data.totals.open} open ${data.totals.open === 1 ? "task" : "tasks"}.`
                 : "Your workspace is ready for its first board."}
             </p>
           </div>
@@ -94,11 +94,12 @@ export default async function OverviewPage() {
                   <Sparkles className="size-6" strokeWidth={1.6} />
                 </span>
                 <h2 className="font-display mt-5 text-2xl font-semibold">
-                  A calmer way to ship.
+                  A clear path from backlog to done.
                 </h2>
                 <p className="mx-auto mt-2 max-w-md text-[13.5px] leading-relaxed text-muted-foreground">
-                  Create a board, add a few tasks, and let the work find its own
-                  rhythm. Five thoughtful columns are waiting for you.
+                  Create a board, add your first tasks, and move work through
+                  the columns as it progresses. Start with five and shape them
+                  as you go.
                 </p>
                 <div className="mt-6 flex justify-center">
                   <NewBoardButton label="Create your first board" size="lg" />
@@ -106,7 +107,7 @@ export default async function OverviewPage() {
                 <div className="mt-8 grid gap-3 text-left sm:grid-cols-3">
                   {[
                     ["Board", "Structure the work"],
-                    ["Flow", "Drag without friction"],
+                    ["Flow", "Move work forward"],
                     ["Focus", "See what matters"],
                   ].map(([title, subtitle]) => (
                     <div

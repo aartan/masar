@@ -22,10 +22,98 @@ const updatedAt = () =>
     .notNull()
     .default(sql`(unixepoch() * 1000)`);
 
+/**
+ * Authentication tables are managed by Better Auth. They use plural table
+ * names because the server and test helpers pass `usePlural: true` to the
+ * Drizzle adapter.
+ */
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: integer("email_verified", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  image: text("image"),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (table) => [index("sessions_user_id_idx").on(table.userId)],
+);
+
+export const accounts = sqliteTable(
+  "accounts",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: integer("access_token_expires_at", {
+      mode: "timestamp_ms",
+    }),
+    refreshTokenExpiresAt: integer("refresh_token_expires_at", {
+      mode: "timestamp_ms",
+    }),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("accounts_user_id_idx").on(table.userId),
+    uniqueIndex("accounts_provider_account_unique").on(
+      table.providerId,
+      table.accountId,
+    ),
+  ],
+);
+
+export const verifications = sqliteTable(
+  "verifications",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [index("verifications_identifier_idx").on(table.identifier)],
+);
+
 export const boards = sqliteTable(
   "boards",
   {
     id: text("id").primaryKey(),
+    /**
+     * Nullable for migration-first deployments: the currently deployed app
+     * does not know about this column and may insert rows while the new code
+     * rolls out. The application never reads or writes unscoped boards; the
+     * legacy claim command assigns them to their explicit owner.
+     */
+    ownerId: text("owner_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
     name: text("name").notNull(),
     description: text("description"),
     color: text("color").notNull().default("sage"),
@@ -33,7 +121,10 @@ export const boards = sqliteTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (table) => [index("boards_position_idx").on(table.position)],
+  (table) => [
+    index("boards_position_idx").on(table.position),
+    index("boards_owner_position_idx").on(table.ownerId, table.position),
+  ],
 );
 
 export const columns = sqliteTable(
@@ -149,6 +240,9 @@ export const comments = sqliteTable(
   (table) => [index("comments_task_idx").on(table.taskId, table.createdAt)],
 );
 
+export type UserRow = typeof users.$inferSelect;
+export type SessionRow = typeof sessions.$inferSelect;
+export type AccountRow = typeof accounts.$inferSelect;
 export type BoardRow = typeof boards.$inferSelect;
 export type ColumnRow = typeof columns.$inferSelect;
 export type TaskRow = typeof tasks.$inferSelect;

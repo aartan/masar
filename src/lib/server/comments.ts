@@ -4,17 +4,17 @@ import { asc, eq } from "drizzle-orm";
 
 import { getDb, type AppDatabase } from "@/db";
 import { comments } from "@/db/schema";
-import { ApiError } from "@/lib/api";
 import type { Comment } from "@/lib/types";
-import { requireTask } from "./queries";
+import { requireComment, requireTask } from "./queries";
 import { serializeComment } from "./tasks";
 
 export async function createComment(
   taskId: string,
   input: { body: string; author?: string },
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<Comment> {
-  await requireTask(database, taskId);
+  await requireTask(database, taskId, ownerId);
   const id = randomUUID();
   const now = new Date();
   const author = input.author?.trim() || "You";
@@ -36,8 +36,10 @@ export async function createComment(
 
 export async function listComments(
   taskId: string,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<Comment[]> {
+  await requireTask(database, taskId, ownerId);
   const rows = await database
     .select()
     .from(comments)
@@ -48,13 +50,9 @@ export async function listComments(
 
 export async function deleteComment(
   commentId: string,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<void> {
-  const [existing] = await database
-    .select()
-    .from(comments)
-    .where(eq(comments.id, commentId))
-    .limit(1);
-  if (!existing) throw new ApiError("Comment not found.", 404);
+  await requireComment(database, commentId, ownerId);
   await database.delete(comments).where(eq(comments.id, commentId));
 }

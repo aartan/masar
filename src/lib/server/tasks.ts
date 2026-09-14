@@ -62,9 +62,10 @@ export function serializeComment(row: {
 
 export async function getTaskDetail(
   taskId: string,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<TaskDetail> {
-  const task = (await fetchTasks(database, { taskId }))[0];
+  const task = (await fetchTasks(database, { ownerId, taskId }))[0];
   if (!task) throw new ApiError("Task not found.", 404);
 
   const [subtaskRows, commentRows] = await Promise.all([
@@ -90,10 +91,11 @@ export async function getTaskDetail(
 export async function createTask(
   boardId: string,
   input: TaskCreateInput,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<TaskDetail> {
-  await requireBoard(database, boardId);
-  const column = await requireColumn(database, input.columnId);
+  await requireBoard(database, boardId, ownerId);
+  const column = await requireColumn(database, input.columnId, ownerId);
   if (column.boardId !== boardId) {
     throw new ApiError("That column does not belong to this board.", 400);
   }
@@ -130,21 +132,22 @@ export async function createTask(
     }
   });
 
-  return getTaskDetail(id, database);
+  return getTaskDetail(id, ownerId, database);
 }
 
 export async function updateTask(
   taskId: string,
   input: TaskUpdateInput,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<TaskDetail> {
-  const existing = await requireTask(database, taskId);
+  const existing = await requireTask(database, taskId, ownerId);
   let nextColumnId = existing.columnId;
   let nextPosition = existing.position;
   let completedAt = existing.completedAt;
 
   if (input.columnId && input.columnId !== existing.columnId) {
-    const target = await requireColumn(database, input.columnId);
+    const target = await requireColumn(database, input.columnId, ownerId);
     if (target.boardId !== existing.boardId) {
       throw new ApiError("That column does not belong to this board.", 400);
     }
@@ -196,22 +199,24 @@ export async function updateTask(
     }
   });
 
-  return getTaskDetail(taskId, database);
+  return getTaskDetail(taskId, ownerId, database);
 }
 
 export async function deleteTask(
   taskId: string,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<void> {
-  await requireTask(database, taskId);
+  await requireTask(database, taskId, ownerId);
   await database.delete(tasks).where(eq(tasks.id, taskId));
 }
 
 export async function duplicateTask(
   taskId: string,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<TaskDetail> {
-  const source = await requireTask(database, taskId);
+  const source = await requireTask(database, taskId, ownerId);
   const position = await nextTaskPosition(database, source.columnId);
   const newId = randomUUID();
   const now = new Date();
@@ -268,14 +273,16 @@ export async function duplicateTask(
     }
   });
 
-  return getTaskDetail(newId, database);
+  return getTaskDetail(newId, ownerId, database);
 }
 
 export async function reorderTasks(
   boardId: string,
   input: ReorderTasksInput,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<Task[]> {
+  await requireBoard(database, boardId, ownerId);
   const [boardColumns, boardTasks] = await Promise.all([
     database
       .select()
@@ -352,13 +359,15 @@ export async function reorderTasks(
     }
   });
 
-  return fetchTasks(database, { boardId });
+  return fetchTasks(database, { ownerId, boardId });
 }
 
 export async function listTaskOptions(
   boardId: string,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<Array<{ id: string; title: string; columnId: string }>> {
+  await requireBoard(database, boardId, ownerId);
   return database
     .select({ id: tasks.id, title: tasks.title, columnId: tasks.columnId })
     .from(tasks)
@@ -368,8 +377,10 @@ export async function listTaskOptions(
 
 export async function countTasksInColumn(
   columnId: string,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<number> {
+  await requireColumn(database, columnId, ownerId);
   const [row] = await database
     .select({ value: sql<number>`count(*)`.mapWith(Number) })
     .from(tasks)

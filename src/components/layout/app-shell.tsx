@@ -20,9 +20,11 @@ import type { BoardSummary } from "@/lib/types";
 
 export function AppShell({
   boards,
+  user,
   children,
 }: {
   boards: BoardSummary[];
+  user: { name: string; email: string };
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
@@ -69,6 +71,7 @@ export function AppShell({
         <div className="w-full">
           <SidebarContent
             boards={boards}
+            user={user}
             onOpenSearch={() => setSearchOpen(true)}
             onCreateBoard={openCreateBoard}
             onOpenShortcuts={() => setShortcutsOpen(true)}
@@ -86,6 +89,7 @@ export function AppShell({
           </SheetHeader>
           <SidebarContent
             boards={boards}
+            user={user}
             onOpenSearch={() => {
               setMobileOpen(false);
               setSearchOpen(true);

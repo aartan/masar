@@ -10,15 +10,17 @@ import type { LabelCreateInput, LabelUpdateInput } from "@/lib/validation";
 import {
   isUniqueConstraintError,
   requireBoard,
+  requireLabel,
   serializeLabel,
 } from "./queries";
 
 export async function createLabel(
   boardId: string,
   input: LabelCreateInput,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<Label> {
-  await requireBoard(database, boardId);
+  await requireBoard(database, boardId, ownerId);
   const id = randomUUID();
   const now = new Date();
 
@@ -49,14 +51,10 @@ export async function createLabel(
 export async function updateLabel(
   labelId: string,
   input: LabelUpdateInput,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<Label> {
-  const [existing] = await database
-    .select()
-    .from(labels)
-    .where(eq(labels.id, labelId))
-    .limit(1);
-  if (!existing) throw new ApiError("Label not found.", 404);
+  await requireLabel(database, labelId, ownerId);
 
   try {
     await database
@@ -84,13 +82,9 @@ export async function updateLabel(
 
 export async function deleteLabel(
   labelId: string,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<void> {
-  const [existing] = await database
-    .select()
-    .from(labels)
-    .where(eq(labels.id, labelId))
-    .limit(1);
-  if (!existing) throw new ApiError("Label not found.", 404);
+  await requireLabel(database, labelId, ownerId);
   await database.delete(labels).where(eq(labels.id, labelId));
 }

@@ -2,14 +2,17 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
+  ChevronsUpDown,
   Keyboard,
   LayoutDashboard,
+  LogOut,
   Plus,
   Search,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Logo } from "@/components/brand/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -17,15 +20,25 @@ import { Kbd } from "@/components/shared/empty-state";
 import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 import { Button } from "@/components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { authClient } from "@/lib/auth-client";
 import type { BoardSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface SidebarContentProps {
   boards: BoardSummary[];
+  user: { name: string; email: string };
   onOpenSearch: () => void;
   onCreateBoard: () => void;
   onOpenShortcuts: () => void;
@@ -36,6 +49,7 @@ interface SidebarContentProps {
 
 export function SidebarContent({
   boards,
+  user,
   onOpenSearch,
   onCreateBoard,
   onOpenShortcuts,
@@ -44,6 +58,27 @@ export function SidebarContent({
   onClose,
 }: SidebarContentProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [signingOut, setSigningOut] = React.useState(false);
+
+  async function signOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      const { error } = await authClient.signOut();
+      if (error) throw new Error(error.message ?? "Could not sign out.");
+      onNavigate?.();
+      router.push("/login");
+      router.refresh();
+    } catch {
+      toast.error("Could not sign out", {
+        description: "Please try again.",
+      });
+      setSigningOut(false);
+    }
+  }
+
+  const initial = (user.name.trim()[0] ?? user.email[0] ?? "M").toUpperCase();
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground">
@@ -180,17 +215,38 @@ export function SidebarContent({
       </div>
 
       <div className="mt-auto border-t border-sidebar-border/80 px-3 py-3">
-        <div className="flex items-center gap-2 rounded-lg px-2 py-1.5">
-          <span className="grid size-7 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
-            Y
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[12px] font-medium">Personal workspace</p>
-            <p className="text-[10px] text-muted-foreground">
-              Single-user · self-hosted
-            </p>
-          </div>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent/60 disabled:opacity-60"
+              disabled={signingOut}
+              aria-label="Account menu"
+            >
+              <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                {initial}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12px] font-medium">{user.name}</p>
+                <p className="truncate text-[10px] text-muted-foreground">
+                  {user.email}
+                </p>
+              </div>
+              <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground/60" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="w-[232px]">
+            <DropdownMenuLabel>Personal workspace</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() => void signOut()}
+              disabled={signingOut}
+            >
+              <LogOut />
+              {signingOut ? "Signing out…" : "Sign out"}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <div className="mt-1 flex items-center gap-1">
           <ThemeToggle withLabel />
           <Tooltip>

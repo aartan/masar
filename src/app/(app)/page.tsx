@@ -13,6 +13,7 @@ import {
 import { format } from "date-fns";
 
 import { getDashboardData } from "@/lib/server/stats";
+import { requireUser } from "@/lib/server/auth";
 import { todayIso } from "@/lib/dates";
 import { PRIORITY_META, type Priority } from "@/lib/constants";
 import { completionPercent } from "@/lib/task-utils";
@@ -46,7 +47,8 @@ function greeting(): string {
 }
 
 export default async function OverviewPage() {
-  const data = await getDashboardData();
+  const user = await requireUser();
+  const data = await getDashboardData(user.id);
   const today = todayIso();
   const completion = completionPercent(data.totals.done, data.totals.tasks);
   const maxPriority = Math.max(

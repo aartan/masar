@@ -1,4 +1,5 @@
 import { handleRouteError, jsonOk, parseJsonBody } from "@/lib/api";
+import { requireApiUser } from "@/lib/server/auth";
 import { columnCreateSchema } from "@/lib/validation";
 import { createColumn } from "@/lib/server/columns";
 
@@ -9,9 +10,10 @@ export async function POST(
   { params }: { params: Promise<{ boardId: string }> },
 ) {
   try {
+    const user = await requireApiUser();
     const { boardId } = await params;
     const input = await parseJsonBody(request, columnCreateSchema);
-    const column = await createColumn(boardId, input);
+    const column = await createColumn(boardId, input, user.id);
     return jsonOk({ column }, 201);
   } catch (error) {
     return handleRouteError(error);

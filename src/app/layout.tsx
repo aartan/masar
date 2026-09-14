@@ -3,11 +3,9 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 
 import "./globals.css";
-import { AppShell } from "@/components/layout/app-shell";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { listBoards } from "@/lib/server/boards";
 
 export const dynamic = "force-dynamic";
 
@@ -35,11 +33,9 @@ export const viewport: Viewport = {
   ],
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const boards = await listBoards();
-
   return (
     <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
       <body
@@ -52,7 +48,7 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <TooltipProvider>
-            <AppShell boards={boards}>{children}</AppShell>
+            {children}
             <Toaster />
           </TooltipProvider>
         </ThemeProvider>

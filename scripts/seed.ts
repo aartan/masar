@@ -3,7 +3,7 @@ import "./load-env";
 import { randomUUID } from "node:crypto";
 
 import { createClient } from "@libsql/client";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
 
 import { resolveDatabaseConfig } from "../src/db/config";
@@ -15,6 +15,7 @@ import {
   subtasks,
   taskLabels,
   tasks,
+  users,
 } from "../src/db/schema";
 import type { BoardColor, LabelColor, Priority } from "../src/lib/constants";
 
@@ -354,20 +355,56 @@ function daysAgo(days: number): Date {
 
 async function main() {
   const force = process.argv.includes("--force");
+  const emailArg = process.argv.findIndex((value) => value === "--email");
+  const email =
+    emailArg >= 0 ? process.argv[emailArg + 1]?.trim().toLowerCase() : undefined;
+
+  if (!email) {
+    console.error(
+      "[masar] Seed needs an owner. Register an account first, then run:\n" +
+        "  npm run db:seed -- --email you@example.com\n" +
+        "Add `--force` to replace that account's existing boards.",
+    );
+    process.exit(1);
+  }
+
   const config = resolveDatabaseConfig();
   const client = createClient({ url: config.url, authToken: config.authToken });
   const database = drizzle(client, {
-    schema: { boards, columns, labels, tasks, taskLabels, subtasks, comments },
+    schema: {
+      users,
+      boards,
+      columns,
+      labels,
+      tasks,
+      taskLabels,
+      subtasks,
+      comments,
+    },
   });
 
   try {
+    const [owner] = await database
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+
+    if (!owner) {
+      console.error(
+        `[masar] No account found for ${email}. Create the account in Masar first, then run the seed again.`,
+      );
+      process.exit(1);
+    }
+
     const [existing] = await database
       .select({ value: sql<number>`count(*)`.mapWith(Number) })
-      .from(boards);
+      .from(boards)
+      .where(eq(boards.ownerId, owner.id));
 
     if ((existing?.value ?? 0) > 0 && !force) {
       console.log(
-        `[masar] Seed skipped: ${existing?.value} board(s) already exist. Use \`npm run db:seed -- --force\` to replace all data.`,
+        `[masar] Seed skipped: ${existing?.value} board(s) already exist for ${owner.email}. Use \`npm run db:seed -- --email ${owner.email} --force\` to replace them.`,
       );
       return;
     }
@@ -386,6 +423,7 @@ async function main() {
       const createdAt = daysAgo(14 - boardIndex * 3);
       boardRows.push({
         id: boardId,
+        ownerId: owner.id,
         name: board.name,
         description: board.description,
         color: board.color,
@@ -490,7 +528,7 @@ async function main() {
 
     await database.transaction(async (tx) => {
       if (force) {
-        await tx.delete(boards);
+        await tx.delete(boards).where(eq(boards.ownerId, owner.id));
       }
       if (boardRows.length > 0) await tx.insert(boards).values(boardRows);
       if (columnRows.length > 0) await tx.insert(columns).values(columnRows);
@@ -505,7 +543,7 @@ async function main() {
     });
 
     console.log(
-      `[masar] Seeded ${boardRows.length} boards, ${taskRows.length} tasks, ${labelRows.length} labels.`,
+      `[masar] Seeded ${boardRows.length} boards, ${taskRows.length} tasks, ${labelRows.length} labels for ${owner.email}.`,
     );
   } finally {
     client.close();

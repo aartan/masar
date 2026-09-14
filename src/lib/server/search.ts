@@ -1,4 +1,4 @@
-import { eq, or, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 
 import { getDb, type AppDatabase } from "@/db";
 import { boards, columns, tasks } from "@/db/schema";
@@ -6,6 +6,7 @@ import type { BoardColor, Priority } from "@/lib/constants";
 import type { SearchResult } from "@/lib/types";
 
 export async function searchTasks(
+  ownerId: string,
   query: string,
   limit = 20,
   database: AppDatabase = getDb(),
@@ -29,12 +30,18 @@ export async function searchTasks(
     .innerJoin(boards, eq(tasks.boardId, boards.id))
     .innerJoin(columns, eq(tasks.columnId, columns.id))
     .where(
-      or(
-        sql`lower(${tasks.title}) like lower(${pattern})`,
-        sql`lower(coalesce(${tasks.description}, '')) like lower(${pattern})`,
+      and(
+        eq(boards.ownerId, ownerId),
+        or(
+          sql`lower(${tasks.title}) like lower(${pattern})`,
+          sql`lower(coalesce(${tasks.description}, '')) like lower(${pattern})`,
+        ),
       ),
     )
-    .orderBy(sql`case when ${tasks.dueDate} is null then 1 else 0 end`, tasks.dueDate)
+    .orderBy(
+      sql`case when ${tasks.dueDate} is null then 1 else 0 end`,
+      tasks.dueDate,
+    )
     .limit(limit);
 
   return rows.map((row) => ({
@@ -50,6 +57,7 @@ export async function searchTasks(
 }
 
 export async function countSearchMatches(
+  ownerId: string,
   query: string,
   database: AppDatabase = getDb(),
 ): Promise<number> {
@@ -59,10 +67,14 @@ export async function countSearchMatches(
   const [row] = await database
     .select({ value: sql<number>`count(*)`.mapWith(Number) })
     .from(tasks)
+    .innerJoin(boards, eq(tasks.boardId, boards.id))
     .where(
-      or(
-        sql`lower(${tasks.title}) like lower(${pattern})`,
-        sql`lower(coalesce(${tasks.description}, '')) like lower(${pattern})`,
+      and(
+        eq(boards.ownerId, ownerId),
+        or(
+          sql`lower(${tasks.title}) like lower(${pattern})`,
+          sql`lower(coalesce(${tasks.description}, '')) like lower(${pattern})`,
+        ),
       ),
     );
   return row?.value ?? 0;

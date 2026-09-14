@@ -1,4 +1,4 @@
-import { asc, desc, eq, gte, lte, and } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 
 import { getDb, type AppDatabase } from "@/db";
 import { boards, columns, tasks } from "@/db/schema";
@@ -8,12 +8,25 @@ import type { BoardStats, DashboardData } from "@/lib/types";
 import { fetchBoardSummaries, fetchTasks } from "./queries";
 
 export async function getDashboardData(
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<DashboardData> {
   const [boardSummaries, allColumns, allTasks] = await Promise.all([
-    fetchBoardSummaries(database),
-    database.select().from(columns).orderBy(asc(columns.position)),
-    fetchTasks(database),
+    fetchBoardSummaries(database, ownerId),
+    database
+      .select()
+      .from(columns)
+      .where(
+        inArray(
+          columns.boardId,
+          database
+            .select({ id: boards.id })
+            .from(boards)
+            .where(eq(boards.ownerId, ownerId)),
+        ),
+      )
+      .orderBy(asc(columns.position)),
+    fetchTasks(database, { ownerId }),
   ]);
 
   const today = todayIso();
@@ -34,7 +47,8 @@ export async function getDashboardData(
   );
   const completedLast7Days = doneTasks.filter(
     (task) =>
-      task.completedAt && new Date(task.completedAt).getTime() >= sevenDaysAgo.getTime(),
+      task.completedAt &&
+      new Date(task.completedAt).getTime() >= sevenDaysAgo.getTime(),
   );
 
   const priorityCounts: Record<Priority, number> = {
@@ -107,6 +121,7 @@ export async function getDashboardData(
 }
 
 export async function getBoardUpcomingCounts(
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<Map<string, number>> {
   const today = todayIso();
@@ -118,6 +133,7 @@ export async function getBoardUpcomingCounts(
     .innerJoin(boards, eq(tasks.boardId, boards.id))
     .where(
       and(
+        eq(boards.ownerId, ownerId),
         eq(columns.isDone, false),
         gte(tasks.dueDate, today),
         lte(tasks.dueDate, weekAhead),
@@ -131,12 +147,22 @@ export async function getBoardUpcomingCounts(
 }
 
 export async function getRecentTasks(
+  ownerId: string,
   limit = 5,
   database: AppDatabase = getDb(),
 ) {
   const rows = await database
     .select()
     .from(tasks)
+    .where(
+      inArray(
+        tasks.boardId,
+        database
+          .select({ id: boards.id })
+          .from(boards)
+          .where(eq(boards.ownerId, ownerId)),
+      ),
+    )
     .orderBy(desc(tasks.updatedAt))
     .limit(limit);
   return rows;

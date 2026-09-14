@@ -16,6 +16,13 @@ import { ApiError } from "@/lib/api";
 import type { BoardColumn, BoardSummary, Label, Task } from "@/lib/types";
 import type { BoardColor, LabelColor, Priority } from "@/lib/constants";
 
+function ownedBoardIds(database: AppDatabase, ownerId: string) {
+  return database
+    .select({ id: boards.id })
+    .from(boards)
+    .where(eq(boards.ownerId, ownerId));
+}
+
 export function serializeBoard(
   row: BoardRow,
   counts: { taskCount: number; doneCount: number; columnCount: number },
@@ -73,7 +80,11 @@ export function serializeLabel(row: {
 export function serializeTask(
   row: TaskRow,
   labelIds: string[],
-  counts: { subtaskCount: number; subtaskDoneCount: number; commentCount: number },
+  counts: {
+    subtaskCount: number;
+    subtaskDoneCount: number;
+    commentCount: number;
+  },
 ): Task {
   return {
     id: row.id,
@@ -97,28 +108,35 @@ export function serializeTask(
 
 export async function fetchBoardSummaries(
   database: AppDatabase,
+  ownerId: string,
 ): Promise<BoardSummary[]> {
   const boardRows = await database
     .select()
     .from(boards)
+    .where(eq(boards.ownerId, ownerId))
     .orderBy(asc(boards.position), asc(boards.createdAt));
 
   if (boardRows.length === 0) return [];
+  const boardIds = boardRows.map((row) => row.id);
 
   const [taskCounts, doneCounts, columnCounts] = await Promise.all([
     database
       .select({ boardId: tasks.boardId, value: count() })
       .from(tasks)
+      .where(inArray(tasks.boardId, boardIds))
       .groupBy(tasks.boardId),
     database
       .select({ boardId: tasks.boardId, value: count() })
       .from(tasks)
       .innerJoin(columns, eq(tasks.columnId, columns.id))
-      .where(eq(columns.isDone, true))
+      .where(
+        and(eq(columns.isDone, true), inArray(tasks.boardId, boardIds)),
+      )
       .groupBy(tasks.boardId),
     database
       .select({ boardId: columns.boardId, value: count() })
       .from(columns)
+      .where(inArray(columns.boardId, boardIds))
       .groupBy(columns.boardId),
   ]);
 
@@ -138,11 +156,12 @@ export async function fetchBoardSummaries(
 export async function fetchBoardSummary(
   database: AppDatabase,
   boardId: string,
+  ownerId: string,
 ): Promise<BoardSummary | null> {
   const [row] = await database
     .select()
     .from(boards)
-    .where(eq(boards.id, boardId))
+    .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)))
     .limit(1);
   if (!row) return null;
 
@@ -172,11 +191,17 @@ export async function fetchBoardSummary(
 export async function fetchColumns(
   database: AppDatabase,
   boardId: string,
+  ownerId: string,
 ): Promise<BoardColumn[]> {
   const rows = await database
     .select()
     .from(columns)
-    .where(eq(columns.boardId, boardId))
+    .where(
+      and(
+        eq(columns.boardId, boardId),
+        inArray(columns.boardId, ownedBoardIds(database, ownerId)),
+      ),
+    )
     .orderBy(asc(columns.position), asc(columns.createdAt));
   return rows.map(serializeColumn);
 }
@@ -184,27 +209,35 @@ export async function fetchColumns(
 export async function fetchLabels(
   database: AppDatabase,
   boardId: string,
+  ownerId: string,
 ): Promise<Label[]> {
   const rows = await database
     .select()
     .from(labels)
-    .where(eq(labels.boardId, boardId))
+    .where(
+      and(
+        eq(labels.boardId, boardId),
+        inArray(labels.boardId, ownedBoardIds(database, ownerId)),
+      ),
+    )
     .orderBy(asc(labels.createdAt));
   return rows.map(serializeLabel);
 }
 
 export async function fetchTasks(
   database: AppDatabase,
-  options: { boardId?: string; taskId?: string } = {},
+  options: { ownerId: string; boardId?: string; taskId?: string },
 ): Promise<Task[]> {
-  const conditions = [];
+  const conditions = [
+    inArray(tasks.boardId, ownedBoardIds(database, options.ownerId)),
+  ];
   if (options.boardId) conditions.push(eq(tasks.boardId, options.boardId));
   if (options.taskId) conditions.push(eq(tasks.id, options.taskId));
 
   const rows = await database
     .select()
     .from(tasks)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .where(and(...conditions))
     .orderBy(asc(tasks.columnId), asc(tasks.position), asc(tasks.createdAt));
 
   if (rows.length === 0) return [];
@@ -255,11 +288,12 @@ export async function fetchTasks(
 export async function requireBoard(
   database: AppDatabase,
   boardId: string,
+  ownerId: string,
 ): Promise<BoardRow> {
   const [row] = await database
     .select()
     .from(boards)
-    .where(eq(boards.id, boardId))
+    .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)))
     .limit(1);
   if (!row) throw new ApiError("Board not found.", 404);
   return row;
@@ -268,27 +302,78 @@ export async function requireBoard(
 export async function requireColumn(
   database: AppDatabase,
   columnId: string,
+  ownerId: string,
 ) {
   const [row] = await database
-    .select()
+    .select({ column: columns })
     .from(columns)
-    .where(eq(columns.id, columnId))
+    .innerJoin(boards, eq(columns.boardId, boards.id))
+    .where(and(eq(columns.id, columnId), eq(boards.ownerId, ownerId)))
     .limit(1);
   if (!row) throw new ApiError("Column not found.", 404);
-  return row;
+  return row.column;
 }
 
 export async function requireTask(
   database: AppDatabase,
   taskId: string,
+  ownerId: string,
 ): Promise<TaskRow> {
   const [row] = await database
-    .select()
+    .select({ task: tasks })
     .from(tasks)
-    .where(eq(tasks.id, taskId))
+    .innerJoin(boards, eq(tasks.boardId, boards.id))
+    .where(and(eq(tasks.id, taskId), eq(boards.ownerId, ownerId)))
     .limit(1);
   if (!row) throw new ApiError("Task not found.", 404);
-  return row;
+  return row.task;
+}
+
+export async function requireLabel(
+  database: AppDatabase,
+  labelId: string,
+  ownerId: string,
+) {
+  const [row] = await database
+    .select({ label: labels })
+    .from(labels)
+    .innerJoin(boards, eq(labels.boardId, boards.id))
+    .where(and(eq(labels.id, labelId), eq(boards.ownerId, ownerId)))
+    .limit(1);
+  if (!row) throw new ApiError("Label not found.", 404);
+  return row.label;
+}
+
+export async function requireSubtask(
+  database: AppDatabase,
+  subtaskId: string,
+  ownerId: string,
+) {
+  const [row] = await database
+    .select({ subtask: subtasks })
+    .from(subtasks)
+    .innerJoin(tasks, eq(subtasks.taskId, tasks.id))
+    .innerJoin(boards, eq(tasks.boardId, boards.id))
+    .where(and(eq(subtasks.id, subtaskId), eq(boards.ownerId, ownerId)))
+    .limit(1);
+  if (!row) throw new ApiError("Subtask not found.", 404);
+  return row.subtask;
+}
+
+export async function requireComment(
+  database: AppDatabase,
+  commentId: string,
+  ownerId: string,
+) {
+  const [row] = await database
+    .select({ comment: comments })
+    .from(comments)
+    .innerJoin(tasks, eq(comments.taskId, tasks.id))
+    .innerJoin(boards, eq(tasks.boardId, boards.id))
+    .where(and(eq(comments.id, commentId), eq(boards.ownerId, ownerId)))
+    .limit(1);
+  if (!row) throw new ApiError("Comment not found.", 404);
+  return row.comment;
 }
 
 export function isUniqueConstraintError(error: unknown): boolean {
@@ -333,10 +418,12 @@ export async function nextColumnPosition(
 
 export async function nextBoardPosition(
   database: AppDatabase,
+  ownerId: string,
 ): Promise<number> {
   const [row] = await database
     .select({ value: sql<number>`coalesce(max(${boards.position}), -1)` })
-    .from(boards);
+    .from(boards)
+    .where(eq(boards.ownerId, ownerId));
   return (row?.value ?? -1) + 1;
 }
 

@@ -19,22 +19,24 @@ import {
 } from "./queries";
 
 export async function listBoards(
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<BoardSummary[]> {
-  return fetchBoardSummaries(database);
+  return fetchBoardSummaries(database, ownerId);
 }
 
 export async function getBoardDetail(
   boardId: string,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<BoardDetail> {
-  const board = await fetchBoardSummary(database, boardId);
+  const board = await fetchBoardSummary(database, boardId, ownerId);
   if (!board) throw new ApiError("Board not found.", 404);
 
   const [columnsData, tasksData, labelsData] = await Promise.all([
-    fetchColumns(database, boardId),
-    fetchTasks(database, { boardId }),
-    fetchLabels(database, boardId),
+    fetchColumns(database, boardId, ownerId),
+    fetchTasks(database, { ownerId, boardId }),
+    fetchLabels(database, boardId, ownerId),
   ]);
 
   return {
@@ -47,15 +49,17 @@ export async function getBoardDetail(
 
 export async function createBoard(
   input: BoardCreateInput,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<BoardSummary> {
-  const position = await nextBoardPosition(database);
+  const position = await nextBoardPosition(database, ownerId);
   const boardId = randomUUID();
   const now = new Date();
 
   await database.transaction(async (tx) => {
     await tx.insert(boards).values({
       id: boardId,
+      ownerId,
       name: input.name,
       description: input.description?.trim() || null,
       color: (input.color ?? "sage") satisfies BoardColor,
@@ -77,7 +81,7 @@ export async function createBoard(
     );
   });
 
-  const board = await fetchBoardSummary(database, boardId);
+  const board = await fetchBoardSummary(database, boardId, ownerId);
   if (!board) throw new ApiError("Board could not be created.", 500);
   return board;
 }
@@ -85,9 +89,10 @@ export async function createBoard(
 export async function updateBoard(
   boardId: string,
   input: BoardUpdateInput,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<BoardSummary> {
-  await requireBoard(database, boardId);
+  await requireBoard(database, boardId, ownerId);
   await database
     .update(boards)
     .set({
@@ -98,25 +103,30 @@ export async function updateBoard(
       ...(input.color !== undefined ? { color: input.color } : {}),
       updatedAt: new Date(),
     })
-    .where(eq(boards.id, boardId));
+    .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)));
 
-  const board = await fetchBoardSummary(database, boardId);
+  const board = await fetchBoardSummary(database, boardId, ownerId);
   if (!board) throw new ApiError("Board not found.", 404);
   return board;
 }
 
 export async function deleteBoard(
   boardId: string,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<void> {
-  await requireBoard(database, boardId);
-  await database.delete(boards).where(eq(boards.id, boardId));
+  await requireBoard(database, boardId, ownerId);
+  await database
+    .delete(boards)
+    .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)));
 }
 
 export async function listBoardTaskCount(
   boardId: string,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<number> {
+  await requireBoard(database, boardId, ownerId);
   const [row] = await database
     .select({ value: sql<number>`count(*)`.mapWith(Number) })
     .from(tasks)
@@ -127,8 +137,10 @@ export async function listBoardTaskCount(
 /** Used by the board settings dialog to warn before deleting. */
 export async function getBoardDeletionSummary(
   boardId: string,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<{ taskCount: number; columnCount: number }> {
+  await requireBoard(database, boardId, ownerId);
   const [taskRow] = await database
     .select({ value: sql<number>`count(*)`.mapWith(Number) })
     .from(tasks)
@@ -144,10 +156,12 @@ export async function getBoardDeletionSummary(
 }
 
 export async function boardOptions(
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<Array<{ id: string; name: string }>> {
   return database
     .select({ id: boards.id, name: boards.name })
     .from(boards)
+    .where(eq(boards.ownerId, ownerId))
     .orderBy(asc(boards.position));
 }

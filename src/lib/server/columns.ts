@@ -33,9 +33,10 @@ async function clearOtherDoneColumns(
 export async function createColumn(
   boardId: string,
   input: ColumnCreateInput,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<BoardColumn> {
-  await requireBoard(database, boardId);
+  await requireBoard(database, boardId, ownerId);
   const position = await nextColumnPosition(database, boardId);
   const id = randomUUID();
   const now = new Date();
@@ -77,9 +78,10 @@ export async function createColumn(
 export async function updateColumn(
   columnId: string,
   input: ColumnUpdateInput,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<BoardColumn> {
-  const existing = await requireColumn(database, columnId);
+  const existing = await requireColumn(database, columnId, ownerId);
 
   try {
     await database.transaction(async (tx) => {
@@ -111,9 +113,10 @@ export async function updateColumn(
 
 export async function deleteColumn(
   columnId: string,
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<{ movedTasks: number; targetColumnId: string }> {
-  const column = await requireColumn(database, columnId);
+  const column = await requireColumn(database, columnId, ownerId);
   const boardColumns = await database
     .select()
     .from(columns)
@@ -175,8 +178,10 @@ export async function deleteColumn(
 export async function reorderColumns(
   boardId: string,
   columnIds: string[],
+  ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<BoardColumn[]> {
+  await requireBoard(database, boardId, ownerId);
   const boardColumns = await database
     .select()
     .from(columns)

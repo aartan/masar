@@ -7,13 +7,18 @@ import {
   createTask,
   deleteBoard,
   getBoardDetail,
+  signUp,
   uniqueName,
 } from "./helpers";
 
 test.describe("board workflows", () => {
+  test.beforeEach(async ({ page }) => {
+    await signUp(page.request);
+    await page.goto("/");
+  });
+
   test("creates a board, edits a task, filters, switches views, and searches", async ({
     page,
-    request,
   }) => {
     const errors = collectPageErrors(page);
     const boardName = uniqueName("E2E Board");
@@ -156,25 +161,22 @@ test.describe("board workflows", () => {
 
       expect(errors).toEqual([]);
     } finally {
-      if (boardId) await deleteBoard(request, boardId);
+      if (boardId) await deleteBoard(page.request, boardId);
     }
   });
 
-  test("persists a drag-and-drop move across columns", async ({
-    page,
-    request,
-  }) => {
+  test("persists a drag-and-drop move across columns", async ({ page }) => {
     const errors = collectPageErrors(page);
     const boardName = uniqueName("E2E Drag");
     const taskTitle = "Drag me";
     let boardId: string | undefined;
 
     try {
-      const board = await createBoard(request, boardName);
+      const board = await createBoard(page.request, boardName);
       boardId = board.id;
-      const detail = await getBoardDetail(request, boardId);
+      const detail = await getBoardDetail(page.request, boardId);
       const todo = columnByName(detail.columns, "To Do");
-      await createTask(request, boardId, {
+      await createTask(page.request, boardId, {
         columnId: todo.id,
         title: taskTitle,
       });
@@ -214,13 +216,12 @@ test.describe("board workflows", () => {
 
       expect(errors).toEqual([]);
     } finally {
-      if (boardId) await deleteBoard(request, boardId);
+      if (boardId) await deleteBoard(page.request, boardId);
     }
   });
 
   test("confirms destructive actions before deleting tasks and boards", async ({
     page,
-    request,
   }) => {
     const errors = collectPageErrors(page);
     const boardName = uniqueName("E2E Delete");
@@ -228,11 +229,11 @@ test.describe("board workflows", () => {
     let boardId: string | undefined;
 
     try {
-      const board = await createBoard(request, boardName);
+      const board = await createBoard(page.request, boardName);
       boardId = board.id;
-      const detail = await getBoardDetail(request, boardId);
+      const detail = await getBoardDetail(page.request, boardId);
       const todo = columnByName(detail.columns, "To Do");
-      await createTask(request, boardId, { columnId: todo.id, title: taskTitle });
+      await createTask(page.request, boardId, { columnId: todo.id, title: taskTitle });
 
       await page.goto(`/boards/${boardId}`);
       await page.getByRole("button", { name: `Task actions for ${taskTitle}` }).click();
@@ -257,29 +258,29 @@ test.describe("board workflows", () => {
       boardId = undefined;
       expect(errors).toEqual([]);
     } finally {
-      if (boardId) await deleteBoard(request, boardId);
+      if (boardId) await deleteBoard(page.request, boardId);
     }
   });
 
-  test("dashboard reflects live workspace data", async ({ page, request }) => {
+  test("dashboard reflects live workspace data", async ({ page }) => {
     const errors = collectPageErrors(page);
     const boardName = uniqueName("E2E Stats");
     let boardId: string | undefined;
 
     try {
-      const board = await createBoard(request, boardName);
+      const board = await createBoard(page.request, boardName);
       boardId = board.id;
-      const detail = await getBoardDetail(request, boardId);
+      const detail = await getBoardDetail(page.request, boardId);
       const todo = columnByName(detail.columns, "To Do");
       const done = columnByName(detail.columns, "Done");
       const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
-      await createTask(request, boardId, {
+      await createTask(page.request, boardId, {
         columnId: todo.id,
         title: "E2E due soon",
         priority: "high",
         dueDate: tomorrow,
       });
-      await createTask(request, boardId, {
+      await createTask(page.request, boardId, {
         columnId: done.id,
         title: "E2E completed",
       });
@@ -295,20 +296,19 @@ test.describe("board workflows", () => {
 
       expect(errors).toEqual([]);
     } finally {
-      if (boardId) await deleteBoard(request, boardId);
+      if (boardId) await deleteBoard(page.request, boardId);
     }
   });
 
   test("mobile navigation and dark theme work at a phone viewport", async ({
     page,
-    request,
   }) => {
     const errors = collectPageErrors(page);
     const boardName = uniqueName("E2E Mobile");
     let boardId: string | undefined;
 
     try {
-      const board = await createBoard(request, boardName);
+      const board = await createBoard(page.request, boardName);
       boardId = board.id;
 
       await page.setViewportSize({ width: 390, height: 844 });
@@ -329,7 +329,7 @@ test.describe("board workflows", () => {
 
       expect(errors).toEqual([]);
     } finally {
-      if (boardId) await deleteBoard(request, boardId);
+      if (boardId) await deleteBoard(page.request, boardId);
     }
   });
 });

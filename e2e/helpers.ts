@@ -1,8 +1,84 @@
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
+export const E2E_PASSWORD = "Masar-e2e-password-2026";
+export const E2E_ORIGIN = "http://localhost:3100";
+
+export interface TestAccount {
+  name: string;
+  email: string;
+  password: string;
+}
+
 export interface ApiBoard {
   id: string;
   name: string;
+}
+
+function authHeaders() {
+  return { Origin: E2E_ORIGIN };
+}
+
+export function uniqueEmail(prefix = "e2e"): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 7)}@example.test`;
+}
+
+/**
+ * Creates an account through Better Auth. Pass `page.request` so the session
+ * cookie lands in the browser context used by the test.
+ */
+export async function signUp(
+  request: APIRequestContext,
+  overrides: Partial<TestAccount> = {},
+): Promise<TestAccount> {
+  const account: TestAccount = {
+    name: overrides.name ?? "E2E User",
+    email: overrides.email ?? uniqueEmail(),
+    password: overrides.password ?? E2E_PASSWORD,
+  };
+
+  const response = await request.post("/api/auth/sign-up/email", {
+    data: {
+      name: account.name,
+      email: account.email,
+      password: account.password,
+    },
+    headers: authHeaders(),
+  });
+
+  expect(
+    response.ok(),
+    `Sign-up failed with ${response.status()}: ${await response.text()}`,
+  ).toBeTruthy();
+
+  return account;
+}
+
+export async function signIn(
+  request: APIRequestContext,
+  account: Pick<TestAccount, "email" | "password">,
+): Promise<void> {
+  const response = await request.post("/api/auth/sign-in/email", {
+    data: { email: account.email, password: account.password },
+    headers: authHeaders(),
+  });
+
+  expect(
+    response.ok(),
+    `Sign-in failed with ${response.status()}: ${await response.text()}`,
+  ).toBeTruthy();
+}
+
+export async function signOut(request: APIRequestContext): Promise<void> {
+  const response = await request.post("/api/auth/sign-out", {
+    data: {},
+    headers: authHeaders(),
+  });
+  expect(
+    response.ok(),
+    `Sign-out failed with ${response.status()}: ${await response.text()}`,
+  ).toBeTruthy();
 }
 
 export interface ApiColumn {

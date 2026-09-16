@@ -35,6 +35,8 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       DATABASE_URL: "file:./data/e2e.db",
+      BETTER_AUTH_SECRET: "masar-e2e-local-secret-not-for-production",
+      BETTER_AUTH_URL: BASE_URL,
     },
   },
 });

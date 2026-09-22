@@ -4,6 +4,7 @@ import { nextCookies } from "better-auth/next-js";
 
 import { getDb } from "@/db";
 import * as schema from "@/db/schema";
+import { getTrustedAuthOrigins } from "@/lib/auth-origins";
 
 const configuredSecret = process.env.BETTER_AUTH_SECRET?.trim();
 const isProductionBuild = process.env.NEXT_PHASE === "phase-production-build";
@@ -37,6 +38,8 @@ export const auth = betterAuth({
   }),
   secret,
   baseURL,
+  trustedOrigins: (request) =>
+    getTrustedAuthOrigins({ request, baseURL, nodeEnv: process.env.NODE_ENV }),
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,

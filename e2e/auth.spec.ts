@@ -26,7 +26,9 @@ test.describe("authentication and workspace privacy", () => {
 
     await page.goto("/");
     await expect(page).toHaveURL(/\/login$/);
-    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Sign in to Masar" }),
+    ).toBeVisible();
 
     const unauthorized = await page.request.get("/api/boards");
     expect(unauthorized.status()).toBe(401);

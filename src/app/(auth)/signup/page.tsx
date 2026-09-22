@@ -10,9 +10,8 @@ export const metadata: Metadata = {
 export default function SignUpPage() {
   return (
     <AuthPanel
-      title="Create your workspace"
-      description="Your boards are private to this account. Start empty or add demo content to explore."
-      footer="One account, one private workspace — no teams or shared data."
+      title="Create your account"
+      description="Start with a clean slate or add demo content to explore."
     >
       <AuthForm mode="signup" />
     </AuthPanel>

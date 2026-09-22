@@ -76,7 +76,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
               method: "POST",
             });
             if (!response.ok) throw new Error("Demo content was not added.");
-            toast.success("Demo workspace added", {
+            toast.success("Demo content added", {
               description: "A sample board is ready to explore.",
             });
           } catch {
@@ -218,8 +218,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
               Start with demo content
             </span>
             <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
-              Add a sample board. Leave this off to start with a completely
-              empty workspace.
+              Add a sample board. Leave this off to start with no boards.
             </span>
           </span>
         </label>

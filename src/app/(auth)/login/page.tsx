@@ -10,9 +10,8 @@ export const metadata: Metadata = {
 export default function LoginPage() {
   return (
     <AuthPanel
-      title="Welcome back"
-      description="Sign in to pick up your boards, tasks, and everything in motion."
-      footer="Sessions are secure, http-only, and last for 30 days on this device."
+      title="Sign in to Masar"
+      description="Enter your email and password to continue."
     >
       <AuthForm mode="login" />
     </AuthPanel>

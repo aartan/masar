@@ -19,7 +19,7 @@ export function AuthPanel({
           className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent"
         />
         <div className="flex items-center justify-between gap-3">
-          <Logo />
+          <Logo showTagline={false} />
           <ThemeToggle />
         </div>
         <div className="mt-8">

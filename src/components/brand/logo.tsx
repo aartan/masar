@@ -6,10 +6,12 @@ export function Logo({
   className,
   href = "/",
   compact = false,
+  showTagline = true,
 }: {
   className?: string;
   href?: string;
   compact?: boolean;
+  showTagline?: boolean;
 }) {
   return (
     <Link
@@ -54,9 +56,11 @@ export function Logo({
           <span className="font-display text-[17px] font-semibold text-foreground">
             masar
           </span>
-          <span className="hidden text-[9px] font-medium tracking-[0.18em] text-muted-foreground/70 uppercase sm:inline">
-            workspace
-          </span>
+          {showTagline && (
+            <span className="hidden text-[9px] font-medium tracking-[0.18em] text-muted-foreground/70 uppercase sm:inline">
+              workspace
+            </span>
+          )}
         </span>
       )}
     </Link>

@@ -12,7 +12,7 @@ Built with Next.js, React, Tailwind CSS, Drizzle, SQLite/libSQL, Better Auth, dn
 
 ## Features
 
-- Accounts: email/password sign-up and sign-in, HTTP-only database-backed sessions, and sign-out from the sidebar.
+- Accounts: email/password sign-up and sign-in, persistent sessions, and sign-out from the sidebar.
 - Private workspaces: every board and all of its child data belong to one account. Guessing another account's board, task, label, subtask, or comment ID returns a 404.
 - Empty by default: a new account starts with no boards. Demo content is added only when the sign-up checkbox is selected.
 - Boards and columns: create, rename, recolor, reorder, and delete them. Each board has one done column. Deleting a column moves its tasks to the first remaining column.
@@ -25,6 +25,14 @@ Built with Next.js, React, Tailwind CSS, Drizzle, SQLite/libSQL, Better Auth, dn
 - Data: SQLite locally, Turso when deployed, with migrations, foreign keys, indexes, and transactions.
 
 ## Screenshots
+
+### Sign in
+
+![Masar sign-in page](docs/screenshots/sign-in.png)
+
+### Create account
+
+![Masar sign-up page](docs/screenshots/sign-up.png)
 
 ### Board
 

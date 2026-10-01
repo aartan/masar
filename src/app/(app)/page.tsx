@@ -14,7 +14,6 @@ import { format } from "date-fns";
 
 import { getDashboardData } from "@/lib/server/stats";
 import { requireUser } from "@/lib/server/auth";
-import { todayIso } from "@/lib/dates";
 import { PRIORITY_META, type Priority } from "@/lib/constants";
 import { completionPercent } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
@@ -49,7 +48,6 @@ function greeting(): string {
 export default async function OverviewPage() {
   const user = await requireUser();
   const data = await getDashboardData(user.id);
-  const today = todayIso();
   const completion = completionPercent(data.totals.done, data.totals.tasks);
   const maxPriority = Math.max(
     1,
@@ -376,11 +374,6 @@ export default async function OverviewPage() {
                 </CardContent>
               </Card>
             </div>
-
-            <p className="mt-8 flex items-center justify-center gap-1.5 text-[10.5px] text-muted-foreground/50">
-              <span className="size-1 rounded-full bg-emerald-500" />
-              Data is stored in your workspace database · {today}
-            </p>
           </>
         )}
       </div>

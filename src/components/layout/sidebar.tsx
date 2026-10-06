@@ -238,6 +238,11 @@ export function SidebarContent({
           <DropdownMenuContent side="top" align="start" className="w-[232px]">
             <DropdownMenuLabel>Personal workspace</DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onOpenShortcuts}>
+              <Keyboard />
+              Keyboard shortcuts
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               onSelect={() => void signOut()}
               disabled={signingOut}
@@ -247,22 +252,8 @@ export function SidebarContent({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <div className="mt-1 flex items-center gap-1">
+        <div className="mt-1">
           <ThemeToggle withLabel />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={onOpenShortcuts}
-                aria-label="Keyboard shortcuts"
-                className="text-muted-foreground"
-              >
-                <Keyboard className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Keyboard shortcuts</TooltipContent>
-          </Tooltip>
         </div>
       </div>
     </div>

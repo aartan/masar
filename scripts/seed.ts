@@ -35,7 +35,6 @@ interface SeedTask {
   description?: string;
   column: string;
   priority: Priority;
-  assignee?: string;
   dueInDays?: number;
   labels?: string[];
   subtasks?: SeedSubtask[];
@@ -80,7 +79,6 @@ const seedBoards: SeedBoard[] = [
           "Sketch how local-first sync could work for tasks and comments without adding conflict fatigue.",
         column: "Backlog",
         priority: "low",
-        assignee: "Maya Chen",
         dueInDays: 21,
         labels: ["Engineering"],
       },
@@ -107,7 +105,6 @@ const seedBoards: SeedBoard[] = [
           "Three tiers, annual toggle, and a clear comparison table. Keep the visual language close to the board.",
         column: "To Do",
         priority: "high",
-        assignee: "Priya Raman",
         dueInDays: 4,
         labels: ["Design", "Marketing"],
         subtasks: [
@@ -129,7 +126,6 @@ const seedBoards: SeedBoard[] = [
           "A first-run checklist that gets someone from empty workspace to a useful board in under two minutes.",
         column: "To Do",
         priority: "medium",
-        assignee: "Noah Williams",
         dueInDays: 6,
         labels: ["Marketing"],
       },
@@ -139,7 +135,6 @@ const seedBoards: SeedBoard[] = [
           "Track activation, board creation, and weekly active workspaces. No invasive tracking.",
         column: "To Do",
         priority: "high",
-        assignee: "Maya Chen",
         dueInDays: 3,
         labels: ["Engineering"],
         subtasks: [
@@ -153,7 +148,6 @@ const seedBoards: SeedBoard[] = [
           "One place to jump between boards, find tasks, and create new work. Keyboard-first with fuzzy results.",
         column: "In Progress",
         priority: "urgent",
-        assignee: "Maya Chen",
         dueInDays: 1,
         labels: ["Engineering", "Design"],
         subtasks: [
@@ -181,7 +175,6 @@ const seedBoards: SeedBoard[] = [
           "Make horizontal board scrolling feel intentional and keep the drag handle reachable one-handed.",
         column: "In Progress",
         priority: "medium",
-        assignee: "Priya Raman",
         dueInDays: 5,
         labels: ["Design"],
         subtasks: [
@@ -195,7 +188,6 @@ const seedBoards: SeedBoard[] = [
           "Bring priority, due date, and labels above the fold. Comments should feel like a conversation, not a log.",
         column: "In Review",
         priority: "high",
-        assignee: "Priya Raman",
         dueInDays: 2,
         labels: ["Design"],
         subtasks: [
@@ -217,7 +209,6 @@ const seedBoards: SeedBoard[] = [
           "Full keyboard drag-and-drop, visible focus rings, and screen-reader announcements for moves.",
         column: "In Review",
         priority: "high",
-        assignee: "Noah Williams",
         dueInDays: -1,
         labels: ["Bug", "Engineering"],
         subtasks: [
@@ -239,7 +230,6 @@ const seedBoards: SeedBoard[] = [
           "Warm paper, forest ink, and one accent. Tokens live in CSS variables and map to both themes.",
         column: "Done",
         priority: "none",
-        assignee: "Priya Raman",
         dueInDays: -3,
         labels: ["Design"],
         completedDaysAgo: 3,
@@ -250,7 +240,6 @@ const seedBoards: SeedBoard[] = [
           "Normalized boards, columns, tasks, labels, subtasks, and comments with cascading foreign keys.",
         column: "Done",
         priority: "high",
-        assignee: "Maya Chen",
         dueInDays: -4,
         labels: ["Engineering"],
         completedDaysAgo: 4,
@@ -261,7 +250,6 @@ const seedBoards: SeedBoard[] = [
           "A fast landing page with a live product tour and clear pricing.",
         column: "Done",
         priority: "medium",
-        assignee: "Noah Williams",
         dueInDays: -1,
         labels: ["Marketing"],
         completedDaysAgo: 1,
@@ -286,7 +274,6 @@ const seedBoards: SeedBoard[] = [
           "Lead with the product, not a feature list. Three short sections, one CTA.",
         column: "To Do",
         priority: "high",
-        assignee: "Noah Williams",
         dueInDays: 3,
         labels: ["Marketing"],
       },
@@ -296,7 +283,6 @@ const seedBoards: SeedBoard[] = [
           "Three abstract board vignettes in the same warm palette. Light and dark variants.",
         column: "To Do",
         priority: "medium",
-        assignee: "Priya Raman",
         dueInDays: 7,
         labels: ["Design", "Marketing"],
       },
@@ -306,7 +292,6 @@ const seedBoards: SeedBoard[] = [
           "Target 98+ on mobile. Audit fonts, image loading, and third-party scripts.",
         column: "In Progress",
         priority: "urgent",
-        assignee: "Maya Chen",
         dueInDays: -1,
         labels: ["Engineering", "Bug"],
         subtasks: [
@@ -321,7 +306,6 @@ const seedBoards: SeedBoard[] = [
           "Every content change gets a preview URL in the pull request.",
         column: "To Do",
         priority: "medium",
-        assignee: "Maya Chen",
         dueInDays: 5,
         labels: ["Engineering"],
       },
@@ -330,7 +314,6 @@ const seedBoards: SeedBoard[] = [
         description: "Move the three pre-2024 stories into the archive collection.",
         column: "Done",
         priority: "low",
-        assignee: "Noah Williams",
         dueInDays: -2,
         labels: ["Marketing"],
         completedDaysAgo: 2,
@@ -489,7 +472,6 @@ async function main() {
             task.dueInDays === undefined
               ? null
               : isoDateFromNow(task.dueInDays),
-          assignee: task.assignee ?? null,
           position,
           completedAt,
           createdAt: taskCreatedAt,

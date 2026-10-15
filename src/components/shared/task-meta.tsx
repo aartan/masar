@@ -25,7 +25,7 @@ function hashString(value: string): number {
   return Math.abs(hash);
 }
 
-export function AssigneeAvatar({
+export function AuthorAvatar({
   name,
   className,
 }: {
@@ -38,7 +38,7 @@ export function AssigneeAvatar({
     <Avatar
       className={cn("size-6 ring-2 ring-card", className)}
       title={name}
-      aria-label={`Assigned to ${name}`}
+      aria-label={`Comment by ${name}`}
     >
       <AvatarFallback className={cn("text-[9px]", style)}>
         {initials(name)}

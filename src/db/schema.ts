@@ -160,6 +160,8 @@ export const tasks = sqliteTable(
     description: text("description"),
     priority: text("priority").notNull().default("none"),
     dueDate: text("due_date"),
+    // Legacy free-text field kept for database compatibility. The app no
+    // longer reads or writes it.
     assignee: text("assignee"),
     position: integer("position").notNull().default(0),
     completedAt: integer("completed_at", { mode: "timestamp_ms" }),

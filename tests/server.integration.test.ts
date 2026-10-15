@@ -321,7 +321,6 @@ describe("tasks", () => {
         description: "Details",
         priority: "urgent",
         dueDate: "2026-12-01",
-        assignee: "Ada",
         labelIds: [label.id],
       },
       owner.id,
@@ -332,7 +331,6 @@ describe("tasks", () => {
       description: "Details",
       priority: "urgent",
       dueDate: "2026-12-01",
-      assignee: "Ada",
       labelIds: [label.id],
     });
 
@@ -355,13 +353,12 @@ describe("tasks", () => {
 
     const cleared = await updateTask(
       task.id,
-      { description: null, dueDate: null, assignee: null, labelIds: [] },
+      { description: null, dueDate: null, labelIds: [] },
       owner.id,
       test.db,
     );
     expect(cleared.description).toBeNull();
     expect(cleared.dueDate).toBeNull();
-    expect(cleared.assignee).toBeNull();
     expect(cleared.labelIds).toEqual([]);
   });
 

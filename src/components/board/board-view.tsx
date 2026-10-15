@@ -42,7 +42,6 @@ import {
   NewTaskDialog,
 } from "@/components/board/board-dialogs";
 import {
-  AssigneeAvatar,
   DueDateChip,
   LabelChip,
   PriorityBars,
@@ -1048,11 +1047,8 @@ function TaskDragOverlay({
         {task.title}
       </h4>
       <div className="mt-2.5 flex items-center gap-2">
-        <div className="flex flex-1 items-center gap-2">
-          <PriorityBars priority={task.priority} />
-          <DueDateChip task={task} columnDone={column?.isDone} />
-        </div>
-        <AssigneeAvatar name={task.assignee} />
+        <PriorityBars priority={task.priority} />
+        <DueDateChip task={task} columnDone={column?.isDone} />
       </div>
     </div>
   );

@@ -94,7 +94,6 @@ export function serializeTask(
     description: row.description,
     priority: row.priority as Priority,
     dueDate: row.dueDate,
-    assignee: row.assignee,
     position: row.position,
     completedAt: row.completedAt ? row.completedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),

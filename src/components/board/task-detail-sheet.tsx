@@ -14,7 +14,6 @@ import {
   Plus,
   Tag,
   Trash2,
-  UserRound,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -52,7 +51,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { PrioritySelect } from "@/components/shared/priority-select";
 import {
-  AssigneeAvatar,
+  AuthorAvatar,
   LabelChip,
 } from "@/components/shared/task-meta";
 import { LABEL_COLOR_SWATCH } from "@/components/shared/colors";
@@ -100,7 +99,6 @@ export function TaskDetailSheet({
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
-  const [assignee, setAssignee] = React.useState("");
   const [subtaskTitle, setSubtaskTitle] = React.useState("");
   const [commentBody, setCommentBody] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -159,7 +157,6 @@ export function TaskDetailSheet({
         setDetail(full);
         setTitle(full.title);
         setDescription(full.description ?? "");
-        setAssignee(full.assignee ?? "");
       } catch (error) {
         if (token === loadTokenRef.current) setLoadError(errorMessage(error));
       } finally {
@@ -195,7 +192,6 @@ export function TaskDetailSheet({
     commitDetail(updated);
     setTitle(updated.title);
     setDescription(updated.description ?? "");
-    setAssignee(updated.assignee ?? "");
     return updated;
   }
 
@@ -238,15 +234,6 @@ export function TaskDetailSheet({
     const next = trimmed || null;
     if (next === current.description) return;
     await patchTask({ description: next });
-  }
-
-  async function saveAssignee() {
-    const current = detailRef.current;
-    if (!current) return;
-    const trimmed = assignee.trim();
-    const next = trimmed || null;
-    if (next === current.assignee) return;
-    await patchTask({ assignee: next });
   }
 
   async function changeColumn(columnId: string) {
@@ -688,7 +675,7 @@ export function TaskDetailSheet({
                       }
                     />
                   </MetaField>
-                  <MetaField label="Due date">
+                  <MetaField label="Due date" className="sm:col-span-2">
                     <div className="flex items-center gap-1">
                       <div className="relative flex-1">
                         <CalendarDays className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
@@ -715,23 +702,6 @@ export function TaskDetailSheet({
                           <X className="size-3" />
                         </Button>
                       )}
-                    </div>
-                  </MetaField>
-                  <MetaField label="Assignee">
-                    <div className="relative">
-                      <UserRound className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
-                      <Input
-                        value={assignee}
-                        onChange={(event) => setAssignee(event.target.value)}
-                        onBlur={() => void saveAssignee()}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") event.currentTarget.blur();
-                        }}
-                        placeholder="Unassigned"
-                        maxLength={80}
-                        className="h-8 pl-8 text-[12px]"
-                        aria-label="Assignee"
-                      />
                     </div>
                   </MetaField>
                 </div>
@@ -887,7 +857,7 @@ export function TaskDetailSheet({
                     <ul className="mt-3 space-y-4">
                       {detail.comments.map((comment) => (
                         <li key={comment.id} className="group/comment flex gap-2.5">
-                          <AssigneeAvatar name={comment.author} className="mt-0.5" />
+                          <AuthorAvatar name={comment.author} className="mt-0.5" />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
                               <span className="text-[11.5px] font-medium">
@@ -972,12 +942,14 @@ export function TaskDetailSheet({
 function MetaField({
   label,
   children,
+  className,
 }: {
   label: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className={cn("space-y-1.5", className)}>
       <Label className="text-[10px] font-semibold tracking-[0.1em] text-muted-foreground/60 uppercase">
         {label}
       </Label>

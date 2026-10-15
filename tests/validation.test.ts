@@ -93,10 +93,9 @@ describe("task schemas", () => {
     expect(
       taskUpdateSchema.parse({
         dueDate: null,
-        assignee: null,
         description: null,
       }),
-    ).toEqual({ dueDate: null, assignee: null, description: null });
+    ).toEqual({ dueDate: null, description: null });
   });
 
   it("rejects empty updates and invalid due dates", () => {

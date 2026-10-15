@@ -129,7 +129,6 @@ export async function createTask(
     title: string;
     priority?: string;
     dueDate?: string | null;
-    assignee?: string | null;
   },
 ): Promise<ApiTask> {
   const response = await request.post(`/api/boards/${boardId}/tasks`, {

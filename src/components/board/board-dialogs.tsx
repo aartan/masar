@@ -86,7 +86,6 @@ function NewTaskForm({
   );
   const [priority, setPriority] = React.useState<Priority>("none");
   const [dueDate, setDueDate] = React.useState("");
-  const [assignee, setAssignee] = React.useState("");
   const [labelIds, setLabelIds] = React.useState<string[]>([]);
   const [loading, setLoading] = React.useState(false);
 
@@ -113,7 +112,6 @@ function NewTaskForm({
             columnId,
             priority,
             dueDate: dueDate || null,
-            assignee: assignee.trim() || null,
             labelIds,
           }),
         },
@@ -198,24 +196,13 @@ function NewTaskForm({
               className="h-9"
             />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 sm:col-span-2">
             <Label htmlFor="new-task-due">Due date</Label>
             <Input
               id="new-task-due"
               type="date"
               value={dueDate}
               onChange={(event) => setDueDate(event.target.value)}
-              disabled={loading}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="new-task-assignee">Assignee</Label>
-            <Input
-              id="new-task-assignee"
-              value={assignee}
-              onChange={(event) => setAssignee(event.target.value)}
-              placeholder="Name or initials"
-              maxLength={80}
               disabled={loading}
             />
           </div>
@@ -487,7 +474,7 @@ function BoardSettingsForm({
       <DialogHeader>
         <DialogTitle>Board settings</DialogTitle>
         <DialogDescription>
-          Rename your board or adjust the context your team sees.
+          Rename your board or update its description and color.
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">

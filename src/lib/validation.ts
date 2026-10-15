@@ -68,7 +68,6 @@ export const taskCreateSchema = z.object({
   description: z.string().trim().max(5000).nullish(),
   priority: z.enum(PRIORITIES).optional(),
   dueDate: dateOnlySchema.nullish(),
-  assignee: z.string().trim().max(80).nullish(),
   labelIds: z.array(idSchema).max(20).optional(),
 });
 
@@ -78,7 +77,6 @@ export const taskUpdateSchema = z
     description: z.string().trim().max(5000).nullable().optional(),
     priority: z.enum(PRIORITIES).optional(),
     dueDate: dateOnlySchema.nullable().optional(),
-    assignee: z.string().trim().max(80).nullable().optional(),
     labelIds: z.array(idSchema).max(20).optional(),
     columnId: idSchema.optional(),
   })

@@ -4,7 +4,6 @@ import * as React from "react";
 import { ChevronRight, ListChecks, MessageSquare, SearchX } from "lucide-react";
 
 import {
-  AssigneeAvatar,
   DueDateChip,
   LabelChip,
   PriorityBars,
@@ -71,7 +70,6 @@ export function BoardListView({
                   <th className="px-3 py-2.5 font-semibold">Priority</th>
                   <th className="px-3 py-2.5 font-semibold">Due</th>
                   <th className="px-3 py-2.5 font-semibold">Labels</th>
-                  <th className="px-3 py-2.5 font-semibold">Assignee</th>
                   <th className="w-10 px-3 py-2.5" />
                 </tr>
               </thead>
@@ -171,14 +169,6 @@ export function BoardListView({
                         </div>
                       </td>
                       <td className="px-3 py-3">
-                        <span className="flex items-center gap-2">
-                          <AssigneeAvatar name={task.assignee} />
-                          <span className="max-w-[100px] truncate text-[11.5px] text-muted-foreground">
-                            {task.assignee ?? "Unassigned"}
-                          </span>
-                        </span>
-                      </td>
-                      <td className="px-3 py-3">
                         <ChevronRight className="size-3.5 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/60" />
                       </td>
                     </tr>
@@ -224,9 +214,8 @@ export function BoardListView({
                     ))}
                   </div>
                 )}
-                <div className="mt-2.5 flex items-center justify-between text-[10.5px] text-muted-foreground/70">
-                  <span>{task.assignee ?? "Unassigned"}</span>
-                  <span className="flex items-center gap-2">
+                {(task.subtaskCount > 0 || task.commentCount > 0) && (
+                  <div className="mt-2.5 flex items-center justify-end gap-2 text-[10.5px] text-muted-foreground/70">
                     {task.subtaskCount > 0 && (
                       <span className="inline-flex items-center gap-0.5">
                         <ListChecks className="size-3" />
@@ -239,9 +228,8 @@ export function BoardListView({
                         {task.commentCount}
                       </span>
                     )}
-                    <AssigneeAvatar name={task.assignee} />
-                  </span>
-                </div>
+                  </div>
+                )}
               </button>
             );
           })}

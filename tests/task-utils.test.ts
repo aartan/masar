@@ -28,7 +28,6 @@ function task(overrides: Partial<Task> & Pick<Task, "id">): Task {
     description: null,
     priority: "none",
     dueDate: null,
-    assignee: null,
     position: 0,
     completedAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",

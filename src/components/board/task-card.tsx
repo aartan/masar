@@ -25,7 +25,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  AssigneeAvatar,
   DueDateChip,
   LabelChip,
   PriorityBars,
@@ -236,7 +235,6 @@ export function TaskCard({
               {task.commentCount}
             </span>
           )}
-          <AssigneeAvatar name={task.assignee} />
         </div>
       </div>
     </article>

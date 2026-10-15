@@ -118,7 +118,6 @@ export async function createTask(
       description: input.description?.trim() || null,
       priority: input.priority ?? "none",
       dueDate: input.dueDate ?? null,
-      assignee: input.assignee?.trim() || null,
       position,
       completedAt: column.isDone ? now : null,
       createdAt: now,
@@ -179,9 +178,6 @@ export async function updateTask(
           : {}),
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
         ...(input.dueDate !== undefined ? { dueDate: input.dueDate } : {}),
-        ...(input.assignee !== undefined
-          ? { assignee: input.assignee?.trim() || null }
-          : {}),
         columnId: nextColumnId,
         position: nextPosition,
         completedAt,
@@ -244,7 +240,6 @@ export async function duplicateTask(
       description: source.description,
       priority: source.priority,
       dueDate: source.dueDate,
-      assignee: source.assignee,
       position,
       completedAt: source.completedAt ? now : null,
       createdAt: now,

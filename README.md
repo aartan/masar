@@ -1,6 +1,6 @@
 # Masar
 
-Masar is a Kanban app for organizing projects. It has boards with ordered columns, tasks with labels, subtasks, comments, priorities, due dates, and assignees, plus a dashboard for upcoming work and progress.
+Masar is a Kanban app for organizing projects. It has boards with ordered columns, tasks with labels, subtasks, comments, priorities, and due dates, plus a dashboard for upcoming work and progress.
 
 Masar is the Arabic word for path, route, or course. The name reflects the app's main job: giving work a clear path from backlog to completion.
 
@@ -16,11 +16,11 @@ Built with Next.js, React, Tailwind CSS, Drizzle, SQLite/libSQL, Better Auth, dn
 - Private workspaces: every board and all of its child data belong to one account. Guessing another account's board, task, label, subtask, or comment ID returns a 404.
 - Empty by default: a new account starts with no boards. Demo content is added only when the sign-up checkbox is selected.
 - Boards and columns: create, rename, recolor, reorder, and delete them. Each board has one done column. Deleting a column moves its tasks to the first remaining column.
-- Tasks: create inline or in a dialog, then edit the title, description, priority, due date, assignee, labels, subtasks, and comments. Duplicate or delete tasks when needed.
+- Tasks: create inline or in a dialog, then edit the title, description, priority, due date, labels, subtasks, and comments. Duplicate or delete tasks when needed.
 - Drag and drop: move tasks within or between columns with a pointer or keyboard. The order is saved. Reordering is disabled while filters or non-manual sorting are active.
 - Views: switch between board and list views. The choice is saved in the browser.
 - Search and filters: search the current board, filter by priority, label, due date, or status, and sort manually, by due date, priority, or newest. Cmd/Ctrl+K opens global search.
-- Dashboard: open tasks, due this week, completed in the last seven days, active boards, upcoming work, priority breakdown, workload by assignee, recent tasks, and board progress.
+- Dashboard: open tasks, due this week, completed in the last seven days, active boards, upcoming work, priority breakdown, recent tasks, and board progress.
 - Themes and layout: light, dark, and system themes, a responsive sidebar, mobile navigation, toasts, and confirmation dialogs.
 - Data: SQLite locally, Turso when deployed, with migrations, foreign keys, indexes, and transactions.
 

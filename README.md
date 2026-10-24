@@ -8,6 +8,10 @@ Every account has a private workspace. Accounts can sign up, sign in, sign out, 
 
 Built with Next.js, React, Tailwind CSS, Drizzle, SQLite/libSQL, Better Auth, dnd-kit, Zod, Vitest, and Playwright.
 
+## Live demo
+
+[Try Masar on Vercel](https://next-kanban-gamma.vercel.app/) — create an account and select **Start with demo content** to explore a populated workspace.
+
 ![Masar dashboard](docs/screenshots/dashboard.png)
 
 ## Features

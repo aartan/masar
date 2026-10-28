@@ -9,7 +9,7 @@ Create an account and select Start with demo content to explore a populated work
 ## Get Masar
 Masar is available as a web app and as desktop applications for macOS and Windows.
 
-- Web: [Try Masar online](https://next-kanban-gamma.vercel.app/).
+- Web: Try online demo [demo](https://next-kanban-gamma.vercel.app/)
 - macOS: Download the version for your Mac (Apple Silicon or Intel) from GitHub Releases.
 - Windows (x64): Download the Windows (x64) installer from GitHub Releases.
 

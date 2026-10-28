@@ -11,7 +11,7 @@ Masar is available as a web app and as desktop applications for macOS and Window
 
 - Web: Try online [demo](https://next-kanban-gamma.vercel.app/)
 - macOS: Download the version for your Mac (Apple Silicon or Intel) from GitHub Releases.
-- Windows (x64): Download the Windows (x64) installer from GitHub Releases.
+- Windows: Download the Windows (x64) installer from GitHub Releases.
 
 The desktop apps work offline by default, storing your workspace locally without requiring an account. Account sync lets you connect to your online account and synchronize work across supported devices.
 

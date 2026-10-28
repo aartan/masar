@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { listBoards } from "@/lib/server/boards";
 import { requireUser } from "@/lib/server/auth";
+import { isLocalMode } from "@/lib/server/desktop";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export default async function WorkspaceLayout({
     <AppShell
       boards={boards}
       user={{ name: user.name, email: user.email }}
+      isLocalMode={isLocalMode()}
     >
       {children}
     </AppShell>

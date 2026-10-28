@@ -32,3 +32,8 @@ yarn-debug.log*
 yarn-error.log*
 .vercel
 *.tsbuildinfo
+
+# desktop (Electron) build artifacts
+/desktop/dist
+/desktop/vendor
+/dist-desktop

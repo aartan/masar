@@ -2,21 +2,15 @@
 
 Masar is a Kanban app for organizing projects. It has boards with ordered columns, tasks with labels, subtasks, comments, priorities, and due dates, plus a dashboard for upcoming work and progress.
 
-Masar is the Arabic word for path, route, or course. The name reflects the app's main job: giving work a clear path from backlog to completion.
-
 Every account has a private workspace. Accounts can sign up, sign in, sign out, and keep a persistent session. Boards, tasks, labels, subtasks, comments, search, and dashboard data are scoped to the signed-in account. There is no team sharing or cross-account access.
 
-Built with Next.js, React, Tailwind CSS, Drizzle, SQLite/libSQL, Better Auth, dnd-kit, Zod, Vitest, and Playwright.
-
-## Live demo
-
-[Try Masar on Vercel](https://next-kanban-gamma.vercel.app/) — create an account and select **Start with demo content** to explore a populated workspace.
+Built with Next.js, React, Tailwind CSS, Drizzle, SQLite/libSQL, Better Auth, dnd-kit, Zod, Vitest, and Playwright. 
+[Try Masar online](https://next-kanban-gamma.vercel.app/). Create an account and select **Start with demo content** to explore a populated workspace.
 
 ![Masar dashboard](docs/screenshots/dashboard.png)
 
 ## Features
 
-- Accounts: email/password sign-up and sign-in, persistent sessions, and sign-out from the sidebar.
 - Private workspaces: every board and all of its child data belong to one account. Guessing another account's board, task, label, subtask, or comment ID returns a 404.
 - Empty by default: a new account starts with no boards. Demo content is added only when the sign-up checkbox is selected.
 - Boards and columns: create, rename, recolor, reorder, and delete them. Each board has one done column. Deleting a column moves its tasks to the first remaining column.
@@ -27,32 +21,10 @@ Built with Next.js, React, Tailwind CSS, Drizzle, SQLite/libSQL, Better Auth, dn
 - Dashboard: open tasks, due this week, completed in the last seven days, active boards, upcoming work, priority breakdown, recent tasks, and board progress.
 - Themes and layout: light, dark, and system themes, a responsive sidebar, mobile navigation, toasts, and confirmation dialogs.
 - Data: SQLite locally, Turso when deployed, with migrations, foreign keys, indexes, and transactions.
+- Accounts: email/password sign-up and sign-in, persistent sessions, and sign-out from the sidebar.
+- Optional premium cloud sync: Unlock premium to enable online syncing across supported devices and systems, including Windows, macOS, and the web app. Keep your work synchronized between systems while retaining local access to your data.
+- Cross-platform desktop apps: Use dedicated Electron desktop applications for Windows and macOS, alongside the web app. Work offline by default and unlock premium to synchronize data between devices.
 
-## Screenshots
-
-### Sign in
-
-![Masar sign-in page](docs/screenshots/sign-in.png)
-
-### Create account
-
-![Masar sign-up page](docs/screenshots/sign-up.png)
-
-### Board
-
-![Masar board](docs/screenshots/board.png)
-
-### Task details
-
-![Task details](docs/screenshots/task-detail.png)
-
-### List view
-
-![List view](docs/screenshots/list-view.png)
-
-### Dark theme
-
-![Masar board in dark mode](docs/screenshots/board-dark.png)
 
 ## Running locally
 
@@ -204,6 +176,129 @@ npm run verify
 ```
 
 Vitest uses a temporary SQLite database, so tests don't touch `data/app.db`. The suite covers the migration from the old schema, preservation and claiming of legacy rows, owner-scoped server operations, and cross-account isolation. Playwright uses `data/e2e.db`, starts the dev server on port 3100 with a test auth secret, and covers sign-up, sign-in, sign-out, empty workspaces, demo opt-in, account isolation, and the main board workflows. `npm run verify` runs lint, typecheck, tests, and a build.
+
+## Desktop app (macOS and Windows)
+
+Masar ships as a native desktop application built with Electron, reusing the
+exact web UI and server code. In local mode it runs the Next.js server on a
+private loopback port and loads it in the window; in sync mode it loads your
+hosted deployment instead. Either way it is a native window with native menus
+and lifecycle, not browser chrome.
+
+The desktop app runs in one of two workspace modes, selected from the
+**Workspace** menu:
+
+- **Local (free, default):** a single-user offline workspace with no sign-up or
+  sign-in. Data is stored privately in a local SQLite database in the OS
+  user-data directory (`~/Library/Application Support/Masar/masar.db` on macOS,
+  `%APPDATA%\\Masar\\masar.db` on Windows). One implicit local account owns
+  everything.
+- **Sync (premium):** the app loads your centrally-hosted Masar deployment and
+  the user signs in with a real account, so boards, tasks, and labels sync across
+  devices and with the hosted web app. No database credentials ship in the app.
+
+The session-signing secret is generated on first run and stored encrypted with
+the OS keystore (Keychain on macOS, DPAPI on Windows). Logs are written to
+`~/Library/Logs/Masar/masar.log` (macOS) or the equivalent app-logs directory.
+
+### Architecture
+
+Desktop-specific code lives in [`desktop/`](desktop/) and is the only code that
+is platform-aware; the application in `src/` is unchanged except for enabling
+`output: "standalone"` in `next.config.ts`. Platform differences (paths, process
+lifecycle, menus, secret storage) are isolated behind small modules so the same
+codebase targets both macOS and Windows.
+
+On launch the Electron main process reads the saved workspace mode. In local
+mode it loads or generates the auth secret, runs database migrations against the
+local file, picks a free loopback port, starts the Next.js standalone server,
+waits for `/api/health`, and opens the window; any failure (secure storage,
+migration, server) shows an error dialog and exits rather than falling back to
+an ephemeral database. In sync mode it starts no local server — it opens the
+window directly on your hosted deployment URL. Switching modes persists the
+choice and relaunches.
+
+### Workspace modes and premium sync
+
+New installs start in **local mode**: the app opens straight to the workspace
+with no account. Sync is controlled from the **Settings** menu in the sidebar
+footer (the avatar button bottom-left), which also holds appearance and keyboard
+shortcuts; the same actions are mirrored in the native **Workspace** menu. To
+enable sync a user first unlocks premium. In this build, "Unlock Sync (Premium)"
+is a placeholder for a real purchase or license check — the seam is isolated in
+the Electron main process (`desktop/src/main.ts` / `desktop/src/settings.ts`),
+reached from the renderer through a small IPC bridge
+(`desktop/src/preload.ts`), so a payment flow can be wired in later without
+touching the app.
+
+Sync is managed centrally by you, not configured by users. In sync mode the
+desktop window loads your **hosted Masar deployment** and the user signs in
+there, so no database credentials ever ship inside the app — all data access is
+server-side on your infrastructure. Set your hosted origin in
+[`desktop/src/sync-config.ts`](desktop/src/sync-config.ts) (the `DEFAULT_SYNC_URL`
+constant), or override it with the `MASAR_SYNC_URL` environment variable:
+
+| Setting | Purpose |
+| --- | --- |
+| `DEFAULT_SYNC_URL` (in `sync-config.ts`) | Your deployed Masar origin, e.g. `https://masar.example.com`. |
+| `MASAR_SYNC_URL` (env) | Overrides the above at build or launch time. |
+
+Local mode still runs the native local server; only sync mode points at the
+host. The split is clean: offline work stays in the local workspace, and the
+online tier is your hosted app in a native window. Because sync loads your live
+deployment, server and online-UI changes reach every desktop on your next
+deploy, with no app rebuild.
+
+When a user enables sync, the Workspace menu offers **Import Local Data Into
+Account**. The app reads its local workspace and uploads it to your hosted app's
+`/api/desktop/import-local` endpoint, which creates the boards, tasks, labels,
+subtasks, and comments under the signed-in account (idempotent; ids are
+preserved). The local workspace is left untouched, so switching back to local
+mode restores it. This requires your deployment to include this route, so deploy
+the current app before relying on import.
+
+### Prerequisites
+
+Both platforms need Node.js 20.9+ and npm, plus the project dependencies
+(`npm install`). No Rust toolchain is required (unlike Tauri). The native
+SQLite driver ships as prebuilt binaries, so there is no native compilation
+step. The build fetches the per-architecture libSQL binaries automatically and
+caches them under `desktop/vendor/`.
+
+- **macOS**: build on macOS. Xcode Command Line Tools are needed only if you add
+  code signing. Unsigned/ad-hoc builds run locally; see signing below.
+- **Windows**: build on Windows (or a Windows CI runner such as GitHub Actions
+  `windows-latest`). The configuration is in place, but Windows packaging is
+  **not** verified by building on macOS and must be built and smoke-tested on
+  Windows. Windows on ARM is out of scope: libSQL publishes no `win32-arm64`
+  prebuilt binary.
+
+### Building
+
+```bash
+# macOS: produces dist-desktop/Masar-<version>-arm64.dmg and -x64.dmg
+npm run desktop:build:mac
+
+# Windows (run on a Windows host/CI): produces an NSIS .exe installer
+npm run desktop:build:win
+```
+
+Development loop (loads a live `next dev` server in the Electron shell):
+
+```bash
+npm run desktop:dev
+```
+
+### Code signing and notarization (macOS)
+
+The macOS build is unsigned (ad-hoc) by default, which runs on the build machine
+but is Gatekeeper-quarantined elsewhere. Signing and notarization are wired in
+and inert until credentials are supplied. To produce a distributable build, set
+a Developer ID identity (replace `identity: null` in
+[`electron-builder.yml`](electron-builder.yml), or provide `CSC_LINK` /
+`CSC_KEY_PASSWORD`) and export `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and
+`APPLE_TEAM_ID` so the notarization hook ([`desktop/scripts/notarize.js`](desktop/scripts/notarize.js))
+runs. Hardened runtime and the required entitlements are already configured.
 
 ## License
 

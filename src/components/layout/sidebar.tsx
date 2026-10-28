@@ -5,17 +5,21 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   ChevronsUpDown,
+  Cloud,
   Keyboard,
+  LaptopMinimal,
   LayoutDashboard,
   LogOut,
+  Palette,
   Plus,
   Search,
+  Upload,
   X,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { toast } from "sonner";
 
 import { Logo } from "@/components/brand/logo";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { Kbd } from "@/components/shared/empty-state";
 import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 import { Button } from "@/components/ui/button";
@@ -24,7 +28,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -36,9 +45,30 @@ import { authClient } from "@/lib/auth-client";
 import type { BoardSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+interface DesktopState {
+  isDesktop: boolean;
+  mode: "local" | "sync";
+  premiumUnlocked: boolean;
+}
+
+interface MasarDesktopBridge {
+  getState(): Promise<DesktopState>;
+  unlockPremium(): Promise<{ premiumUnlocked: boolean }>;
+  enableSync(): Promise<{ ok: boolean; error?: string }>;
+  switchToLocal(): Promise<void>;
+  importLocal(): Promise<unknown>;
+}
+
+declare global {
+  interface Window {
+    masarDesktop?: MasarDesktopBridge;
+  }
+}
+
 interface SidebarContentProps {
   boards: BoardSummary[];
   user: { name: string; email: string };
+  isLocalMode?: boolean;
   onOpenSearch: () => void;
   onCreateBoard: () => void;
   onOpenShortcuts: () => void;
@@ -50,6 +80,7 @@ interface SidebarContentProps {
 export function SidebarContent({
   boards,
   user,
+  isLocalMode = false,
   onOpenSearch,
   onCreateBoard,
   onOpenShortcuts,
@@ -79,6 +110,35 @@ export function SidebarContent({
   }
 
   const initial = (user.name.trim()[0] ?? user.email[0] ?? "M").toUpperCase();
+
+  const { theme, setTheme } = useTheme();
+  const mounted = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+
+  // Desktop-only bridge (undefined in the hosted web app). Drives the sync
+  // controls in the workspace menu below.
+  const [desktop, setDesktop] = React.useState<DesktopState | null>(null);
+  React.useEffect(() => {
+    const api = window.masarDesktop;
+    if (!api) return;
+    let active = true;
+    void api.getState().then((state) => {
+      if (active) setDesktop(state);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function unlockSync() {
+    const result = await window.masarDesktop?.unlockPremium();
+    if (result) setDesktop((d) => (d ? { ...d, premiumUnlocked: result.premiumUnlocked } : d));
+  }
+
+
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground">
@@ -221,40 +281,93 @@ export function SidebarContent({
               type="button"
               className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent/60 disabled:opacity-60"
               disabled={signingOut}
-              aria-label="Account menu"
+              aria-label="Settings and workspace"
             >
               <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
                 {initial}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[12px] font-medium">{user.name}</p>
-                <p className="truncate text-[10px] text-muted-foreground">
-                  {user.email}
-                </p>
+                {!isLocalMode && (
+                  <p className="truncate text-[10px] text-muted-foreground">
+                    {user.email}
+                  </p>
+                )}
               </div>
               <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground/60" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="start" className="w-[232px]">
-            <DropdownMenuLabel>Personal workspace</DropdownMenuLabel>
-            <DropdownMenuSeparator />
+          <DropdownMenuContent side="top" align="start" className="w-[248px]">
+            <DropdownMenuLabel>Settings</DropdownMenuLabel>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Palette />
+                Appearance
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuRadioGroup
+                  value={mounted ? (theme ?? "system") : "system"}
+                  onValueChange={setTheme}
+                >
+                  <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="system">System</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuItem onSelect={onOpenShortcuts}>
               <Keyboard />
               Keyboard shortcuts
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onSelect={() => void signOut()}
-              disabled={signingOut}
-            >
-              <LogOut />
-              {signingOut ? "Signing out…" : "Sign out"}
-            </DropdownMenuItem>
+
+            {desktop?.mode === "local" && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Workspace
+                </DropdownMenuLabel>
+                {desktop.premiumUnlocked ? (
+                  <DropdownMenuItem onSelect={() => void window.masarDesktop?.enableSync()}>
+                    <Cloud />
+                    Enable sync across devices
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onSelect={() => void unlockSync()}>
+                    <Cloud />
+                    Unlock sync (Premium)
+                  </DropdownMenuItem>
+                )}
+              </>
+            )}
+
+            {desktop?.mode === "sync" && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Workspace
+                </DropdownMenuLabel>
+                <DropdownMenuItem onSelect={() => void window.masarDesktop?.importLocal()}>
+                  <Upload />
+                  Import local data
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void window.masarDesktop?.switchToLocal()}>
+                  <LaptopMinimal />
+                  Switch to local workspace
+                </DropdownMenuItem>
+              </>
+            )}
+
+            {!isLocalMode && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => void signOut()} disabled={signingOut}>
+                  <LogOut />
+                  {signingOut ? "Signing out…" : "Sign out"}
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
-        <div className="mt-1">
-          <ThemeToggle withLabel />
-        </div>
       </div>
     </div>
   );

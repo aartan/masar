@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { ApiError } from "@/lib/api";
 import { auth } from "@/lib/auth";
+import { getLocalUser, isLocalMode } from "@/lib/server/desktop";
 
 export type SessionUser = NonNullable<
   Awaited<ReturnType<typeof auth.api.getSession>>
@@ -13,6 +14,9 @@ export async function getCurrentSession() {
 }
 
 export async function getCurrentUser(): Promise<SessionUser | null> {
+  // Local mode is single-user and offline: resolve to the implicit local
+  // account instead of a Better Auth session, so there is no sign-in/sign-up.
+  if (isLocalMode()) return getLocalUser();
   const session = await getCurrentSession();
   return session?.user ?? null;
 }

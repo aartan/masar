@@ -1,0 +1,63 @@
+appId: com.masar.app
+productName: Masar
+copyright: Copyright © 2026 Masar
+
+directories:
+  output: dist-desktop
+  buildResources: desktop/build
+
+# Only the esbuild-bundled main process and package.json go in the asar. The
+# renderer and server need nothing else from node_modules (main.js is bundled;
+# the server ships self-contained under Resources/standalone via afterPack), so
+# exclude node_modules to keep the asar tiny and stop electron-builder from
+# bundling the wrong-arch native modules.
+files:
+  - desktop/dist/**/*
+  - package.json
+  - "!node_modules/**/*"
+
+asar: true
+
+# The server is already a built artifact; electron-builder must not try to
+# rebuild or relocate native modules for it.
+npmRebuild: false
+
+# Copies the standalone server (with per-arch native libSQL) + migrations into
+# Resources verbatim, per target arch.
+afterPack: desktop/scripts/after-pack.js
+
+mac:
+  category: public.app-category.productivity
+  icon: desktop/build/icon.icns
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: desktop/build/entitlements.mac.plist
+  entitlementsInherit: desktop/build/entitlements.mac.plist
+  # Unsigned/ad-hoc for this milestone. To sign, set identity to your
+  # "Developer ID Application: ..." name (or CSC_LINK / CSC_KEY_PASSWORD env)
+  # and supply APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID for the
+  # notarize hook below.
+  identity: null
+
+# Windows target — structured and correct, but must be built and verified on a
+# Windows host or CI (e.g. GitHub Actions windows-latest). Not built on macOS.
+win:
+  icon: desktop/build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+afterSign: desktop/scripts/notarize.js
+
+artifactName: ${productName}-${version}-${arch}.${ext}

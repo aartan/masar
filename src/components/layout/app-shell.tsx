@@ -21,10 +21,12 @@ import type { BoardSummary } from "@/lib/types";
 export function AppShell({
   boards,
   user,
+  isLocalMode = false,
   children,
 }: {
   boards: BoardSummary[];
   user: { name: string; email: string };
+  isLocalMode?: boolean;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
@@ -72,6 +74,7 @@ export function AppShell({
           <SidebarContent
             boards={boards}
             user={user}
+            isLocalMode={isLocalMode}
             onOpenSearch={() => setSearchOpen(true)}
             onCreateBoard={openCreateBoard}
             onOpenShortcuts={() => setShortcutsOpen(true)}
@@ -90,6 +93,7 @@ export function AppShell({
           <SidebarContent
             boards={boards}
             user={user}
+            isLocalMode={isLocalMode}
             onOpenSearch={() => {
               setMobileOpen(false);
               setSearchOpen(true);

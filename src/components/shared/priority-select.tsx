@@ -29,10 +29,9 @@ export function PrioritySelect({
       disabled={disabled}
     >
       <SelectTrigger className={cn("h-8 text-[12.5px]", className)}>
-        <span className="flex items-center gap-2">
-          <PriorityBars priority={value} />
-          <SelectValue />
-        </span>
+        {/* SelectValue mirrors the selected item's content (bars + label), so
+            the trigger must not render its own PriorityBars or they double up. */}
+        <SelectValue />
       </SelectTrigger>
       <SelectContent>
         {PRIORITIES.map((priority) => (

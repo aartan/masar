@@ -348,7 +348,7 @@ export function SidebarContent({
                 </DropdownMenuLabel>
                 <DropdownMenuItem onSelect={() => void window.masarDesktop?.importLocal()}>
                   <Upload />
-                  Import local data
+                  Import local workspace data
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void window.masarDesktop?.switchToLocal()}>
                   <LaptopMinimal />

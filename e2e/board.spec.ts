@@ -220,6 +220,86 @@ test.describe("board workflows", () => {
     }
   });
 
+  test("reorders a task within the same column", async ({ page }) => {
+    const errors = collectPageErrors(page);
+    const boardName = uniqueName("E2E Reorder");
+    let boardId: string | undefined;
+
+    try {
+      const board = await createBoard(page.request, boardName);
+      boardId = board.id;
+      const detail = await getBoardDetail(page.request, boardId);
+      const todo = columnByName(detail.columns, "To Do");
+      const first = await createTask(page.request, boardId, {
+        columnId: todo.id,
+        title: "First task",
+      });
+      const second = await createTask(page.request, boardId, {
+        columnId: todo.id,
+        title: "Second task",
+      });
+      const third = await createTask(page.request, boardId, {
+        columnId: todo.id,
+        title: "Third task",
+      });
+
+      await page.goto(`/boards/${boardId}`);
+      const todoRegion = page.getByRole("region", { name: "To Do column" });
+      const cardOrder = () =>
+        todoRegion
+          .locator("[data-task-id]")
+          .evaluateAll((nodes) =>
+            nodes.map((node) => node.getAttribute("data-task-id")),
+          );
+
+      await expect(todoRegion.locator("[data-task-id]")).toHaveCount(3);
+      expect(await cardOrder()).toEqual([first.id, second.id, third.id]);
+
+      const firstBox = await page
+        .getByRole("button", { name: "Open task: First task" })
+        .boundingBox();
+      const secondBox = await page
+        .getByRole("button", { name: "Open task: Second task" })
+        .boundingBox();
+      if (!firstBox || !secondBox) throw new Error("Missing drag geometry");
+
+      const saved = page.waitForResponse(
+        (response) =>
+          response.url().includes("/tasks/reorder") &&
+          response.request().method() === "POST",
+      );
+      await page.mouse.move(firstBox.x + firstBox.width / 2, firstBox.y + 24);
+      await page.mouse.down();
+      await page.mouse.move(
+        firstBox.x + firstBox.width / 2 + 10,
+        firstBox.y + 34,
+        { steps: 4 },
+      );
+      await page.mouse.move(
+        secondBox.x + secondBox.width / 2,
+        secondBox.y + secondBox.height / 2,
+        { steps: 20 },
+      );
+      await page.mouse.up();
+      await saved;
+
+      await expect.poll(cardOrder).toEqual([second.id, first.id, third.id]);
+
+      await page.reload({ waitUntil: "networkidle" });
+      const reloadedOrder = await page
+        .getByRole("region", { name: "To Do column" })
+        .locator("[data-task-id]")
+        .evaluateAll((nodes) =>
+          nodes.map((node) => node.getAttribute("data-task-id")),
+        );
+      expect(reloadedOrder).toEqual([second.id, first.id, third.id]);
+
+      expect(errors).toEqual([]);
+    } finally {
+      if (boardId) await deleteBoard(page.request, boardId);
+    }
+  });
+
   test("confirms destructive actions before deleting tasks and boards", async ({
     page,
   }) => {

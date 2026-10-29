@@ -70,10 +70,37 @@ export function moveTaskToColumnEnd(
   taskId: string,
   targetColumnId: string,
 ): Task[] {
+  const active = tasks.find((task) => task.id === taskId);
+  if (!active) return tasks;
+  if (active.columnId === targetColumnId) {
+    const targetTasks = getOrderedTasks(tasks, targetColumnId);
+    if (targetTasks[targetTasks.length - 1]?.id === taskId) return tasks;
+  }
   const targetCount = tasks.filter(
     (task) => task.columnId === targetColumnId,
   ).length;
   return moveTaskToIndex(tasks, taskId, targetColumnId, targetCount);
+}
+
+/**
+ * Drops a task onto another task. Tasks already in the target column follow
+ * dnd-kit's array-move behaviour, so the dragged task lands at the over task's
+ * index. Tasks entering the column are inserted directly before the over task.
+ */
+export function moveTaskOverTask(
+  tasks: Task[],
+  taskId: string,
+  targetColumnId: string,
+  overTaskId: string,
+): Task[] {
+  const targetTasks = getOrderedTasks(tasks, targetColumnId);
+  const overIndex = targetTasks.findIndex((task) => task.id === overTaskId);
+  if (overIndex === -1) {
+    return moveTaskToColumnEnd(tasks, taskId, targetColumnId);
+  }
+  const activeIndex = targetTasks.findIndex((task) => task.id === taskId);
+  if (activeIndex === overIndex) return tasks;
+  return moveTaskToIndex(tasks, taskId, targetColumnId, overIndex);
 }
 
 export function buildTaskOrderPayload(

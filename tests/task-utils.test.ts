@@ -12,6 +12,7 @@ import {
   hasActiveFilters,
   matchesFilters,
   moveColumn,
+  moveTaskOverTask,
   moveTaskToColumnEnd,
   moveTaskToIndex,
   sortTasks,
@@ -168,6 +169,74 @@ describe("moveTaskToColumnEnd", () => {
       "c",
       "a",
     ]);
+  });
+
+  it("is a no-op when the task is already last in its column", () => {
+    const tasks = [
+      task({ id: "a", columnId: "todo", position: 0 }),
+      task({ id: "b", columnId: "todo", position: 1 }),
+    ];
+    expect(moveTaskToColumnEnd(tasks, "b", "todo")).toBe(tasks);
+  });
+});
+
+describe("moveTaskOverTask", () => {
+  const tasks = [
+    task({ id: "a", position: 0 }),
+    task({ id: "b", position: 1 }),
+    task({ id: "c", position: 2 }),
+    task({ id: "d", position: 3 }),
+  ];
+
+  it("moves a task down to the hovered task's index", () => {
+    const result = moveTaskOverTask(tasks, "a", "todo", "c");
+    expect(getOrderedTasks(result, "todo").map((item) => item.id)).toEqual([
+      "b",
+      "c",
+      "a",
+      "d",
+    ]);
+    expect(
+      getOrderedTasks(result, "todo").map((item) => item.position),
+    ).toEqual([0, 1, 2, 3]);
+  });
+
+  it("moves a task down by one slot", () => {
+    const result = moveTaskOverTask(tasks, "a", "todo", "b");
+    expect(getOrderedTasks(result, "todo").map((item) => item.id)).toEqual([
+      "b",
+      "a",
+      "c",
+      "d",
+    ]);
+  });
+
+  it("moves a task up to the hovered task's index", () => {
+    const result = moveTaskOverTask(tasks, "d", "todo", "b");
+    expect(getOrderedTasks(result, "todo").map((item) => item.id)).toEqual([
+      "a",
+      "d",
+      "b",
+      "c",
+    ]);
+  });
+
+  it("inserts before the hovered task when entering its column", () => {
+    const source = [
+      task({ id: "a", columnId: "todo", position: 0 }),
+      task({ id: "b", columnId: "done", position: 0 }),
+      task({ id: "c", columnId: "done", position: 1 }),
+    ];
+    const result = moveTaskOverTask(source, "a", "done", "c");
+    expect(getOrderedTasks(result, "done").map((item) => item.id)).toEqual([
+      "b",
+      "a",
+      "c",
+    ]);
+  });
+
+  it("is a no-op when dropped on itself", () => {
+    expect(moveTaskOverTask(tasks, "b", "todo", "b")).toBe(tasks);
   });
 });
 

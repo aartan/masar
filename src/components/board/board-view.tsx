@@ -67,8 +67,8 @@ import {
   getOrderedTasks,
   hasActiveFilters,
   moveColumn,
+  moveTaskOverTask,
   moveTaskToColumnEnd,
-  moveTaskToIndex,
   type TaskFilters,
 } from "@/lib/task-utils";
 import type {
@@ -531,37 +531,38 @@ export function BoardView({
 
   function handleDragOver(event: DragOverEvent) {
     const activeData = event.active.data.current as DragData | undefined;
-    if (activeData?.type !== "task" || !activeData.taskId) return;
+    const taskId = activeData?.taskId;
+    if (activeData?.type !== "task" || !taskId) return;
+
     const overData = event.over?.data.current as DragData | undefined;
     const targetColumnId = overData?.columnId;
+    const overType = overData?.type;
+    const overTaskId = overData?.taskId;
     if (!targetColumnId) return;
-    const current = tasks.find((task) => task.id === activeData.taskId);
-    if (!current || current.columnId === targetColumnId) return;
+    if (overType !== "task" && overType !== "column-drop") return;
 
     setTasks((currentTasks) => {
-      const currentTask = currentTasks.find(
-        (task) => task.id === activeData.taskId,
-      );
-      if (!currentTask || currentTask.columnId === targetColumnId) {
-        return currentTasks;
+      const currentTask = currentTasks.find((task) => task.id === taskId);
+      if (!currentTask) return currentTasks;
+
+      if (currentTask.columnId === targetColumnId) {
+        // Task-to-task moves in the same column are previewed by
+        // SortableContext; only sync explicit drops on the column itself.
+        return overType === "column-drop"
+          ? moveTaskToColumnEnd(currentTasks, taskId, targetColumnId)
+          : currentTasks;
       }
-      const targetTasks = getOrderedTasks(
-        currentTasks,
-        targetColumnId,
-      ).filter((task) => task.id !== activeData.taskId);
-      let index = targetTasks.length;
-      if (overData?.type === "task" && overData.taskId) {
-        const overIndex = targetTasks.findIndex(
-          (task) => task.id === overData.taskId,
+
+      if (overType === "task" && overTaskId) {
+        return moveTaskOverTask(
+          currentTasks,
+          taskId,
+          targetColumnId,
+          overTaskId,
         );
-        if (overIndex !== -1) index = overIndex;
       }
-      return moveTaskToIndex(
-        currentTasks,
-        activeData.taskId!,
-        targetColumnId,
-        index,
-      );
+
+      return moveTaskToColumnEnd(currentTasks, taskId, targetColumnId);
     });
   }
 
@@ -591,23 +592,25 @@ export function BoardView({
     }
 
     const taskId = activeData.taskId;
-    const current = tasks.find((task) => task.id === taskId);
     let nextTasks = tasks;
 
-    if (event.over && String(event.over.id) !== taskId && current) {
+    if (event.over) {
       const overData = event.over.data.current as DragData | undefined;
-      const targetColumnId = overData?.columnId ?? current.columnId;
-      const targetTasks = getOrderedTasks(tasks, targetColumnId).filter(
-        (task) => task.id !== taskId,
-      );
-      let index = targetTasks.length;
-      if (overData?.type === "task" && overData.taskId) {
-        const overIndex = targetTasks.findIndex(
-          (task) => task.id === overData.taskId,
-        );
-        if (overIndex !== -1) index = overIndex;
+      const targetColumnId = overData?.columnId;
+      if (targetColumnId) {
+        if (overData?.type === "task" && overData.taskId) {
+          // Mirror dnd-kit's array-move preview using the current order, so
+          // the card lands exactly where the placeholder was shown.
+          nextTasks = moveTaskOverTask(
+            tasks,
+            taskId,
+            targetColumnId,
+            overData.taskId,
+          );
+        } else if (overData?.type === "column-drop") {
+          nextTasks = moveTaskToColumnEnd(tasks, taskId, targetColumnId);
+        }
       }
-      nextTasks = moveTaskToIndex(tasks, taskId, targetColumnId, index);
     }
 
     setTasks(nextTasks);

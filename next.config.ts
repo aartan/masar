@@ -8,6 +8,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   experimental: {
     optimizePackageImports: ["lucide-react", "date-fns"],
+    // Keep soft navigations, prefetches, and Server Actions pending while the
+    // connection is down, then retry automatically when it returns.
+    useOffline: true,
   },
   // The libSQL driver loads its native addon through a computed
   // `require(`@libsql/${target}`)`, which @vercel/nft cannot trace statically.

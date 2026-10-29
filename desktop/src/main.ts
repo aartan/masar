@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, net } from "electron";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
 import { buildLocalEnv, serverOrigin } from "./env";
@@ -18,6 +18,7 @@ import {
 
 const MAX_PORT_ATTEMPTS = 3;
 const HEALTH_TIMEOUT_MS = 60_000;
+const APP_USER_MODEL_ID = "com.masar.app";
 
 let server: ServerHandle | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -53,6 +54,7 @@ function createWindow(): void {
     show: false,
     titleBarStyle: "default",
     backgroundColor: "#0b0b0c",
+    icon: devWindowIcon(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -65,6 +67,13 @@ function createWindow(): void {
     mainWindow = null;
   });
   void mainWindow.loadURL(origin);
+}
+
+/** Development-only window icon; packaged builds use the executable icon. */
+function devWindowIcon(): string | undefined {
+  if (app.isPackaged) return undefined;
+  const icon = path.join(app.getAppPath(), "desktop", "build", "icon.png");
+  return existsSync(icon) ? icon : undefined;
 }
 
 /** Start the local-mode server, retrying once per EADDRINUSE with a fresh port. */
@@ -294,6 +303,7 @@ registerLifecycle({
 });
 
 void app.whenReady().then(async () => {
+  app.setAppUserModelId(APP_USER_MODEL_ID);
   log("[boot] app ready");
   try {
     registerIpc();

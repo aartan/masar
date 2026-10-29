@@ -28,7 +28,7 @@ afterPack: desktop/scripts/after-pack.js
 
 mac:
   category: public.app-category.productivity
-  icon: desktop/build/icon.icns
+  icon: desktop/build/icon.png
   target:
     - target: dmg
       arch:
@@ -47,7 +47,7 @@ mac:
 # Windows target — structured and correct, but must be built and verified on a
 # Windows host or CI (e.g. GitHub Actions windows-latest). Not built on macOS.
 win:
-  icon: desktop/build/icon.ico
+  icon: desktop/build/icon.png
   target:
     - target: nsis
       arch:

@@ -14,6 +14,26 @@ import {
 } from "./helpers";
 
 test.describe("authentication and workspace privacy", () => {
+  test("shows friendly messages for missing and malformed emails", async ({
+    page,
+  }) => {
+    await page.goto("/login");
+
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.locator("form").getByRole("alert")).toHaveText(
+      "Enter your email address.",
+    );
+
+    await page.getByLabel("Email", { exact: true }).fill("not-an-email");
+    await page
+      .getByLabel("Password", { exact: true })
+      .fill("Masar-auth-password-2026");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.locator("form").getByRole("alert")).toHaveText(
+      "Enter a valid email address.",
+    );
+  });
+
   test("redirects anonymous visitors, then supports sign-up, sign-out, and sign-in", async ({
     page,
   }) => {

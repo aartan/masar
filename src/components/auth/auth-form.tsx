@@ -20,6 +20,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
+import { friendlyAuthError } from "@/lib/auth-errors";
+import { emailSchema } from "@/lib/validation";
 
 type AuthMode = "login" | "signup";
 
@@ -39,11 +41,17 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     event.preventDefault();
     if (loading) return;
 
-    const trimmedEmail = email.trim();
     const trimmedName = name.trim();
 
     if (isSignup && trimmedName.length === 0) {
       setError("Enter your name.");
+      return;
+    }
+    const parsedEmail = emailSchema.safeParse(email);
+    if (!parsedEmail.success) {
+      setError(
+        parsedEmail.error.issues[0]?.message ?? "Enter a valid email address.",
+      );
       return;
     }
     if (password.length < 8) {
@@ -62,11 +70,13 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       if (isSignup) {
         const { error: signUpError } = await authClient.signUp.email({
           name: trimmedName,
-          email: trimmedEmail,
+          email: parsedEmail.data,
           password,
         });
         if (signUpError) {
-          setError(signUpError.message ?? "Could not create your account.");
+          setError(
+            friendlyAuthError(signUpError, "Could not create your account."),
+          );
           return;
         }
 
@@ -87,11 +97,11 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         }
       } else {
         const { error: signInError } = await authClient.signIn.email({
-          email: trimmedEmail,
+          email: parsedEmail.data,
           password,
         });
         if (signInError) {
-          setError(signInError.message ?? "Could not sign in.");
+          setError(friendlyAuthError(signInError, "Could not sign in."));
           return;
         }
       }

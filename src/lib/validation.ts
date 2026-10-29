@@ -16,6 +16,12 @@ const nameSchema = (max: number, label: string) =>
     .min(1, `${label} is required`)
     .max(max, `${label} must be ${max} characters or fewer`);
 
+export const emailSchema = z
+  .string()
+  .trim()
+  .min(1, "Enter your email address.")
+  .pipe(z.email("Enter a valid email address."));
+
 export const dateOnlySchema = z
   .string()
   .trim()

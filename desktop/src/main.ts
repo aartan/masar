@@ -5,6 +5,7 @@ import path from "node:path";
 import { buildLocalEnv, serverOrigin } from "./env";
 import { registerLifecycle } from "./lifecycle";
 import { buildMenu } from "./menu";
+import { connectionErrorPage } from "./offline-page";
 import { getOrCreateAuthSecret } from "./secret";
 import { readSettings, resolveSyncUrl, writeSettings, type WorkspaceMode } from "./settings";
 import { getFreePort } from "./server/free-port";
@@ -53,6 +54,7 @@ function createWindow(): void {
     minHeight: 480,
     show: false,
     titleBarStyle: "default",
+    title: activeMode === "sync" ? "Masar · Sync" : "Masar",
     backgroundColor: "#0b0b0c",
     icon: devWindowIcon(),
     webPreferences: {
@@ -63,10 +65,29 @@ function createWindow(): void {
     },
   });
   mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.on("page-title-updated", (event, title) => {
+    if (activeMode !== "sync") return;
+    event.preventDefault();
+    mainWindow?.setTitle(title ? `${title} · Sync` : "Masar · Sync");
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
-  void mainWindow.loadURL(origin);
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      // -3 is ERR_ABORTED, which happens on ordinary redirects/reloads.
+      if (!isMainFrame || errorCode === -3) return;
+      if (!/^https?:/i.test(validatedURL)) return;
+      log(
+        `[window] load failed (${errorCode}) ${validatedURL}: ${errorDescription}`,
+      );
+      showConnectionError(errorDescription);
+    },
+  );
+  void mainWindow.loadURL(origin).catch(() => {
+    // `did-fail-load` renders the connection fallback below.
+  });
 }
 
 /** Development-only window icon; packaged builds use the executable icon. */
@@ -74,6 +95,22 @@ function devWindowIcon(): string | undefined {
   if (app.isPackaged) return undefined;
   const icon = path.join(app.getAppPath(), "desktop", "build", "icon.png");
   return existsSync(icon) ? icon : undefined;
+}
+
+/** Render a local fallback instead of leaving an empty Chromium error page. */
+function showConnectionError(description: string): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const page = connectionErrorPage({
+    origin,
+    description,
+    canUseLocal: activeMode === "sync",
+  });
+  void mainWindow
+    .loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(page)}`)
+    .then(() => mainWindow?.show())
+    .catch((error) => {
+      log(`[window] could not show connection fallback: ${String(error)}`);
+    });
 }
 
 /** Start the local-mode server, retrying once per EADDRINUSE with a fresh port. */
@@ -134,12 +171,14 @@ async function bootstrap(): Promise<void> {
 
   const settings = readSettings();
   activeMode = settings.mode;
+  log(`[mode] ${activeMode}`);
 
   if (activeMode === "sync") {
     const url = resolveSyncUrl();
     if (url) {
       // Sync mode loads the centrally-hosted app directly: no local server and
       // no database credentials in the app. The user signs in on the host.
+      log(`[mode] loading hosted workspace: ${url}`);
       origin = url;
       createWindow();
       return;

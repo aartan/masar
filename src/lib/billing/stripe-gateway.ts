@@ -195,11 +195,14 @@ export class StripeBillingGateway implements BillingGateway {
     return sessions.data.map(checkoutSnapshotFromStripe);
   }
 
+  /**
+   * Cancel immediately. Callers use this only to clean up abandoned
+   * `incomplete` Checkout subscriptions before starting a new attempt;
+   * period-end cancellation would leave the stale subscription behind.
+   */
   async cancelSubscription(subscriptionId: string): Promise<void> {
     try {
-      await await this.stripe.subscriptions.update(subscriptionId, {
-  cancel_at_period_end: true,
-});;
+      await this.stripe.subscriptions.cancel(subscriptionId);
     } catch (error) {
       if (isStripeNotFound(error)) return;
       throw error;

@@ -78,8 +78,8 @@ Handled events:
 - `invoice.payment_failed`
 
 The subscription page also reconciles on `?required=1`, `?setup=success`, and
-`?portal=return`, and the **Refresh status** button calls
-`POST /api/subscription/sync`.
+`?portal=return`. There is no manual refresh button: reconciliation happens
+automatically on the paths where Stripe state can have just changed.
 
 ## Stripe setup
 

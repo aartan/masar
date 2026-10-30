@@ -2,13 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   CreditCard,
   ExternalLink,
   Loader2,
-  RefreshCw,
 } from "lucide-react";
 
 import { DesktopOfflineOption } from "@/components/auth/desktop-offline-option";
@@ -50,7 +48,7 @@ interface SubscriptionManagerProps {
   syncError: string | null;
 }
 
-type BusyAction = "checkout" | "portal" | "sync" | null;
+type BusyAction = "checkout" | "portal" | null;
 
 function DetailRow({
   label,
@@ -79,7 +77,6 @@ export function SubscriptionManager({
   notice,
   syncError,
 }: SubscriptionManagerProps) {
-  const router = useRouter();
   const [busy, setBusy] = React.useState<BusyAction>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -110,25 +107,6 @@ export function SubscriptionManager({
     try {
       const { url } = await api<{ url: string }>(path, { method: "POST" });
       window.location.assign(url);
-    } catch (caught) {
-      setError(errorMessage(caught));
-      setBusy(null);
-    }
-  }
-
-  async function refresh(): Promise<void> {
-    if (busy) return;
-    setBusy("sync");
-    setError(null);
-    try {
-      const result = await api<{ entitlement: EntitlementView }>(
-        "/api/subscription/sync",
-        { method: "POST" },
-      );
-      if (result.entitlement.entitled) {
-        router.push("/");
-      }
-      router.refresh();
     } catch (caught) {
       setError(errorMessage(caught));
       setBusy(null);
@@ -289,21 +267,6 @@ export function SubscriptionManager({
                   <ExternalLink className="size-4" />
                 )}
                 Manage billing
-              </Button>
-            )}
-
-            {billingConfigured && (
-              <Button
-                variant="ghost"
-                onClick={() => void refresh()}
-                disabled={busy !== null}
-              >
-                {busy === "sync" ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="size-4" />
-                )}
-                Refresh status
               </Button>
             )}
           </div>

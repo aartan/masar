@@ -25,7 +25,7 @@ function checkoutNotice(value: string | string[] | undefined): string | null {
     case "cancelled":
       return "Checkout was cancelled. No changes were made.";
     case "failed":
-      return "We could not finish setting up your subscription. If you completed payment, choose Refresh status. Otherwise, try again.";
+      return "We could not finish setting up your subscription. If you completed payment, reload this page in a moment. Otherwise, try again.";
     case "unavailable":
       return "Online subscription billing is not configured right now.";
     default:

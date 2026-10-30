@@ -1,5 +1,5 @@
 /**
- * Central hosted Masar URL used by premium sync mode. This is managed by you,
+ * Central hosted Masar URL used by online sync mode. This is managed by you,
  * the operator: set it to your deployed Masar origin. In sync mode the desktop
  * window loads this URL and the user signs in there, so no database credentials
  * ever ship inside the app.

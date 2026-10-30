@@ -9,15 +9,17 @@ export type WorkspaceMode = "local" | "sync";
 export interface DesktopSettings {
   /** Which backend the app uses. Defaults to the free offline local workspace. */
   mode: WorkspaceMode;
-  /** Whether premium sync has been unlocked (payment seam; see menu). */
-  premiumUnlocked: boolean;
+  /**
+   * Legacy placeholder from builds before real billing. Ignored; kept only so
+   * reading an old settings file does not fail.
+   */
+  premiumUnlocked?: boolean;
   /** Overrides the hosted sync URL; normally null (the baked default is used). */
   syncUrl: string | null;
 }
 
 const DEFAULTS: DesktopSettings = {
   mode: "local",
-  premiumUnlocked: false,
   syncUrl: null,
 };
 

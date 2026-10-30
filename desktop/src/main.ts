@@ -222,24 +222,7 @@ function getDesktopState() {
   return {
     isDesktop: true,
     mode: activeMode,
-    premiumUnlocked: readSettings().premiumUnlocked,
   };
-}
-
-/** Payment seam: a real build gates this behind a purchase/license check. */
-function unlockPremium(): { premiumUnlocked: boolean } {
-  const response = dialog.showMessageBoxSync({
-    type: "info",
-    buttons: ["Unlock", "Cancel"],
-    defaultId: 0,
-    cancelId: 1,
-    title: "Unlock Sync",
-    message: "Sync across devices is a premium feature.",
-    detail: "In this build, unlocking is a placeholder for a purchase. Unlock sync now?",
-  });
-  if (response === 0) writeSettings({ premiumUnlocked: true });
-  refreshMenu();
-  return { premiumUnlocked: readSettings().premiumUnlocked };
 }
 
 /** Enter sync mode (relaunches) if a hosted URL is configured. */
@@ -313,8 +296,6 @@ function refreshMenu(): void {
   Menu.setApplicationMenu(
     buildMenu({
       mode: activeMode,
-      premiumUnlocked: readSettings().premiumUnlocked,
-      onUnlockPremium: () => void unlockPremium(),
       onEnableSync: () => void enableSync(),
       onSwitchLocal: () => switchToLocal(),
       onImportLocal: () => void importLocalWorkspace(),
@@ -325,7 +306,6 @@ function refreshMenu(): void {
 /** IPC the in-app Settings menu uses to drive the same workspace actions. */
 function registerIpc(): void {
   ipcMain.handle("masar:get-state", () => getDesktopState());
-  ipcMain.handle("masar:unlock-premium", () => unlockPremium());
   ipcMain.handle("masar:enable-sync", () => enableSync());
   ipcMain.handle("masar:switch-local", () => switchToLocal());
   ipcMain.handle("masar:import-local", () => importLocalWorkspace());

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Menu, Search } from "lucide-react";
+import { toast } from "sonner";
 
 import { Logo } from "@/components/brand/logo";
 import { SidebarContent } from "@/components/layout/sidebar";
@@ -33,6 +34,24 @@ export function AppShell({
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
   const [createBoardOpen, setCreateBoardOpen] = React.useState(false);
+  const showedSetupToast = React.useRef(false);
+
+  React.useEffect(() => {
+    if (showedSetupToast.current) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("setup") !== "success") return;
+    showedSetupToast.current = true;
+
+    toast.success("Your subscription is set up successfully!", {
+      description: "Welcome to your online workspace.",
+    });
+    url.searchParams.delete("setup");
+    window.history.replaceState(
+      {},
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, []);
 
   React.useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {

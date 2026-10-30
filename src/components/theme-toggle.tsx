@@ -18,7 +18,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-export function ThemeToggle({ withLabel = false }: { withLabel?: boolean }) {
+export function ThemeToggle({
+  withLabel = false,
+  showTooltip = true,
+}: {
+  withLabel?: boolean;
+  showTooltip?: boolean;
+}) {
   const { theme, setTheme } = useTheme();
   const mounted = React.useSyncExternalStore(
     () => () => {},
@@ -26,27 +32,31 @@ export function ThemeToggle({ withLabel = false }: { withLabel?: boolean }) {
     () => false,
   );
 
+  const trigger = (
+    <DropdownMenuTrigger asChild>
+      <Button
+        variant={withLabel ? "ghost" : "ghost"}
+        size={withLabel ? "sm" : "icon-sm"}
+        className={withLabel ? "w-full justify-start gap-2" : undefined}
+        aria-label="Change theme"
+      >
+        <Sun className="size-4 dark:hidden" />
+        <Moon className="hidden size-4 dark:block" />
+        {withLabel && <span>Appearance</span>}
+      </Button>
+    </DropdownMenuTrigger>
+  );
+
   return (
     <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant={withLabel ? "ghost" : "ghost"}
-              size={withLabel ? "sm" : "icon-sm"}
-              className={withLabel ? "w-full justify-start gap-2" : undefined}
-              aria-label="Change theme"
-            >
-              <Sun className="size-4 dark:hidden" />
-              <Moon className="hidden size-4 dark:block" />
-              {withLabel && <span>Appearance</span>}
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        {!withLabel && (
+      {showTooltip && !withLabel ? (
+        <Tooltip>
+          <TooltipTrigger asChild>{trigger}</TooltipTrigger>
           <TooltipContent side="right">Appearance</TooltipContent>
-        )}
-      </Tooltip>
+        </Tooltip>
+      ) : (
+        trigger
+      )}
       <DropdownMenuContent align="end" side={withLabel ? "top" : "bottom"}>
         <DropdownMenuLabel>Appearance</DropdownMenuLabel>
         <DropdownMenuRadioGroup

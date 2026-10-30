@@ -7,7 +7,6 @@ import { contextBridge, ipcRenderer } from "electron";
  */
 contextBridge.exposeInMainWorld("masarDesktop", {
   getState: () => ipcRenderer.invoke("masar:get-state"),
-  unlockPremium: () => ipcRenderer.invoke("masar:unlock-premium"),
   enableSync: () => ipcRenderer.invoke("masar:enable-sync"),
   switchToLocal: () => ipcRenderer.invoke("masar:switch-local"),
   importLocal: () => ipcRenderer.invoke("masar:import-local"),

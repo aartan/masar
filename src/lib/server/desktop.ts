@@ -9,9 +9,10 @@ import { users } from "@/db/schema";
  * - Local (free, default): a single-user offline workspace backed by a local
  *   SQLite file. There is no sign-up or sign-in; one implicit local account
  *   owns everything. Signalled by `MASAR_LOCAL_MODE=1`.
- * - Sync (premium): the local server talks to the hosted Turso database with
+ * - Sync (online): the local server talks to the hosted Turso database with
  *   real Better Auth accounts, so data syncs across devices. In this mode the
- *   flag is absent and the app behaves like the hosted web app.
+ *   flag is absent and the app behaves like the hosted web app. Online access
+ *   requires an active subscription or trial; local access never does.
  */
 export function isLocalMode(): boolean {
   return process.env.MASAR_LOCAL_MODE === "1";

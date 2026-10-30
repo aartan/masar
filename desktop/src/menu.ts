@@ -4,8 +4,6 @@ import type { WorkspaceMode } from "./settings";
 
 export interface MenuContext {
   mode: WorkspaceMode;
-  premiumUnlocked: boolean;
-  onUnlockPremium: () => void;
   onEnableSync: () => void;
   onSwitchLocal: () => void;
   onImportLocal: () => void;
@@ -13,7 +11,8 @@ export interface MenuContext {
 
 /**
  * Build a platform-appropriate native menu, including a Workspace menu that
- * switches between the free local workspace and premium sync.
+ * switches between the free local workspace and the online subscription
+ * workspace.
  *
  * The web UI already binds Cmd/Ctrl+K for global search, so the native menu
  * deliberately does not register that accelerator.
@@ -92,19 +91,15 @@ export function buildMenu(ctx: MenuContext): Menu {
 function buildWorkspaceSubmenu(ctx: MenuContext): MenuItemConstructorOptions[] {
   const items: MenuItemConstructorOptions[] = [
     {
-      label: ctx.mode === "sync" ? "Mode: Sync (premium)" : "Mode: Local (offline)",
+      label: ctx.mode === "sync" ? "Mode: Sync (online)" : "Mode: Local (offline)",
       enabled: false,
     },
     { type: "separator" },
   ];
 
   if (ctx.mode === "local") {
-    if (!ctx.premiumUnlocked) {
-      items.push({ label: "Unlock Sync (Premium)…", click: ctx.onUnlockPremium });
-    }
     items.push({
       label: "Enable Sync Across Devices…",
-      enabled: ctx.premiumUnlocked,
       click: ctx.onEnableSync,
     });
   } else {

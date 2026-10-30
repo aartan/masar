@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   ChevronsUpDown,
   Cloud,
+  CreditCard,
   Keyboard,
   LaptopMinimal,
   LayoutDashboard,
@@ -22,6 +23,7 @@ import { toast } from "sonner";
 import { Logo } from "@/components/brand/logo";
 import { Kbd } from "@/components/shared/empty-state";
 import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -42,28 +44,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { authClient } from "@/lib/auth-client";
+import type { MasarDesktopState } from "@/lib/desktop-bridge";
 import type { BoardSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-interface DesktopState {
-  isDesktop: boolean;
-  mode: "local" | "sync";
-  premiumUnlocked: boolean;
-}
-
-interface MasarDesktopBridge {
-  getState(): Promise<DesktopState>;
-  unlockPremium(): Promise<{ premiumUnlocked: boolean }>;
-  enableSync(): Promise<{ ok: boolean; error?: string }>;
-  switchToLocal(): Promise<void>;
-  importLocal(): Promise<unknown>;
-}
-
-declare global {
-  interface Window {
-    masarDesktop?: MasarDesktopBridge;
-  }
-}
 
 interface SidebarContentProps {
   boards: BoardSummary[];
@@ -120,7 +103,7 @@ export function SidebarContent({
 
   // Desktop-only bridge (undefined in the hosted web app). Drives the sync
   // controls in the workspace menu below.
-  const [desktop, setDesktop] = React.useState<DesktopState | null>(null);
+  const [desktop, setDesktop] = React.useState<MasarDesktopState | null>(null);
   React.useEffect(() => {
     const api = window.masarDesktop;
     if (!api) return;
@@ -133,26 +116,22 @@ export function SidebarContent({
     };
   }, []);
 
-  async function unlockSync() {
-    const result = await window.masarDesktop?.unlockPremium();
-    if (result) setDesktop((d) => (d ? { ...d, premiumUnlocked: result.premiumUnlocked } : d));
-  }
-
-
-
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground">
       <div className="flex items-center justify-between px-4 pt-5 pb-4">
         <Logo />
         {showClose && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onClose}
-            aria-label="Close navigation"
-          >
-            <X className="size-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <ThemeToggle showTooltip={false} />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onClose}
+              aria-label="Close navigation"
+            >
+              <X className="size-4" />
+            </Button>
+          </div>
         )}
       </div>
 
@@ -281,7 +260,7 @@ export function SidebarContent({
               type="button"
               className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent/60 disabled:opacity-60"
               disabled={signingOut}
-              aria-label="Settings and workspace"
+              aria-label="Account menu"
             >
               <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
                 {initial}
@@ -320,23 +299,33 @@ export function SidebarContent({
               Keyboard shortcuts
             </DropdownMenuItem>
 
+            {!isLocalMode && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() => {
+                    onNavigate?.();
+                    router.push("/subscription");
+                  }}
+                >
+                  <CreditCard />
+                  Subscription
+                </DropdownMenuItem>
+              </>
+            )}
+
             {desktop?.mode === "local" && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                   Workspace
                 </DropdownMenuLabel>
-                {desktop.premiumUnlocked ? (
-                  <DropdownMenuItem onSelect={() => void window.masarDesktop?.enableSync()}>
-                    <Cloud />
-                    Enable sync across devices
-                  </DropdownMenuItem>
-                ) : (
-                  <DropdownMenuItem onSelect={() => void unlockSync()}>
-                    <Cloud />
-                    Unlock sync (Premium)
-                  </DropdownMenuItem>
-                )}
+                <DropdownMenuItem
+                  onSelect={() => void window.masarDesktop?.enableSync()}
+                >
+                  <Cloud />
+                  Enable sync across devices
+                </DropdownMenuItem>
               </>
             )}
 

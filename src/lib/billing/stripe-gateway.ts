@@ -129,7 +129,6 @@ export class StripeBillingGateway implements BillingGateway {
   ): Promise<CheckoutSessionSnapshot> {
     const session = await this.stripe.checkout.sessions.create({
       mode: "subscription",
-      ui_mode: "hosted_page",
       customer: input.customerId,
       client_reference_id:
         input.metadata.pendingSignupId ?? input.metadata.userId ?? undefined,
@@ -195,11 +194,6 @@ export class StripeBillingGateway implements BillingGateway {
     return sessions.data.map(checkoutSnapshotFromStripe);
   }
 
-  /**
-   * Cancel immediately. Callers use this only to clean up abandoned
-   * `incomplete` Checkout subscriptions before starting a new attempt;
-   * period-end cancellation would leave the stale subscription behind.
-   */
   async cancelSubscription(subscriptionId: string): Promise<void> {
     try {
       await this.stripe.subscriptions.cancel(subscriptionId);

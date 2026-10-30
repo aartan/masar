@@ -13,7 +13,7 @@ Masar is available as a web app and as desktop applications for macOS and Window
 - macOS: Download the version for your Mac (Apple Silicon or Intel) from GitHub Releases.
 - Windows: Download the Windows (x64) installer from GitHub Releases.
 
-The desktop apps work offline by default, storing your workspace locally without requiring an account. Account sync lets you connect to your online account and synchronize work across supported devices.
+The desktop apps work offline by default, storing your workspace locally without requiring an account. Account sync connects the app to the hosted Masar web app; the desktop app has its own secure sign-in, so use the same email and password you used in the browser.
 
 ## Features
 - Boards and columns: Create, customize, reorder, and organize project boards.

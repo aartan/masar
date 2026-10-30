@@ -34,6 +34,26 @@ test.describe("authentication and workspace privacy", () => {
     );
   });
 
+  test("desktop sync onboarding explains the separate sign-in", async ({
+    page,
+  }) => {
+    await page.goto("/desktop");
+    await expect(
+      page.getByRole("heading", { name: "Sync your desktop workspace" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/keeps its own secure sign-in/),
+    ).toBeVisible();
+
+    const createAccount = page.getByRole("link", { name: "Create an account" });
+    await expect(createAccount).toHaveAttribute("href", "/signup");
+    await createAccount.click();
+    await expect(page).toHaveURL(/\/signup$/);
+    await expect(
+      page.getByRole("heading", { name: "Create your account" }),
+    ).toBeVisible();
+  });
+
   test("redirects anonymous visitors, disables direct sign-up, then supports sign-out and sign-in", async ({
     page,
   }) => {

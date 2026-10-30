@@ -24,6 +24,7 @@ const APP_USER_MODEL_ID = "com.masar.app";
 let server: ServerHandle | null = null;
 let mainWindow: BrowserWindow | null = null;
 let origin = "";
+let startUrl = "";
 let activeMode: WorkspaceMode = "local";
 let shuttingDown = false;
 
@@ -85,7 +86,9 @@ function createWindow(): void {
       showConnectionError(errorDescription);
     },
   );
-  void mainWindow.loadURL(origin).catch(() => {
+  mainWindow.webContents.on("will-navigate", blockVercelAuthNavigation);
+  mainWindow.webContents.on("will-redirect", blockVercelAuthNavigation);
+  void mainWindow.loadURL(startUrl || origin).catch(() => {
     // `did-fail-load` renders the connection fallback below.
   });
 }
@@ -101,7 +104,7 @@ function devWindowIcon(): string | undefined {
 function showConnectionError(description: string): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const page = connectionErrorPage({
-    origin,
+    origin: startUrl || origin,
     description,
     canUseLocal: activeMode === "sync",
   });
@@ -111,6 +114,30 @@ function showConnectionError(description: string): void {
     .catch((error) => {
       log(`[window] could not show connection fallback: ${String(error)}`);
     });
+}
+
+/**
+ * Vercel deployment protection redirects unauthenticated Electron windows to
+ * vercel.com's SSO screen. That page can never sign the desktop app in, so
+ * surface an actionable explanation instead of a confusing third-party login.
+ */
+function blockVercelAuthNavigation(
+  event: { preventDefault: () => void },
+  url: string,
+): void {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return;
+  }
+  if (hostname !== "vercel.com" && hostname !== "www.vercel.com") return;
+
+  event.preventDefault();
+  log(`[window] blocked Vercel authentication redirect: ${url}`);
+  showConnectionError(
+    "This sync deployment is protected by Vercel Authentication. Use a public production URL, or disable Vercel Deployment Protection, then try again.",
+  );
 }
 
 /** Start the local-mode server, retrying once per EADDRINUSE with a fresh port. */
@@ -160,11 +187,35 @@ function switchMode(mode: WorkspaceMode): void {
   app.exit(0);
 }
 
+/**
+ * Prefer the desktop onboarding route, but fall back to the hosted login when
+ * an older deployment does not have it yet. A HEAD request is cheap and keeps
+ * the desktop shell usable against deployments that predate this build.
+ */
+async function hostedStartUrl(base: string): Promise<string> {
+  const root = base.replace(/\/+$/, "");
+  const onboarding = `${root}/desktop`;
+  try {
+    const response = await net.fetch(onboarding, {
+      method: "HEAD",
+      redirect: "follow",
+    });
+    if (response.ok) return onboarding;
+    log(
+      `[mode] ${onboarding} returned ${response.status}; using the hosted login`,
+    );
+  } catch (error) {
+    log(`[mode] could not probe ${onboarding}: ${String(error)}`);
+  }
+  return `${root}/login`;
+}
+
 async function bootstrap(): Promise<void> {
   // Development: attach to a running `next dev` server (desktop/scripts/dev.ts).
   const devUrl = process.env.MASAR_DEV_SERVER_URL?.trim();
   if (devUrl) {
     origin = devUrl;
+    startUrl = devUrl;
     createWindow();
     return;
   }
@@ -177,9 +228,13 @@ async function bootstrap(): Promise<void> {
     const url = resolveSyncUrl();
     if (url) {
       // Sync mode loads the centrally-hosted app directly: no local server and
-      // no database credentials in the app. The user signs in on the host.
+      // no database credentials in the app. Start at the desktop onboarding
+      // page so a first run explains the separate desktop sign-in instead of
+      // dropping the user on the hosted login form. The auth layout sends
+      // already signed-in users straight to the workspace.
       log(`[mode] loading hosted workspace: ${url}`);
       origin = url;
+      startUrl = await hostedStartUrl(url);
       createWindow();
       return;
     }
@@ -212,6 +267,7 @@ async function bootstrap(): Promise<void> {
     fatal("Masar server failed to start", String(error));
   }
 
+  startUrl = origin;
   createWindow();
   watchServerExit();
 }

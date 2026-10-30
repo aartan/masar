@@ -150,6 +150,14 @@ back to local never uploads, deletes, or otherwise modifies local data. The
 subscription screen and the desktop Settings menu expose **Continue offline** /
 **Switch to Local Workspace** whenever the app is running in sync mode.
 
+Sync mode is a window onto the deployed web app. Its first launch opens
+`/desktop`, which offers **Sign in** and **Create an account**; already
+signed-in users go straight to the workspace. Electron keeps its own secure
+cookie jar, so a sign-up or sign-in in Safari/Chrome does not transfer to the
+desktop app — use the same email and password there. The desktop build's sync
+URL comes from `desktop/src/sync-config.ts` (overridable with `MASAR_SYNC_URL`),
+so that deployment must contain the current billing build.
+
 ## Security notes
 
 - The Stripe secret key and webhook secret stay on the server. Card details

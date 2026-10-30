@@ -34,7 +34,7 @@ test.describe("authentication and workspace privacy", () => {
     );
   });
 
-  test("redirects anonymous visitors, then supports sign-up, sign-out, and sign-in", async ({
+  test("redirects anonymous visitors, disables direct sign-up, then supports sign-out and sign-in", async ({
     page,
   }) => {
     const errors = collectPageErrors(page);
@@ -53,21 +53,23 @@ test.describe("authentication and workspace privacy", () => {
     const unauthorized = await page.request.get("/api/boards");
     expect(unauthorized.status()).toBe(401);
 
-    await page.goto("/signup");
-    await page.getByLabel("Name", { exact: true }).fill(account.name);
-    await page.getByLabel("Email", { exact: true }).fill(account.email);
-    await page.getByLabel("Password", { exact: true }).fill(account.password);
-    await page
-      .getByLabel("Confirm password", { exact: true })
-      .fill(account.password);
-    await page.getByRole("button", { name: "Create account" }).click();
+    // Accounts can only be created after Stripe confirms a subscription.
+    const direct = await page.request.post("/api/auth/sign-up/email", {
+      data: {
+        name: "Bypass Attempt",
+        email: uniqueEmail("bypass"),
+        password: "Masar-bypass-password-2026",
+      },
+      headers: { Origin: "http://localhost:3100" },
+    });
+    expect(direct.ok()).toBeFalsy();
 
-    await expect(page).toHaveURL(/\/$/);
+    await signUp(page.request, account);
+    await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await expect(
-      page.getByText("Your workspace is ready for its first board."),
+      page.getByRole("button", { name: "Account menu" }),
     ).toBeVisible();
-    await expect(page.getByText("No boards yet.")).toBeVisible();
 
     await page.getByRole("button", { name: "Account menu" }).click();
     await expect(page.getByText(account.email)).toBeVisible();
@@ -83,7 +85,7 @@ test.describe("authentication and workspace privacy", () => {
     expect(errors).toEqual([]);
   });
 
-  test("new accounts start empty unless demo content is explicitly selected", async ({
+  test("demo content can be added explicitly to an empty workspace", async ({
     page,
   }) => {
     const errors = collectPageErrors(page);
@@ -93,19 +95,14 @@ test.describe("authentication and workspace privacy", () => {
       password: "Masar-demo-password-2026",
     };
 
-    await page.goto("/signup");
-    await page.getByLabel("Name", { exact: true }).fill(account.name);
-    await page.getByLabel("Email", { exact: true }).fill(account.email);
-    await page.getByLabel("Password", { exact: true }).fill(account.password);
-    await page
-      .getByLabel("Confirm password", { exact: true })
-      .fill(account.password);
-    await page
-      .getByRole("checkbox", { name: /Start with demo content/ })
-      .check();
-    await page.getByRole("button", { name: "Create account" }).click();
+    await signUp(page.request, account);
+    await page.goto("/");
+    await expect(page.getByText("No boards yet.")).toBeVisible();
 
-    await expect(page).toHaveURL(/\/$/);
+    const response = await page.request.post("/api/onboarding/demo");
+    expect(response.ok()).toBeTruthy();
+    await page.reload();
+
     const demoTile = page
       .locator("aside")
       .getByRole("link", { name: /Welcome to Masar/ });

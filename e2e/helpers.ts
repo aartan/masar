@@ -1,12 +1,32 @@
+import { randomUUID } from "node:crypto";
+
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+import { hashPassword } from "better-auth/crypto";
+
+import * as schema from "../src/db/schema";
 
 export const E2E_PASSWORD = "Masar-e2e-password-2026";
 export const E2E_ORIGIN = "http://localhost:3100";
+const E2E_DATABASE_URL = "file:./data/e2e.db";
 
 export interface TestAccount {
   name: string;
   email: string;
   password: string;
+}
+
+export type SeedSubscriptionStatus =
+  | "trialing"
+  | "active"
+  | "canceling"
+  | "canceled"
+  | "incomplete"
+  | "none";
+
+export interface SeedAccountOptions extends Partial<TestAccount> {
+  subscription?: SeedSubscriptionStatus;
 }
 
 export interface ApiBoard {
@@ -25,33 +45,101 @@ export function uniqueEmail(prefix = "e2e"): string {
 }
 
 /**
- * Creates an account through Better Auth. Pass `page.request` so the session
- * cookie lands in the browser context used by the test.
+ * Creates a Better Auth-compatible account directly in the E2E SQLite file,
+ * with a subscription unless requested otherwise. Public sign-up is disabled
+ * because accounts may only be created after Stripe Checkout, which is not
+ * available in the Playwright server.
  */
-export async function signUp(
-  request: APIRequestContext,
-  overrides: Partial<TestAccount> = {},
+export async function seedAccount(
+  overrides: SeedAccountOptions = {},
 ): Promise<TestAccount> {
   const account: TestAccount = {
     name: overrides.name ?? "E2E User",
     email: overrides.email ?? uniqueEmail(),
     password: overrides.password ?? E2E_PASSWORD,
   };
+  const subscriptionStatus = overrides.subscription ?? "trialing";
+  const now = new Date();
+  const future = new Date(now.getTime() + 86_400_000 * 14);
+  const past = new Date(now.getTime() - 86_400_000);
+  const userId = randomUUID();
+  const passwordHash = await hashPassword(account.password);
 
-  const response = await request.post("/api/auth/sign-up/email", {
-    data: {
+  const client = createClient({ url: E2E_DATABASE_URL });
+  const db = drizzle(client, { schema });
+  try {
+    await db.insert(schema.users).values({
+      id: userId,
       name: account.name,
       email: account.email,
-      password: account.password,
-    },
-    headers: authHeaders(),
-  });
+      emailVerified: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(schema.accounts).values({
+      id: randomUUID(),
+      accountId: userId,
+      providerId: "credential",
+      userId,
+      password: passwordHash,
+      createdAt: now,
+      updatedAt: now,
+    });
 
-  expect(
-    response.ok(),
-    `Sign-up failed with ${response.status()}: ${await response.text()}`,
-  ).toBeTruthy();
+    if (subscriptionStatus !== "none") {
+      const customerId = `cus_e2e_${randomUUID()}`;
+      await db.insert(schema.billingCustomers).values({
+        id: randomUUID(),
+        userId,
+        stripeCustomerId: customerId,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(schema.subscriptions).values({
+        id: randomUUID(),
+        userId,
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: `sub_e2e_${randomUUID()}`,
+        stripePriceId: "price_e2e",
+        status:
+          subscriptionStatus === "canceling" ? "active" : subscriptionStatus,
+        planName: "Masar Pro",
+        currency: "usd",
+        amount: 1200,
+        interval: "month",
+        currentPeriodEnd:
+          subscriptionStatus === "incomplete"
+            ? null
+            : subscriptionStatus === "canceled"
+              ? past
+              : future,
+        trialStart: subscriptionStatus === "trialing" ? now : null,
+        trialEnd: subscriptionStatus === "trialing" ? future : null,
+        cancelAtPeriodEnd: subscriptionStatus === "canceling",
+        canceledAt: subscriptionStatus === "canceled" ? past : null,
+        stripeCreatedAt: past,
+        lastSyncedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  } finally {
+    client.close();
+  }
 
+  return account;
+}
+
+/**
+ * Seeds an account with an entitled subscription and signs it in. Existing
+ * tests use this in place of the now-disabled public sign-up endpoint.
+ */
+export async function signUp(
+  request: APIRequestContext,
+  overrides: SeedAccountOptions = {},
+): Promise<TestAccount> {
+  const account = await seedAccount(overrides);
+  await signIn(request, account);
   return account;
 }
 

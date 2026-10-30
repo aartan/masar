@@ -46,7 +46,7 @@ export function DesktopOfflineOption({
       }
     >
       <p className="text-[11.5px] leading-relaxed text-muted-foreground">
-        Working offline is free and keeps your local workspace untouched.
+        Work offline for free in your local workspace.
       </p>
       <Button
         type="button"

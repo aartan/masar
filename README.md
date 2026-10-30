@@ -9,9 +9,9 @@ Create an account with a 14-day free trial and select Start with demo content to
 ## Get Masar
 Masar is available as a web app and as desktop applications for macOS and Windows.
 
-- Web: Try online [demo](https://next-kanban-gamma.vercel.app/)
-- macOS: Download the version for your Mac (Apple Silicon or Intel) from GitHub Releases.
-- Windows: Download the Windows (x64) installer from GitHub Releases.
+- Web: Visit online [version](https://next-kanban-gamma.vercel.app/)
+- macOS: Download the version for your Mac (Apple Silicon or Intel) from GitHub [Releases](https://github.com/aartan/masar/releases).
+- Windows: Download the Windows (x64) installer from GitHub [Releases](https://github.com/aartan/masar/releases).
 
 The desktop apps work offline by default, storing your workspace locally without requiring an account. Account sync connects the app to the hosted Masar web app; the desktop app has its own secure sign-in, so use the same email and password you used in the browser.
 
@@ -27,15 +27,8 @@ The desktop apps work offline by default, storing your workspace locally without
 
 ## Subscriptions & billing
 
-The online workspace requires an active subscription or trial. Signup collects a
-card through Stripe Checkout; the account is created only after Stripe confirms
-the trial or subscription. Cancelling keeps access through the end of the paid
-period, and expired accounts can still manage billing or sign out. The desktop
-app can always switch back to its free local offline workspace without touching
-local data.
-
-See [docs/billing.md](docs/billing.md) for Stripe product, price, Customer
-Portal, webhook, environment, migration, and test-card setup.
+Online sync runs on hosted infrastructure, so it requires a subscription to help
+offset server costs. Offline local use on the desktop app is always free.
 
 ## Technology
 

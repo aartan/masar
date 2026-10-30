@@ -129,6 +129,7 @@ export class StripeBillingGateway implements BillingGateway {
   ): Promise<CheckoutSessionSnapshot> {
     const session = await this.stripe.checkout.sessions.create({
       mode: "subscription",
+      ui_mode: "hosted_page",
       customer: input.customerId,
       client_reference_id:
         input.metadata.pendingSignupId ?? input.metadata.userId ?? undefined,
@@ -196,7 +197,9 @@ export class StripeBillingGateway implements BillingGateway {
 
   async cancelSubscription(subscriptionId: string): Promise<void> {
     try {
-      await this.stripe.subscriptions.cancel(subscriptionId);
+      await await this.stripe.subscriptions.update(subscriptionId, {
+  cancel_at_period_end: true,
+});;
     } catch (error) {
       if (isStripeNotFound(error)) return;
       throw error;

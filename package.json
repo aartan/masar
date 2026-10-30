@@ -25,6 +25,7 @@
     "desktop:prepare": "tsx desktop/scripts/prepare-standalone.ts",
     "desktop:build:mac": "cross-env NODE_ENV=production npm run build && npm run desktop:compile && npm run desktop:prepare && electron-builder --mac",
     "desktop:build:win": "cross-env NODE_ENV=production npm run build && npm run desktop:compile && cross-env MASAR_TARGETS=win32-x64-msvc npm run desktop:prepare && electron-builder --win",
+    "desktop:build:linux": "cross-env NODE_ENV=production npm run build && npm run desktop:compile && npm run desktop:prepare && electron-builder --linux",
     "desktop:dev": "tsx desktop/scripts/dev.ts"
   },
   "dependencies": {

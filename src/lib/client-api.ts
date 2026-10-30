@@ -43,6 +43,18 @@ export async function api<T>(
 
   if (!response.ok) {
     const body = payload as ApiErrorBody | null;
+
+    // The backend is authoritative. This only sends the browser to the
+    // subscription screen so the user can restore access.
+    if (
+      response.status === 402 &&
+      typeof window !== "undefined" &&
+      !window.location.pathname.startsWith("/subscription")
+    ) {
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- shared fetch helper has no router instance
+      window.location.assign("/subscription?required=1");
+    }
+
     throw new ClientApiError(
       body?.error ?? "Something went wrong. Please try again.",
       response.status,

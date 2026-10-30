@@ -13,7 +13,6 @@ import {
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,11 +20,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
 import { friendlyAuthError } from "@/lib/auth-errors";
+import { api, errorMessage } from "@/lib/client-api";
 import { emailSchema } from "@/lib/validation";
 
 type AuthMode = "login" | "signup";
 
-export function AuthForm({ mode }: { mode: AuthMode }) {
+export function AuthForm({
+  mode,
+  trialDays = 14,
+  notice,
+}: {
+  mode: AuthMode;
+  trialDays?: number;
+  notice?: string | null;
+}) {
   const router = useRouter();
   const isSignup = mode === "signup";
   const [name, setName] = React.useState("");
@@ -68,48 +76,32 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
 
     try {
       if (isSignup) {
-        const { error: signUpError } = await authClient.signUp.email({
-          name: trimmedName,
-          email: parsedEmail.data,
-          password,
+        const { url } = await api<{ url: string }>("/api/signup/start", {
+          method: "POST",
+          body: JSON.stringify({
+            name: trimmedName,
+            email: parsedEmail.data,
+            password,
+            demoContent,
+          }),
         });
-        if (signUpError) {
-          setError(
-            friendlyAuthError(signUpError, "Could not create your account."),
-          );
-          return;
-        }
+        window.location.assign(url);
+        return;
+      }
 
-        if (demoContent) {
-          try {
-            const response = await fetch("/api/onboarding/demo", {
-              method: "POST",
-            });
-            if (!response.ok) throw new Error("Demo content was not added.");
-            toast.success("Demo content added", {
-              description: "A sample board is ready to explore.",
-            });
-          } catch {
-            toast.error("Account created without demo content", {
-              description: "Create a board from scratch to get started.",
-            });
-          }
-        }
-      } else {
-        const { error: signInError } = await authClient.signIn.email({
-          email: parsedEmail.data,
-          password,
-        });
-        if (signInError) {
-          setError(friendlyAuthError(signInError, "Could not sign in."));
-          return;
-        }
+      const { error: signInError } = await authClient.signIn.email({
+        email: parsedEmail.data,
+        password,
+      });
+      if (signInError) {
+        setError(friendlyAuthError(signInError, "Could not sign in."));
+        return;
       }
 
       router.push("/");
       router.refresh();
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (caught) {
+      setError(errorMessage(caught));
     } finally {
       setLoading(false);
     }
@@ -234,6 +226,15 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         </label>
       )}
 
+      {notice && (
+        <p
+          role="status"
+          className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-[12px] leading-relaxed text-foreground/80"
+        >
+          {notice}
+        </p>
+      )}
+
       {error && (
         <p
           role="alert"
@@ -251,8 +252,22 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         ) : (
           <ArrowRight className="size-4" />
         )}
-        {isSignup ? "Create account" : "Sign in"}
+        {isSignup
+          ? loading
+            ? "Opening secure checkout…"
+            : trialDays > 0
+              ? "Start free trial"
+              : "Continue to checkout"
+          : "Sign in"}
       </Button>
+
+      {isSignup && (
+        <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
+          {trialDays > 0
+            ? `Card required. You won't be charged during your ${trialDays}-day trial. Cancel anytime.`
+            : "Secure recurring billing through Stripe. Cancel anytime."}
+        </p>
+      )}
 
       <p className="text-center text-[12.5px] text-muted-foreground">
         {isSignup ? "Already have an account?" : "New to Masar?"}{" "}

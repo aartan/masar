@@ -242,6 +242,96 @@ export const comments = sqliteTable(
   (table) => [index("comments_task_idx").on(table.taskId, table.createdAt)],
 );
 
+/**
+ * Billing tables. Stripe is the source of truth; these rows are a verified,
+ * queryable snapshot so workspace requests never need to call Stripe.
+ */
+export const billingCustomers = sqliteTable(
+  "billing_customers",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .unique()
+      .references(() => users.id, { onDelete: "cascade" }),
+    stripeCustomerId: text("stripe_customer_id").notNull().unique(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("billing_customers_stripe_customer_idx").on(table.stripeCustomerId),
+  ],
+);
+
+export const subscriptions = sqliteTable(
+  "subscriptions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    stripeCustomerId: text("stripe_customer_id").notNull(),
+    stripeSubscriptionId: text("stripe_subscription_id").notNull().unique(),
+    stripePriceId: text("stripe_price_id"),
+    status: text("status").notNull(),
+    planName: text("plan_name"),
+    currency: text("currency"),
+    amount: integer("amount"),
+    interval: text("interval"),
+    currentPeriodEnd: integer("current_period_end", {
+      mode: "timestamp_ms",
+    }),
+    trialStart: integer("trial_start", { mode: "timestamp_ms" }),
+    trialEnd: integer("trial_end", { mode: "timestamp_ms" }),
+    cancelAtPeriodEnd: integer("cancel_at_period_end", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    canceledAt: integer("canceled_at", { mode: "timestamp_ms" }),
+    stripeCreatedAt: integer("stripe_created_at", { mode: "timestamp_ms" }),
+    lastSyncedAt: integer("last_synced_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("subscriptions_user_idx").on(table.userId),
+    index("subscriptions_customer_idx").on(table.stripeCustomerId),
+  ],
+);
+
+export const pendingSignups = sqliteTable(
+  "pending_signups",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    email: text("email").notNull().unique(),
+    /** Deleted as soon as the account is provisioned or abandoned by cleanup. */
+    passwordHash: text("password_hash"),
+    demoContent: integer("demo_content", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    stripeCustomerId: text("stripe_customer_id"),
+    checkoutSessionId: text("checkout_session_id"),
+    status: text("status").notNull().default("pending"),
+    userId: text("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("pending_signups_stripe_customer_idx").on(table.stripeCustomerId),
+    index("pending_signups_status_idx").on(table.status),
+  ],
+);
+
+export const stripeWebhookEvents = sqliteTable("stripe_webhook_events", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  createdAt: createdAt(),
+});
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type AccountRow = typeof accounts.$inferSelect;
@@ -251,3 +341,7 @@ export type TaskRow = typeof tasks.$inferSelect;
 export type LabelRow = typeof labels.$inferSelect;
 export type SubtaskRow = typeof subtasks.$inferSelect;
 export type CommentRow = typeof comments.$inferSelect;
+export type BillingCustomerRow = typeof billingCustomers.$inferSelect;
+export type SubscriptionRow = typeof subscriptions.$inferSelect;
+export type PendingSignupRow = typeof pendingSignups.$inferSelect;
+export type StripeWebhookEventRow = typeof stripeWebhookEvents.$inferSelect;

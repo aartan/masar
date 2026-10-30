@@ -150,6 +150,16 @@ export const searchQuerySchema = z.object({
   q: z.string().trim().min(1).max(100),
 });
 
+export const signupStartSchema = z.object({
+  name: nameSchema(80, "Name"),
+  email: emailSchema,
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters.")
+    .max(128, "Password must be 128 characters or fewer."),
+  demoContent: z.boolean().optional().default(false),
+});
+
 export type BoardCreateInput = z.infer<typeof boardCreateSchema>;
 export type BoardUpdateInput = z.infer<typeof boardUpdateSchema>;
 export type ColumnCreateInput = z.infer<typeof columnCreateSchema>;

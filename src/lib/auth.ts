@@ -42,6 +42,10 @@ export const auth = betterAuth({
     getTrustedAuthOrigins({ request, baseURL, nodeEnv: process.env.NODE_ENV }),
   emailAndPassword: {
     enabled: true,
+    // Accounts are only created after Stripe confirms an entitled subscription
+    // (see /api/signup/complete and the Stripe webhook). Direct sign-up would
+    // let callers bypass checkout entirely.
+    disableSignUp: true,
     minPasswordLength: 8,
     maxPasswordLength: 128,
   },

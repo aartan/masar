@@ -1,64 +1,92 @@
 /**
- * Development launcher: start `next dev` on a fixed loopback port, wait for it
- * to answer, then open the Electron shell pointed at it. NODE_ENV stays
- * `development`, so the auth origin logic is lenient about the loopback port
- * and no production secret is required. The dev DB remains the repo's
- * ./data/app.db (migrated by the existing `predev` hook).
+ * Development launcher:
+ *   1. compile the Electron main/preload bundles
+ *   2. apply SQLite migrations
+ *   3. start the local API with tsx on 4782
+ *   4. start Vite on 5173 (proxying /api to the local API)
+ *   5. open Electron against Vite
  */
 import { spawn } from "node:child_process";
 import path from "node:path";
 
-const PORT = Number(process.env.MASAR_DEV_PORT ?? 3000);
-const ORIGIN = `http://localhost:${PORT}`;
+const API_PORT = Number(process.env.MASAR_DEV_API_PORT ?? 4782);
+const WEB_PORT = Number(process.env.MASAR_DEV_PORT ?? 5173);
+const API_URL = `http://127.0.0.1:${API_PORT}`;
+const WEB_URL = `http://localhost:${WEB_PORT}`;
 const repoRoot = path.resolve(__dirname, "..", "..");
 
-function run(command: string, args: string[], env: NodeJS.ProcessEnv) {
-  return spawn(command, args, { cwd: repoRoot, env, stdio: "inherit", shell: false });
+function run(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  return spawn(command, args, {
+    cwd: repoRoot,
+    env,
+    stdio: "inherit",
+    shell: false,
+  });
 }
 
-async function waitForServer(url: string, timeoutMs = 60_000): Promise<void> {
+async function runOnce(command: string, args: string[]): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = run(command, args);
+    child.on("exit", (code) =>
+      code === 0 ? resolve() : reject(new Error(`${command} exited ${code}`)),
+    );
+  });
+}
+
+async function waitFor(url: string, timeoutMs = 60_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(url, { cache: "no-store" });
-      if (res.ok || res.status === 404) return; // server is up and routing
+      const response = await fetch(url, { cache: "no-store" });
+      if (response.ok) return;
     } catch {
-      /* not ready yet */
+      /* not ready */
     }
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((resolve) => setTimeout(resolve, 400));
   }
-  throw new Error(`next dev did not start on ${url} within ${timeoutMs}ms`);
+  throw new Error(`${url} did not become ready within ${timeoutMs}ms`);
 }
 
 async function main(): Promise<void> {
-  // Compile the Electron main/preload once so desktop/dist/main.js exists.
-  const compile = run("npm", ["run", "desktop:compile"], process.env);
-  await new Promise<void>((resolve, reject) => {
-    compile.on("exit", (code) =>
-      code === 0 ? resolve() : reject(new Error(`desktop:compile exited ${code}`)),
-    );
-  });
+  await runOnce("npm", ["run", "desktop:compile"]);
+  await runOnce("npm", ["run", "db:migrate"]);
 
-  const next = run("npx", ["next", "dev", "-p", String(PORT)], {
+  const localApi = run("npx", ["tsx", "src/server/entry.ts"], {
     ...process.env,
     NODE_ENV: "development",
+    HOSTNAME: "127.0.0.1",
+    PORT: String(API_PORT),
+    DATABASE_URL: process.env.DATABASE_URL ?? "file:./data/app.db",
   });
 
+  const vite = run("npx", ["vite", "--port", String(WEB_PORT), "--strictPort"], {
+    ...process.env,
+    MASAR_DEV_API_URL: API_URL,
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const electronBin = require("electron") as unknown as string;
 
   try {
-    await waitForServer(`${ORIGIN}/api/health`);
+    await Promise.all([waitFor(`${API_URL}/api/health`), waitFor(WEB_URL)]);
     const electron = run(electronBin, ["."], {
       ...process.env,
       NODE_ENV: "development",
-      MASAR_DEV_SERVER_URL: ORIGIN,
+      MASAR_DEV_SERVER_URL: WEB_URL,
+      MASAR_DEV_API_URL: API_URL,
     });
     electron.on("exit", () => {
-      next.kill();
+      localApi.kill();
+      vite.kill();
       process.exit(0);
     });
   } catch (error) {
-    next.kill();
+    localApi.kill();
+    vite.kill();
     throw error;
   }
 }

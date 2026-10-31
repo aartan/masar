@@ -2,25 +2,22 @@ import { app } from "electron";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { DEFAULT_SYNC_URL } from "./sync-config";
-
-export type WorkspaceMode = "local" | "sync";
+import { DEFAULT_API_URL, normalizeApiUrl, validateApiUrl } from "./api-config";
 
 export interface DesktopSettings {
-  /** Which backend the app uses. Defaults to the free offline local workspace. */
-  mode: WorkspaceMode;
-  /**
-   * Legacy placeholder from builds before real billing. Ignored; kept only so
-   * reading an old settings file does not fail.
-   */
+  /** Premium Sync API address, or null to use the build default. */
+  apiUrl: string | null;
+  /** Background sync is on by default once an account is connected. */
+  autoSync: boolean;
+  /** Legacy fields from older builds are ignored but preserved on write. */
+  mode?: string;
   premiumUnlocked?: boolean;
-  /** Overrides the hosted sync URL; normally null (the baked default is used). */
-  syncUrl: string | null;
+  syncUrl?: string | null;
 }
 
 const DEFAULTS: DesktopSettings = {
-  mode: "local",
-  syncUrl: null,
+  apiUrl: null,
+  autoSync: true,
 };
 
 function settingsFile(): string {
@@ -42,12 +39,17 @@ export function writeSettings(patch: Partial<DesktopSettings>): DesktopSettings 
   return next;
 }
 
-/** The central hosted app URL for sync mode, or null if none is configured. */
-export function resolveSyncUrl(): string | null {
-  const stored = readSettings().syncUrl?.trim();
-  if (stored) return stored;
-  const fromEnv = process.env.MASAR_SYNC_URL?.trim();
-  if (fromEnv) return fromEnv;
-  return DEFAULT_SYNC_URL.trim() || null;
+/** Resolution order: saved setting, environment, build default. */
+export function resolveApiUrl(): string {
+  const stored = readSettings().apiUrl?.trim();
+  if (stored) return normalizeApiUrl(stored);
+  const fromEnv = process.env.MASAR_API_URL?.trim();
+  if (fromEnv) return normalizeApiUrl(fromEnv);
+  return normalizeApiUrl(DEFAULT_API_URL);
 }
 
+export function saveApiUrl(value: string): string {
+  const validated = validateApiUrl(value);
+  writeSettings({ apiUrl: validated });
+  return validated;
+}

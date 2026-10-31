@@ -1,22 +1,11 @@
 import { app, Menu, shell, type MenuItemConstructorOptions } from "electron";
 
-import type { WorkspaceMode } from "./settings";
-
 export interface MenuContext {
-  mode: WorkspaceMode;
-  onEnableSync: () => void;
-  onSwitchLocal: () => void;
-  onImportLocal: () => void;
+  onOpenSync: () => void;
+  onSyncNow: () => void;
 }
 
-/**
- * Build a platform-appropriate native menu, including a Workspace menu that
- * switches between the free local workspace and the online subscription
- * workspace.
- *
- * The web UI already binds Cmd/Ctrl+K for global search, so the native menu
- * deliberately does not register that accelerator.
- */
+/** Platform-appropriate native menu with workspace and sync actions. */
 export function buildMenu(ctx: MenuContext): Menu {
   const isMac = process.platform === "darwin";
   const template: MenuItemConstructorOptions[] = [];
@@ -38,7 +27,10 @@ export function buildMenu(ctx: MenuContext): Menu {
     });
   }
 
-  template.push({ label: "File", submenu: isMac ? [{ role: "close" }] : [{ role: "quit" }] });
+  template.push({
+    label: "File",
+    submenu: isMac ? [{ role: "close" }] : [{ role: "quit" }],
+  });
 
   template.push({
     label: "Edit",
@@ -53,7 +45,18 @@ export function buildMenu(ctx: MenuContext): Menu {
     ],
   });
 
-  template.push({ label: "Workspace", submenu: buildWorkspaceSubmenu(ctx) });
+  template.push({
+    label: "Workspace",
+    submenu: [
+      { label: "Premium Sync…", click: ctx.onOpenSync },
+      { label: "Sync Now", click: ctx.onSyncNow },
+      { type: "separator" },
+      {
+        label: "Masar Local Workspace",
+        enabled: false,
+      },
+    ],
+  });
 
   template.push({
     label: "View",
@@ -79,34 +82,11 @@ export function buildMenu(ctx: MenuContext): Menu {
     role: "help",
     submenu: [
       {
-        label: "Masar on the Web",
-        click: () => shell.openExternal("https://next-kanban-gamma.vercel.app/"),
+        label: "Masar on GitHub",
+        click: () => shell.openExternal("https://github.com/aartan/masar"),
       },
     ],
   });
 
   return Menu.buildFromTemplate(template);
-}
-
-function buildWorkspaceSubmenu(ctx: MenuContext): MenuItemConstructorOptions[] {
-  const items: MenuItemConstructorOptions[] = [
-    {
-      label: ctx.mode === "sync" ? "Mode: Sync (online)" : "Mode: Local (offline)",
-      enabled: false,
-    },
-    { type: "separator" },
-  ];
-
-  if (ctx.mode === "local") {
-    items.push({
-      label: "Enable Sync Across Devices…",
-      click: ctx.onEnableSync,
-    });
-  } else {
-    items.push({ label: "Import Local Data Into Account…", click: ctx.onImportLocal });
-    items.push({ type: "separator" });
-    items.push({ label: "Switch to Local Workspace", click: ctx.onSwitchLocal });
-  }
-
-  return items;
 }

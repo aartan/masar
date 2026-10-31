@@ -110,12 +110,14 @@ function disconnectedStatus(error: string | null = null): PremiumStatus {
 }
 
 async function getPremiumStatus(): Promise<PremiumStatus> {
-  if (!session || !premiumClient) return disconnectedStatus();
+  const currentSession = session;
+  const client = premiumClient;
+  if (!currentSession || !client) return disconnectedStatus();
   try {
-    const billing = await premiumClient.entitlement();
+    const billing = await client.entitlement();
     return {
       connected: true,
-      user: session.user,
+      user: currentSession.user,
       entitlement: billing.entitlement,
       subscription: billing.subscription,
       billingConfigured: billing.billingConfigured,
@@ -132,7 +134,7 @@ async function getPremiumStatus(): Promise<PremiumStatus> {
     }
     return {
       connected: true,
-      user: session.user,
+      user: currentSession.user,
       entitlement: null,
       subscription: null,
       billingConfigured: false,
@@ -348,8 +350,13 @@ function expireSession(): void {
 
 function adoptSession(auth: { token: string; user: StoredPremiumSession["user"] }): void {
   if (!activeApiUrl) throw new Error("No API address is configured.");
-  session = { apiUrl: activeApiUrl, token: auth.token, user: auth.user };
-  savePremiumSession(session);
+  const next: StoredPremiumSession = {
+    apiUrl: activeApiUrl,
+    token: auth.token,
+    user: auth.user,
+  };
+  savePremiumSession(next);
+  session = next;
   premiumClient = new PremiumApiClient(activeApiUrl, auth.token);
   syncEngine.disconnect();
 }

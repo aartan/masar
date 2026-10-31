@@ -134,6 +134,16 @@ export async function prepareSync(
       await tx.execute("delete from sync_changes");
       await bootstrapChanges(tx);
       await tx.execute("update sync_state set bootstrapped = 1 where id = 1");
+    } else {
+      // While offline/disconnected the outbox can contain several updates for
+      // the same entity. Only the newest state is needed because sync is
+      // entity-based, not an operation journal.
+      await tx.execute(
+        `delete from sync_changes
+         where id not in (
+           select max(id) from sync_changes group by entity_type, entity_id
+         )`,
+      );
     }
 
     await tx.commit();

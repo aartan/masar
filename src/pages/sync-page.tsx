@@ -134,12 +134,10 @@ export function SyncPage() {
     setBusy(action);
     setError(null);
     try {
-      const result =
-        action === "checkout"
-          ? await bridge.startCheckout()
-          : await bridge.openPortal();
+      if (action === "checkout") await bridge.startCheckout();
+      else await bridge.openPortal();
       setNotice("Complete the secure Stripe step in your browser, then refresh status here.");
-      toast.success("Browser opened", { description: result.url ? undefined : undefined });
+      toast.success("Browser opened");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not open billing.");
     } finally {

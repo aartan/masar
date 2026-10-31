@@ -171,6 +171,23 @@ describe("local sync outbox", () => {
     expect(pending.some((change) => change.entityId === "remote-board-2")).toBe(true);
   });
 
+
+  it("compacts repeated offline edits to the newest state per entity", async () => {
+    await prepareSync("remote-user-a");
+    const { board } = await makeBoard("Compact me");
+    await updateBoard(board.id, { name: "Compact 2" }, LOCAL_USER_ID, test.db);
+    await updateBoard(board.id, { name: "Compact 3" }, LOCAL_USER_ID, test.db);
+
+    let pending = await listPendingChanges(0, 500);
+    expect(pending.filter((change) => change.entityId === board.id)).toHaveLength(3);
+
+    await prepareSync("remote-user-a");
+    pending = await listPendingChanges(0, 500);
+    const boardChanges = pending.filter((change) => change.entityId === board.id);
+    expect(boardChanges).toHaveLength(1);
+    expect(boardChanges[0]?.data.name).toBe("Compact 3");
+  });
+
   it("reboots local sync data when a different premium account connects", async () => {
     await prepareSync("remote-user-a");
     await makeBoard("Local work");

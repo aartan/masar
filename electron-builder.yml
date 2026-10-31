@@ -1,4 +1,3 @@
-
 appId: com.masar.app
 productName: Masar
 copyright: Copyright © 2026 Masar
@@ -7,10 +6,12 @@ directories:
   output: dist-desktop
   buildResources: desktop/build
 
-# Only the esbuild-bundled main process and package.json go in the asar.
-# Renderer and standalone server are handled separately.
+# The asar contains only the Electron main process and preload bundle. The
+# local API, renderer, migrations and native libSQL binaries are copied into
+# Resources by desktop/scripts/after-pack.js.
 files:
-  - desktop/dist/**/*
+  - desktop/dist/main.js
+  - desktop/dist/preload.js
   - package.json
   - "!node_modules/**/*"
 
@@ -19,8 +20,6 @@ asar: true
 # Prevent electron-builder from rebuilding native modules.
 npmRebuild: false
 
-# Copies standalone server, architecture-specific libSQL binaries,
-# and migrations into Resources.
 afterPack: desktop/scripts/after-pack.js
 
 # macOS

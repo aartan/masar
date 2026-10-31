@@ -462,9 +462,17 @@ function ConnectedAccount({
                 <>
                   <CloudOff className="size-3.5 text-amber-600" /> Needs attention
                 </>
-              ) : (
+              ) : sync?.phase === "subscription_required" ? (
+                <>
+                  <CloudOff className="size-3.5 text-amber-600" /> Subscription required
+                </>
+              ) : sync?.phase === "idle" ? (
                 <>
                   <Cloud className="size-3.5 text-emerald-600" /> Up to date
+                </>
+              ) : (
+                <>
+                  <Cloud className="size-3.5 text-muted-foreground" /> Not syncing
                 </>
               )}
             </p>

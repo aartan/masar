@@ -4,6 +4,7 @@
   "private": true,
   "main": "desktop/dist/main.js",
   "description": "A local-first Kanban desktop app with optional premium sync.",
+  "author": "Masar",
   "scripts": {
     "dev": "tsx scripts/dev.ts",
     "dev:web": "vite",

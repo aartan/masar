@@ -392,10 +392,24 @@ async function keepLocalIfNewer(
   change: RemoteSyncChange,
 ): Promise<boolean> {
   if (change.entityType === "task_label") return false;
+  const remote = Date.parse(change.updatedAt);
+  if (!Number.isFinite(remote)) return false;
+
+  // A local deletion is not present in the entity table, so check the outbox
+  // tombstone before an older remote update can resurrect the row.
+  const tombstone = await tx.execute({
+    sql: `select max(updated_at) as value from sync_changes
+          where entity_type = ? and entity_id = ? and deleted = 1`,
+    args: [change.entityType, change.entityId],
+  });
+  const deletedAt = tombstone.rows[0]?.value;
+  if (typeof deletedAt === "number" && deletedAt > remote) {
+    return true;
+  }
+
   const local = await localTimestamp(tx, change.entityType, change.entityId);
   if (local === null) return false;
-  const remote = Date.parse(change.updatedAt);
-  if (!Number.isFinite(remote) || local <= remote) return false;
+  if (local <= remote) return false;
 
   const pending = await tx.execute({
     sql: "select 1 as found from sync_changes where entity_type = ? and entity_id = ? limit 1",
@@ -478,8 +492,9 @@ async function deleteEntity(tx: Transaction, change: RemoteSyncChange): Promise<
       await tx.execute({ sql: "delete from labels where id = ?", args: [change.entityId] });
       break;
     case "task_label": {
-      const taskId = asString(change.data.task_id);
-      const labelId = asString(change.data.label_id);
+      const [fallbackTask, fallbackLabel] = change.entityId.split(":", 2);
+      const taskId = asString(change.data.task_id, fallbackTask ?? "");
+      const labelId = asString(change.data.label_id, fallbackLabel ?? "");
       await tx.execute({
         sql: "delete from task_labels where task_id = ? and label_id = ?",
         args: [taskId, labelId],

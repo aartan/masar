@@ -188,6 +188,41 @@ describe("local sync outbox", () => {
     expect(boardChanges[0]?.data.name).toBe("Compact 3");
   });
 
+
+  it("does not let an older remote update resurrect a locally deleted entity", async () => {
+    await prepareSync("remote-user-a");
+    const { board } = await makeBoard("Delete locally");
+    await test.db.delete(boards).where(eq(boards.id, board.id));
+
+    const older = new Date(Date.now() - 60_000).toISOString();
+    const result = await applyRemoteChanges(3, [
+      {
+        entityType: "board",
+        entityId: board.id,
+        deleted: false,
+        data: {
+          id: board.id,
+          name: "Resurrected",
+          description: null,
+          color: "sage",
+          position: 0,
+          created_at: Date.now() - 120_000,
+          updated_at: Date.now() - 60_000,
+        },
+        updatedAt: older,
+        revision: 3,
+      },
+    ]);
+
+    expect(result.skipped.some((item) => item.entityId === board.id)).toBe(true);
+    const rows = await test.db.select().from(boards).where(eq(boards.id, board.id));
+    expect(rows).toHaveLength(0);
+    const pending = await listPendingChanges(0, 500);
+    expect(
+      pending.some((change) => change.entityId === board.id && change.deleted),
+    ).toBe(true);
+  });
+
   it("reboots local sync data when a different premium account connects", async () => {
     await prepareSync("remote-user-a");
     await makeBoard("Local work");

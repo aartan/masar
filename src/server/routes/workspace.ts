@@ -1,5 +1,7 @@
 import { Hono } from "hono";
+import { sql } from "drizzle-orm";
 
+import { getDb } from "@/db";
 import { handleRouteError, jsonOk } from "@/lib/api";
 import { requireApiUser } from "@/lib/server/auth";
 import { addDemoWorkspace } from "@/lib/server/demo";
@@ -7,7 +9,14 @@ import { getSyncState, listPendingChanges } from "@/sync/local";
 
 export const workspaceRoutes = new Hono();
 
-workspaceRoutes.get("/health", () => jsonOk({ status: "ok", database: "connected" }));
+workspaceRoutes.get("/health", async () => {
+  try {
+    await getDb().run(sql`select 1`);
+    return jsonOk({ status: "ok", database: "connected" });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+});
 
 workspaceRoutes.get("/me", async (_c) => {
   try {

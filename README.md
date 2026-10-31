@@ -2,18 +2,14 @@
 
 Masar is an app for organizing projects, managing tasks, and tracking progress. Create boards, organize columns, set priorities and due dates, manage subtasks and comments, and monitor upcoming work from your dashboard.
 
-Create an account with a 14-day free trial and select Start with demo content to explore a populated workspace.
-
 ![Masar dashboard](docs/screenshots/dashboard.png)
 
 ## Get Masar
-Masar is available as a web app and as desktop applications for macOS and Windows.
+Masar is available as a webapp and as desktop applications for macOS, Windows and Linux.
 
-- Web: Visit online [version](https://next-kanban-gamma.vercel.app/)
+- Web: Visit online [version](https://next-kanban-gamma.vercel.app/) (subscription required)
 - macOS: Download the version for your Mac (Apple Silicon or Intel) from GitHub [Releases](https://github.com/aartan/masar/releases).
 - Windows: Download the Windows (x64) installer from GitHub [Releases](https://github.com/aartan/masar/releases).
-
-The desktop apps work offline by default, storing your workspace locally without requiring an account. Account sync connects the app to the hosted Masar web app; the desktop app has its own secure sign-in, so use the same email and password you used in the browser.
 
 ## Features
 - Boards and columns: Create, customize, reorder, and organize project boards.
@@ -27,8 +23,7 @@ The desktop apps work offline by default, storing your workspace locally without
 
 ## Subscriptions & billing
 
-Online sync runs on hosted infrastructure, so it requires a subscription to help
-offset server costs. Offline local use on the desktop app is always free.
+Online sync runs on hosted infrastructure and requires a subscription to help cover server costs. Offline use through the desktop app is free.
 
 ## Technology
 

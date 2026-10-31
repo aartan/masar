@@ -53,8 +53,8 @@ nsis:
 
 # Linux (Fedora, GNOME, Ubuntu and other distributions)
 linux:
+  icon: desktop/build/icon.svg
   category: Office
-  icon: desktop/build/icons
   target:
     - target: rpm
       arch:

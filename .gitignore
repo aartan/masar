@@ -3,7 +3,8 @@ node_modules/
 .pnp
 .pnp.*
 
-# Next.js
+# Build output
+dist/
 .next/
 out/
 /build/
@@ -35,5 +36,6 @@ yarn-error.log*
 
 # desktop (Electron) build artifacts
 /desktop/dist
+/desktop/runtime
 /desktop/vendor
 /dist-desktop

@@ -1,29 +1,31 @@
+import js from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTypescript from "eslint-config-next/typescript";
+import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  ...nextVitals,
-  ...nextTypescript,
   globalIgnores([
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
+    "node_modules/**",
+    "dist/**",
+    "dist-desktop/**",
+    "desktop/dist/**",
+    "desktop/runtime/**",
+    "desktop/vendor/**",
     "coverage/**",
     "playwright-report/**",
     "test-results/**",
     "data/**",
     "drizzle/**",
-    "desktop/**",
-    "dist-desktop/**",
+    "desktop/scripts/*.js",
   ]),
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
     rules: {
       "@typescript-eslint/no-unused-vars": [
         "warn",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+      "@typescript-eslint/consistent-type-imports": "warn",
     },
   },
 ]);

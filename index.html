@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-scroll-behavior="smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f6f1" />
+    <meta
+      name="description"
+      content="A local-first Kanban workspace for planning work and moving it from backlog to completion."
+    />
+    <title>Masar — Kanban project management</title>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("masar:theme") || "system";
+          var dark =
+            stored === "dark" ||
+            (stored === "system" &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+        } catch (error) {
+          /* localStorage can be unavailable in hardened contexts. */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

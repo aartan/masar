@@ -7,16 +7,10 @@ import {
   createTask,
   deleteBoard,
   getBoardDetail,
-  signUp,
   uniqueName,
 } from "./helpers";
 
 test.describe("board workflows", () => {
-  test.beforeEach(async ({ page }) => {
-    await signUp(page.request);
-    await page.goto("/");
-  });
-
   test("creates a board, edits a task, filters, switches views, and searches", async ({
     page,
   }) => {

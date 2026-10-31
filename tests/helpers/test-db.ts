@@ -17,7 +17,8 @@ import type { AppDatabase } from "@/db";
  */
 export async function createTestDatabase() {
   const directory = mkdtempSync(join(tmpdir(), "masar-test-"));
-  const client = createClient({ url: `file:${join(directory, "test.db")}` });
+  const url = `file:${join(directory, "test.db")}`;
+  const client = createClient({ url });
   const db = drizzle(client, { schema });
 
   await migrate(db, {
@@ -27,6 +28,7 @@ export async function createTestDatabase() {
   return {
     db,
     client,
+    url,
     async close() {
       client.close();
       rmSync(directory, { recursive: true, force: true });

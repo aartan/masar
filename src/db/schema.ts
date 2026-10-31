@@ -186,6 +186,8 @@ export const labels = sqliteTable(
     name: text("name").notNull(),
     color: text("color").notNull().default("slate"),
     createdAt: createdAt(),
+    /** Nullable for databases created before sync support. */
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
   },
   (table) => [
     index("labels_board_idx").on(table.boardId),
@@ -222,6 +224,7 @@ export const subtasks = sqliteTable(
       .default(false),
     position: integer("position").notNull().default(0),
     createdAt: createdAt(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
   },
   (table) => [
     index("subtasks_task_idx").on(table.taskId, table.position),
@@ -238,15 +241,52 @@ export const comments = sqliteTable(
     author: text("author").notNull().default("You"),
     body: text("body").notNull(),
     createdAt: createdAt(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
   },
   (table) => [index("comments_task_idx").on(table.taskId, table.createdAt)],
 );
 
 /**
- * Billing tables. Stripe is the source of truth; these rows are a verified,
- * queryable snapshot so workspace requests never need to call Stripe.
+ * Local-only synchronisation bookkeeping. The remote API never reads these
+ * tables; they record the outbox and cursor needed to resume after an
+ * interrupted connection.
+ */
+export const syncState = sqliteTable("sync_state", {
+  id: integer("id").primaryKey(),
+  deviceId: text("device_id").notNull(),
+  remoteUserId: text("remote_user_id"),
+  lastRevision: integer("last_revision").notNull().default(0),
+  lastSyncedAt: integer("last_synced_at", { mode: "timestamp_ms" }),
+  bootstrapped: integer("bootstrapped", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  /** Suppresses change triggers while remote changes are being applied. */
+  applying: integer("applying", { mode: "boolean" }).notNull().default(false),
+});
+
+export const syncChanges = sqliteTable(
+  "sync_changes",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    deleted: integer("deleted", { mode: "boolean" }).notNull().default(false),
+    data: text("data").notNull().default("{}"),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("sync_changes_entity_idx").on(table.entityType, table.entityId),
+  ],
+);
+
+/**
+ * Billing tables from the retired hosted application. They are retained in the
+ * schema so existing SQLite files are untouched, but desktop code no longer
+ * reads or writes them. Premium subscription state now lives only in the API.
  */
 export const billingCustomers = sqliteTable(
+
   "billing_customers",
   {
     id: text("id").primaryKey(),
@@ -345,3 +385,5 @@ export type BillingCustomerRow = typeof billingCustomers.$inferSelect;
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
 export type PendingSignupRow = typeof pendingSignups.$inferSelect;
 export type StripeWebhookEventRow = typeof stripeWebhookEvents.$inferSelect;
+export type SyncStateRow = typeof syncState.$inferSelect;
+export type SyncChangeRow = typeof syncChanges.$inferSelect;

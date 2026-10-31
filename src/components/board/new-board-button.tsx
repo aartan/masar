@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { CreateBoardDialog } from "@/components/board/create-board-dialog";
+import { useWorkspace } from "@/components/layout/workspace-provider";
 import { cn } from "@/lib/utils";
 
 export function NewBoardButton({
@@ -19,6 +20,7 @@ export function NewBoardButton({
   label?: string;
 }) {
   const [open, setOpen] = React.useState(false);
+  const { refreshBoards } = useWorkspace();
   return (
     <>
       <Button
@@ -30,7 +32,11 @@ export function NewBoardButton({
         <Plus className="size-4" />
         {label}
       </Button>
-      <CreateBoardDialog open={open} onOpenChange={setOpen} />
+      <CreateBoardDialog
+        open={open}
+        onOpenChange={setOpen}
+        onCreated={() => void refreshBoards()}
+      />
     </>
   );
 }

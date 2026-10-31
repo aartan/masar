@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 3100;
-const BASE_URL = `http://localhost:${PORT}`;
+const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -29,14 +29,15 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npm run dev -- --port ${PORT}`,
-    url: BASE_URL,
+    command: "npx tsx src/server/entry.ts",
+    url: `${BASE_URL}/api/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
       DATABASE_URL: "file:./data/e2e.db",
-      BETTER_AUTH_SECRET: "masar-e2e-local-secret-not-for-production",
-      BETTER_AUTH_URL: BASE_URL,
+      PORT: String(PORT),
+      HOSTNAME: "127.0.0.1",
+      MASAR_STATIC_DIR: "dist/renderer",
     },
   },
 });

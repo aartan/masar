@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router-dom";
 import {
   ArrowRight,
   CornerDownLeft,
@@ -47,7 +47,7 @@ export function CommandPalette({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [query, setQuery] = React.useState("");
   const [results, setResults] = React.useState<SearchResult[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -139,7 +139,7 @@ export function CommandPalette({
   function select(item: PaletteItem | undefined) {
     if (!item) return;
     handleOpenChange(false);
-    router.push(item.href);
+    navigate(item.href);
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {

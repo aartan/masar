@@ -1,17 +1,33 @@
-/**
- * Type-only description of the Electron preload bridge. The hosted web app has
- * no `window.masarDesktop`, so UI must always guard for its absence.
- */
-export interface MasarDesktopState {
-  isDesktop: boolean;
-  mode: "local" | "sync";
+import type {
+  PremiumCredentials,
+  PremiumRegistration,
+  PremiumStatus,
+  SyncStatus,
+} from "./premium-types";
+
+export interface DesktopState {
+  isDesktop: true;
+  mode: "local";
+  apiUrl: string;
+  version: string;
 }
 
 export interface MasarDesktopBridge {
-  getState(): Promise<MasarDesktopState>;
-  enableSync(): Promise<{ ok: boolean; error?: string }>;
-  switchToLocal(): Promise<void>;
-  importLocal(): Promise<unknown>;
+  getState(): Promise<DesktopState>;
+  getPremiumStatus(): Promise<PremiumStatus>;
+  login(input: PremiumCredentials): Promise<PremiumStatus>;
+  register(input: PremiumRegistration): Promise<PremiumStatus>;
+  logout(): Promise<PremiumStatus>;
+  setApiUrl(url: string): Promise<PremiumStatus>;
+  startCheckout(): Promise<{ url: string }>;
+  openPortal(): Promise<{ url: string }>;
+  refreshBilling(): Promise<PremiumStatus>;
+  syncNow(): Promise<SyncStatus>;
+  getSyncStatus(): Promise<SyncStatus>;
+  openSyncSettings(): Promise<void>;
+  notifyDataChanged(): Promise<void>;
+  onSyncStatus(listener: (status: SyncStatus) => void): () => void;
+  onNavigate(listener: (path: string) => void): () => void;
 }
 
 declare global {

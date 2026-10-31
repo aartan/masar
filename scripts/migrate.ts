@@ -10,10 +10,7 @@ import * as schema from "../src/db/schema";
 
 async function main() {
   const config = resolveDatabaseConfig();
-  const maskedUrl = config.isRemote
-    ? config.url.replace(/\/\/([^@/]+@)?/, "//")
-    : config.url;
-  console.log(`[masar] Running migrations against ${maskedUrl}`);
+  console.log(`[masar] Running migrations against ${config.url}`);
 
   const client = createClient({
     url: config.url,

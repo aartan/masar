@@ -8,10 +8,8 @@ import { resolveDatabaseConfig } from "../src/db/config";
 
 function main() {
   const config = resolveDatabaseConfig();
-  if (config.isRemote) {
-    console.error(
-      "[masar] Refusing to reset a remote database. Use `turso db shell` or run the SQL manually.",
-    );
+  if (!config.url.startsWith("file:")) {
+    console.error("[masar] Refusing to reset a non-file database.");
     process.exit(1);
   }
 

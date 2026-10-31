@@ -31,6 +31,7 @@ export async function createLabel(
       name: input.name,
       color: input.color ?? "slate",
       createdAt: now,
+      updatedAt: now,
     });
   } catch (error) {
     if (isUniqueConstraintError(error)) {
@@ -62,6 +63,7 @@ export async function updateLabel(
       .set({
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.color !== undefined ? { color: input.color } : {}),
+        updatedAt: new Date(),
       })
       .where(eq(labels.id, labelId));
   } catch (error) {

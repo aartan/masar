@@ -1,8 +1,7 @@
-"use client";
-
 import { Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
 import * as React from "react";
+
+import { useTheme, type Theme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -26,16 +25,11 @@ export function ThemeToggle({
   showTooltip?: boolean;
 }) {
   const { theme, setTheme } = useTheme();
-  const mounted = React.useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
 
   const trigger = (
     <DropdownMenuTrigger asChild>
       <Button
-        variant={withLabel ? "ghost" : "ghost"}
+        variant="ghost"
         size={withLabel ? "sm" : "icon-sm"}
         className={withLabel ? "w-full justify-start gap-2" : undefined}
         aria-label="Change theme"
@@ -59,10 +53,7 @@ export function ThemeToggle({
       )}
       <DropdownMenuContent align="end" side={withLabel ? "top" : "bottom"}>
         <DropdownMenuLabel>Appearance</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={mounted ? theme : "system"}
-          onValueChange={setTheme}
-        >
+        <DropdownMenuRadioGroup value={theme} onValueChange={(value) => setTheme(value as Theme)}>
           <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="system">System</DropdownMenuRadioItem>

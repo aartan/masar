@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "react-router-dom";
 
 import { cn } from "@/lib/utils";
 
@@ -15,7 +15,7 @@ export function Logo({
 }) {
   return (
     <Link
-      href={href}
+      to={href}
       aria-label="Masar home"
       className={cn(
         "group inline-flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/40",

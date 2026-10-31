@@ -30,6 +30,7 @@ export async function createSubtask(
     completed: false,
     position: (row?.value ?? -1) + 1,
     createdAt: now,
+    updatedAt: now,
   });
   return serializeSubtask({
     id,
@@ -54,6 +55,7 @@ export async function updateSubtask(
     .set({
       ...(input.title !== undefined ? { title: input.title } : {}),
       ...(input.completed !== undefined ? { completed: input.completed } : {}),
+      updatedAt: new Date(),
     })
     .where(eq(subtasks.id, subtaskId));
 

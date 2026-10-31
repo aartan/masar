@@ -1,8 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useNavigate } from "react-router-dom";
 import {
   DndContext,
   DragOverlay,
@@ -47,6 +46,7 @@ import {
   PriorityBars,
 } from "@/components/shared/task-meta";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useWorkspace } from "@/components/layout/workspace-provider";
 import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 import { Button } from "@/components/ui/button";
 import {
@@ -117,7 +117,8 @@ export function BoardView({
   initialData: BoardDetail;
   initialTaskId?: string;
 }) {
-  const router = useRouter();
+  const navigate = useNavigate();
+  const { refreshBoards } = useWorkspace();
   const [board, setBoard] = React.useState<BoardSummary>(initialData.board);
   const [columns, setColumns] = React.useState<BoardColumnType[]>(
     initialData.columns,
@@ -276,25 +277,25 @@ export function BoardView({
       ),
     );
     if (existing && existing.columnId !== updated.columnId) {
-      router.refresh();
+      void refreshBoards();
     }
   }
 
   function handleTaskCreated(task: Task) {
     setTasks((current) => [...current, task]);
-    router.refresh();
+    void refreshBoards();
   }
 
   function handleTaskDuplicated(task: Task) {
     setTasks((current) => [...current, task]);
-    router.refresh();
+    void refreshBoards();
   }
 
   function handleTaskDeletedFromSheet(taskId: string) {
     setTasks((current) => current.filter((task) => task.id !== taskId));
     setSelectedTaskId(null);
     window.history.replaceState(null, "", `/boards/${board.id}`);
-    router.refresh();
+    void refreshBoards();
   }
 
   async function duplicateTask(task: Task) {
@@ -305,7 +306,7 @@ export function BoardView({
       );
       setTasks((current) => [...current, copy]);
       toast.success("Task duplicated", { description: copy.title });
-      router.refresh();
+      void refreshBoards();
     } catch (error) {
       toast.error("Could not duplicate task", {
         description: errorMessage(error),
@@ -322,7 +323,7 @@ export function BoardView({
       );
       setDeleteTaskTarget(null);
       toast.success("Task deleted");
-      router.refresh();
+      void refreshBoards();
     } catch (error) {
       toast.error("Could not delete task", {
         description: errorMessage(error),
@@ -343,7 +344,7 @@ export function BoardView({
         },
       );
       setTasks((current) => [...current, task]);
-      router.refresh();
+      void refreshBoards();
       return true;
     } catch (error) {
       toast.error("Could not add task", {
@@ -371,7 +372,7 @@ export function BoardView({
       if (columnName) {
         toast.success(`Moved to ${columnName}`);
       }
-      router.refresh();
+      void refreshBoards();
     } catch (error) {
       setTasks(previousTasks);
       toast.error("Could not save the new order", {
@@ -500,7 +501,7 @@ export function BoardView({
             ? `${result.movedTasks} ${result.movedTasks === 1 ? "task was" : "tasks were"} moved to ${target?.name ?? "another column"}.`
             : undefined,
       });
-      router.refresh();
+      void refreshBoards();
     } catch (error) {
       toast.error("Could not delete column", {
         description: errorMessage(error),
@@ -513,8 +514,8 @@ export function BoardView({
       await api(`/api/boards/${board.id}`, { method: "DELETE" });
       toast.success("Board deleted");
       setDeleteBoardOpen(false);
-      router.push("/");
-      router.refresh();
+      navigate("/");
+      void refreshBoards();
     } catch (error) {
       toast.error("Could not delete board", {
         description: errorMessage(error),
@@ -660,7 +661,7 @@ export function BoardView({
       <div className="shrink-0 border-b border-border/60 bg-background/65 backdrop-blur">
         <div className="px-4 pt-4 sm:px-6 sm:pt-5">
           <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground/65">
-            <Link href="/" className="transition-colors hover:text-foreground">
+            <Link to="/" className="transition-colors hover:text-foreground">
               Workspace
             </Link>
             <ChevronRight className="size-3 opacity-50" />
@@ -940,7 +941,7 @@ export function BoardView({
         board={board}
         onSaved={(saved) => {
           setBoard((current) => ({ ...current, ...saved }));
-          router.refresh();
+          void refreshBoards();
         }}
         onRequestDelete={() => {
           setSettingsOpen(false);

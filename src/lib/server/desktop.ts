@@ -1,24 +1,14 @@
-import { eq } from "drizzle-orm";
+import { eq, isNull, or } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { users } from "@/db/schema";
+import { boards, users } from "@/db/schema";
+import { LEGACY_WORKSPACE_ID } from "@/lib/server/legacy-workspace";
 
 /**
- * The desktop app runs in one of two modes:
- *
- * - Local (free, default): a single-user offline workspace backed by a local
- *   SQLite file. There is no sign-up or sign-in; one implicit local account
- *   owns everything. Signalled by `MASAR_LOCAL_MODE=1`.
- * - Sync (online): the local server talks to the hosted Turso database with
- *   real Better Auth accounts, so data syncs across devices. In this mode the
- *   flag is absent and the app behaves like the hosted web app. Online access
- *   requires an active subscription or trial; local access never does.
+ * The desktop app has one implicit local account. It owns all local boards and
+ * never requires sign-in. Premium account identities are separate and live in
+ * the remote API; they never grant or restrict local workspace access.
  */
-export function isLocalMode(): boolean {
-  return process.env.MASAR_LOCAL_MODE === "1";
-}
-
-/** Fixed id of the implicit local account that owns all local-mode data. */
 export const LOCAL_USER_ID = "local-user";
 
 const LOCAL_USER = {
@@ -30,14 +20,21 @@ const LOCAL_USER = {
 
 let ensured = false;
 
-/**
- * Ensure the single local account row exists (boards reference it via
- * `owner_id`) and return it. Idempotent; the upsert runs once per process.
- */
+/** Ensure the single local account row exists and return it. Idempotent. */
 export async function getLocalUser() {
   const db = getDb();
   if (!ensured) {
     await db.insert(users).values(LOCAL_USER).onConflictDoNothing();
+    // Older single-user installs may have unowned boards, or boards parked
+    // behind the legacy migration account. In a local-only desktop app they all
+    // belong to the one local workspace. This never touches another user's
+    // boards because this database is not shared.
+    await db
+      .update(boards)
+      .set({ ownerId: LOCAL_USER_ID })
+      .where(
+        or(isNull(boards.ownerId), eq(boards.ownerId, LEGACY_WORKSPACE_ID)),
+      );
     ensured = true;
   }
   const [row] = await db.select().from(users).where(eq(users.id, LOCAL_USER_ID));

@@ -1,11 +1,9 @@
-"use client";
-
 import * as React from "react";
 import { Menu, Search } from "lucide-react";
-import { toast } from "sonner";
 
 import { Logo } from "@/components/brand/logo";
 import { SidebarContent } from "@/components/layout/sidebar";
+import { useWorkspace } from "@/components/layout/workspace-provider";
 import { CreateBoardDialog } from "@/components/board/create-board-dialog";
 import { CommandPalette } from "@/components/search/command-palette";
 import { ShortcutsDialog } from "@/components/search/shortcuts-dialog";
@@ -17,41 +15,14 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import type { BoardSummary } from "@/lib/types";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export function AppShell({
-  boards,
-  user,
-  isLocalMode = false,
-  children,
-}: {
-  boards: BoardSummary[];
-  user: { name: string; email: string };
-  isLocalMode?: boolean;
-  children: React.ReactNode;
-}) {
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const { boards, user, loading, error, refreshBoards } = useWorkspace();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
   const [createBoardOpen, setCreateBoardOpen] = React.useState(false);
-  const showedSetupToast = React.useRef(false);
-
-  React.useEffect(() => {
-    if (showedSetupToast.current) return;
-    const url = new URL(window.location.href);
-    if (url.searchParams.get("setup") !== "success") return;
-    showedSetupToast.current = true;
-
-    toast.success("Your subscription is set up successfully!", {
-      description: "Welcome to your online workspace.",
-    });
-    url.searchParams.delete("setup");
-    window.history.replaceState(
-      {},
-      "",
-      `${url.pathname}${url.search}${url.hash}`,
-    );
-  }, []);
 
   React.useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -62,10 +33,7 @@ export function AppShell({
         target?.tagName === "SELECT" ||
         target?.isContentEditable;
 
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        event.key.toLowerCase() === "k"
-      ) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setSearchOpen((open) => !open);
         return;
@@ -86,6 +54,44 @@ export function AppShell({
     setCreateBoardOpen(true);
   }
 
+  if (loading) {
+    return (
+      <div className="flex h-dvh overflow-hidden bg-background">
+        <aside className="hidden w-[264px] shrink-0 border-r border-sidebar-border p-4 lg:block">
+          <Skeleton className="h-8 w-28" />
+          <Skeleton className="mt-8 h-9 w-full" />
+          <div className="mt-6 space-y-2">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Skeleton key={index} className="h-7 w-full" />
+            ))}
+          </div>
+        </aside>
+        <main className="flex min-w-0 flex-1 items-center justify-center">
+          <div className="w-full max-w-md px-6">
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="mt-3 h-3.5 w-72 max-w-full" />
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="grid h-dvh place-items-center bg-background px-6">
+        <div className="max-w-sm text-center">
+          <h1 className="font-display text-xl font-semibold">Masar could not open the workspace</h1>
+          <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+            {error}
+          </p>
+          <Button className="mt-5" onClick={() => void refreshBoards()}>
+            Try again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
       <aside className="hidden w-[264px] shrink-0 border-r border-sidebar-border lg:flex">
@@ -93,7 +99,6 @@ export function AppShell({
           <SidebarContent
             boards={boards}
             user={user}
-            isLocalMode={isLocalMode}
             onOpenSearch={() => setSearchOpen(true)}
             onCreateBoard={openCreateBoard}
             onOpenShortcuts={() => setShortcutsOpen(true)}
@@ -112,7 +117,6 @@ export function AppShell({
           <SidebarContent
             boards={boards}
             user={user}
-            isLocalMode={isLocalMode}
             onOpenSearch={() => {
               setMobileOpen(false);
               setSearchOpen(true);
@@ -164,6 +168,7 @@ export function AppShell({
       <CreateBoardDialog
         open={createBoardOpen}
         onOpenChange={setCreateBoardOpen}
+        onCreated={() => void refreshBoards()}
       />
     </div>
   );

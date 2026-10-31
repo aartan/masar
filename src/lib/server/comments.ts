@@ -24,6 +24,7 @@ export async function createComment(
     author,
     body: input.body,
     createdAt: now,
+    updatedAt: now,
   });
   return serializeComment({
     id,

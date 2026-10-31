@@ -1,28 +1,23 @@
-"use client";
-
 import * as React from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronsUpDown,
   Cloud,
-  CreditCard,
+  CloudOff,
   Keyboard,
-  LaptopMinimal,
   LayoutDashboard,
-  LogOut,
+  Loader2,
   Palette,
   Plus,
   Search,
-  Upload,
+  Settings2,
   X,
 } from "lucide-react";
-import { useTheme } from "next-themes";
-import { toast } from "sonner";
 
 import { Logo } from "@/components/brand/logo";
 import { Kbd } from "@/components/shared/empty-state";
 import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
+import { useTheme, type Theme } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,15 +38,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { authClient } from "@/lib/auth-client";
-import type { MasarDesktopState } from "@/lib/desktop-bridge";
+import { useSyncStatus } from "@/lib/use-sync-status";
 import type { BoardSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface SidebarContentProps {
   boards: BoardSummary[];
   user: { name: string; email: string };
-  isLocalMode?: boolean;
   onOpenSearch: () => void;
   onCreateBoard: () => void;
   onOpenShortcuts: () => void;
@@ -63,7 +56,6 @@ interface SidebarContentProps {
 export function SidebarContent({
   boards,
   user,
-  isLocalMode = false,
   onOpenSearch,
   onCreateBoard,
   onOpenShortcuts,
@@ -71,50 +63,27 @@ export function SidebarContent({
   showClose,
   onClose,
 }: SidebarContentProps) {
-  const pathname = usePathname();
-  const router = useRouter();
-  const [signingOut, setSigningOut] = React.useState(false);
-
-  async function signOut() {
-    if (signingOut) return;
-    setSigningOut(true);
-    try {
-      const { error } = await authClient.signOut();
-      if (error) throw new Error(error.message ?? "Could not sign out.");
-      onNavigate?.();
-      router.push("/login");
-      router.refresh();
-    } catch {
-      toast.error("Could not sign out", {
-        description: "Please try again.",
-      });
-      setSigningOut(false);
-    }
-  }
-
+  const pathname = useLocation().pathname;
+  const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
+  const sync = useSyncStatus();
   const initial = (user.name.trim()[0] ?? user.email[0] ?? "M").toUpperCase();
 
-  const { theme, setTheme } = useTheme();
-  const mounted = React.useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
+  const syncLabel =
+    sync?.phase === "syncing"
+      ? "Syncing…"
+      : sync?.phase === "error"
+        ? "Sync needs attention"
+        : sync?.phase === "subscription_required"
+          ? "Subscription required"
+          : sync?.phase === "idle"
+            ? "Premium sync on"
+            : "Set up premium sync";
 
-  // Desktop-only bridge (undefined in the hosted web app). Drives the sync
-  // controls in the workspace menu below.
-  const [desktop, setDesktop] = React.useState<MasarDesktopState | null>(null);
-  React.useEffect(() => {
-    const api = window.masarDesktop;
-    if (!api) return;
-    let active = true;
-    void api.getState().then((state) => {
-      if (active) setDesktop(state);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+  function openSettings() {
+    onNavigate?.();
+    navigate("/settings/sync");
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground">
@@ -163,6 +132,20 @@ export function SidebarContent({
         >
           Overview
         </SidebarLink>
+        <SidebarLink
+          href="/settings/sync"
+          icon={sync?.phase === "error" ? CloudOff : Cloud}
+          active={pathname === "/settings/sync"}
+          onClick={onNavigate}
+        >
+          Premium sync
+          {sync?.phase === "syncing" && (
+            <Loader2 className="ml-auto size-3 animate-spin opacity-60" />
+          )}
+          {sync?.phase === "idle" && (
+            <span className="ml-auto size-1.5 rounded-full bg-emerald-500" />
+          )}
+        </SidebarLink>
       </nav>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col">
@@ -206,7 +189,7 @@ export function SidebarContent({
                 return (
                   <li key={board.id}>
                     <Link
-                      href={`/boards/${board.id}`}
+                      to={`/boards/${board.id}`}
                       onClick={onNavigate}
                       className={cn(
                         "group flex h-8 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors",
@@ -258,20 +241,17 @@ export function SidebarContent({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent/60 disabled:opacity-60"
-              disabled={signingOut}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent/60"
               aria-label="Account menu"
             >
               <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
                 {initial}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[12px] font-medium">{user.name}</p>
-                {!isLocalMode && (
-                  <p className="truncate text-[10px] text-muted-foreground">
-                    {user.email}
-                  </p>
-                )}
+                <p className="truncate text-[12px] font-medium">Local workspace</p>
+                <p className="truncate text-[10px] text-muted-foreground">
+                  {syncLabel}
+                </p>
               </div>
               <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground/60" />
             </button>
@@ -284,10 +264,7 @@ export function SidebarContent({
                 Appearance
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                <DropdownMenuRadioGroup
-                  value={mounted ? (theme ?? "system") : "system"}
-                  onValueChange={setTheme}
-                >
+                <DropdownMenuRadioGroup value={theme} onValueChange={(value) => setTheme(value as Theme)}>
                   <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="system">System</DropdownMenuRadioItem>
@@ -298,62 +275,28 @@ export function SidebarContent({
               <Keyboard />
               Keyboard shortcuts
             </DropdownMenuItem>
-
-            {!isLocalMode && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onSelect={() => {
-                    onNavigate?.();
-                    router.push("/subscription");
-                  }}
-                >
-                  <CreditCard />
-                  Subscription
-                </DropdownMenuItem>
-              </>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={openSettings}>
+              {sync?.phase === "error" ? <CloudOff /> : <Cloud />}
+              Premium sync
+            </DropdownMenuItem>
+            {sync?.lastSyncedAt && (
+              <DropdownMenuLabel className="text-[10px] font-normal text-muted-foreground">
+                Last synced{" "}
+                {new Date(sync.lastSyncedAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </DropdownMenuLabel>
             )}
-
-            {desktop?.mode === "local" && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Workspace
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onSelect={() => void window.masarDesktop?.enableSync()}
-                >
-                  <Cloud />
-                  Enable sync across devices
-                </DropdownMenuItem>
-              </>
-            )}
-
-            {desktop?.mode === "sync" && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Workspace
-                </DropdownMenuLabel>
-                <DropdownMenuItem onSelect={() => void window.masarDesktop?.importLocal()}>
-                  <Upload />
-                  Import local workspace data
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => void window.masarDesktop?.switchToLocal()}>
-                  <LaptopMinimal />
-                  Switch to local workspace
-                </DropdownMenuItem>
-              </>
-            )}
-
-            {!isLocalMode && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => void signOut()} disabled={signingOut}>
-                  <LogOut />
-                  {signingOut ? "Signing out…" : "Sign out"}
-                </DropdownMenuItem>
-              </>
+            {sync?.phase === "error" && sync.lastError && (
+              <DropdownMenuItem
+                onSelect={() => void window.masarDesktop?.syncNow()}
+                className="text-amber-700 dark:text-amber-300"
+              >
+                <Settings2 />
+                Retry sync
+              </DropdownMenuItem>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -377,7 +320,7 @@ function SidebarLink({
 }) {
   return (
     <Link
-      href={href}
+      to={href}
       onClick={onClick}
       className={cn(
         "flex h-8 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors",

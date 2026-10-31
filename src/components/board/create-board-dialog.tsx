@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router-dom";
 import { ArrowRight, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,21 +26,32 @@ import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 export function CreateBoardDialog({
   open,
   onOpenChange,
+  onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onCreated?: () => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <CreateBoardForm onClose={() => onOpenChange(false)} />
+        <CreateBoardForm
+          onClose={() => onOpenChange(false)}
+          onCreated={onCreated}
+        />
       </DialogContent>
     </Dialog>
   );
 }
 
-function CreateBoardForm({ onClose }: { onClose: () => void }) {
-  const router = useRouter();
+function CreateBoardForm({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated?: () => void;
+}) {
+  const navigate = useNavigate();
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [color, setColor] = React.useState<BoardColor>("sage");
@@ -60,11 +71,11 @@ function CreateBoardForm({ onClose }: { onClose: () => void }) {
         }),
       });
       onClose();
+      onCreated?.();
       toast.success("Board created", {
         description: `${board.name} is ready with five starter columns.`,
       });
-      router.push(`/boards/${board.id}`);
-      router.refresh();
+      navigate(`/boards/${board.id}`);
     } catch (error) {
       toast.error("Could not create board", {
         description: errorMessage(error),

@@ -1,13 +1,4 @@
-import type { EntitlementReason } from "@/lib/billing/entitlement";
-
-export interface EntitlementView {
-  entitled: boolean;
-  reason: EntitlementReason;
-  status: string | null;
-  currentPeriodEnd: string | null;
-  trialEnd: string | null;
-  cancelAtPeriodEnd: boolean;
-}
+import type { EntitlementView } from "@/lib/premium-types";
 
 export function formatBillingDate(
   value: string | Date | null | undefined,

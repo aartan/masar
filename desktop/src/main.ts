@@ -46,18 +46,10 @@ let mainWindow: BrowserWindow | null = null;
 let origin = "";
 let startUrl = "";
 let localApiOrigin = "";
-let activeApiUrl = resolveApiUrl();
-let session: StoredPremiumSession | null = loadPremiumSession();
+let activeApiUrl = "";
+let session: StoredPremiumSession | null = null;
 let premiumClient: PremiumApiClient | null = null;
 let shuttingDown = false;
-
-if (session && session.apiUrl !== activeApiUrl) {
-  // A token belongs to the server that issued it. Changing API addresses
-  // always requires a fresh sign-in.
-  clearPremiumSession();
-  session = null;
-}
-if (session) premiumClient = new PremiumApiClient(session.apiUrl, session.token);
 
 function log(line: string): void {
   console.log(line);
@@ -296,6 +288,20 @@ function watchServerExit(): void {
 }
 
 async function bootstrap(): Promise<void> {
+  // safeStorage and userData paths are reliable once Electron is ready. Load
+  // the premium session here rather than at module import time.
+  activeApiUrl = resolveApiUrl();
+  session = loadPremiumSession();
+  if (session && session.apiUrl !== activeApiUrl) {
+    // A token belongs to the server that issued it. Changing API addresses
+    // always requires a fresh sign-in.
+    clearPremiumSession();
+    session = null;
+  }
+  premiumClient = session
+    ? new PremiumApiClient(session.apiUrl, session.token)
+    : null;
+
   const devUrl = process.env.MASAR_DEV_SERVER_URL?.trim();
   if (devUrl) {
     origin = devUrl;

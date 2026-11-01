@@ -33,13 +33,11 @@ contextBridge.exposeInMainWorld("masarDesktop", {
   register: (input: PremiumRegistration) =>
     invoke<PremiumStatus>("masar:premium-register", input),
   logout: () => invoke<PremiumStatus>("masar:premium-logout"),
-  setApiUrl: (url: string) => invoke<PremiumStatus>("masar:set-api-url", url),
   startCheckout: () => invoke<{ url: string }>("masar:start-checkout"),
   openPortal: () => invoke<{ url: string }>("masar:open-portal"),
   refreshBilling: () => invoke<PremiumStatus>("masar:refresh-billing"),
   syncNow: () => invoke<SyncStatus>("masar:sync-now"),
   getSyncStatus: () => invoke<SyncStatus>("masar:get-sync-status"),
-  openSyncSettings: () => invoke<void>("masar:open-sync-settings"),
   notifyDataChanged: () => invoke<void>("masar:notify-data-change"),
   onSyncStatus: (listener: (status: SyncStatus) => void) => {
     const handler = (_event: unknown, status: SyncStatus) => listener(status);

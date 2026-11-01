@@ -2,8 +2,6 @@ import * as React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronsUpDown,
-  Cloud,
-  CloudOff,
   Keyboard,
   LayoutDashboard,
   Loader2,
@@ -11,6 +9,7 @@ import {
   Plus,
   Search,
   Settings2,
+  UserRound,
   X,
 } from "lucide-react";
 
@@ -78,11 +77,11 @@ export function SidebarContent({
           ? "Subscription required"
           : sync?.phase === "idle"
             ? "Premium sync on"
-            : "Set up premium sync";
+            : "Sign in to sync";
 
-  function openSettings() {
+  function openAccount() {
     onNavigate?.();
-    navigate("/settings/sync");
+    navigate("/account");
   }
 
   return (
@@ -133,12 +132,12 @@ export function SidebarContent({
           Overview
         </SidebarLink>
         <SidebarLink
-          href="/settings/sync"
-          icon={sync?.phase === "error" ? CloudOff : Cloud}
-          active={pathname === "/settings/sync"}
+          href="/account"
+          icon={UserRound}
+          active={pathname === "/account"}
           onClick={onNavigate}
         >
-          Premium sync
+          Account
           {sync?.phase === "syncing" && (
             <Loader2 className="ml-auto size-3 animate-spin opacity-60" />
           )}
@@ -276,9 +275,9 @@ export function SidebarContent({
               Keyboard shortcuts
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={openSettings}>
-              {sync?.phase === "error" ? <CloudOff /> : <Cloud />}
-              Premium sync
+            <DropdownMenuItem onSelect={openAccount}>
+              <UserRound />
+              Account
             </DropdownMenuItem>
             {sync?.lastSyncedAt && (
               <DropdownMenuLabel className="text-[10px] font-normal text-muted-foreground">

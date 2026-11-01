@@ -2,13 +2,11 @@ import * as React from "react";
 import {
   CheckCircle2,
   Cloud,
-  CloudOff,
   CreditCard,
   ExternalLink,
   Loader2,
+  LogOut,
   RefreshCw,
-  Server,
-  Signpost,
   TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,16 +25,13 @@ import {
   statusLabel,
   statusTone,
 } from "@/lib/subscription-format";
-import { useSyncStatus } from "@/lib/use-sync-status";
-import type { PremiumStatus, SyncStatus } from "@/lib/premium-types";
+import type { PremiumStatus } from "@/lib/premium-types";
 
 type AuthMode = "login" | "register";
 
-export function SyncPage() {
+export function AccountPage() {
   const bridge = window.masarDesktop;
-  const sync = useSyncStatus();
   const [premium, setPremium] = React.useState<PremiumStatus | null>(null);
-  const [apiUrl, setApiUrl] = React.useState("");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
@@ -52,15 +47,18 @@ export function SyncPage() {
       return;
     }
     let active = true;
-    void Promise.all([bridge.getState(), bridge.getPremiumStatus()])
-      .then(([state, status]) => {
-        if (!active) return;
-        setApiUrl(state.apiUrl);
-        setPremium(status);
+    void bridge
+      .getPremiumStatus()
+      .then((status) => {
+        if (active) setPremium(status);
       })
       .catch((caught: unknown) => {
         if (active) {
-          setError(caught instanceof Error ? caught.message : "Could not load premium sync.");
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : "Could not load the premium account.",
+          );
         }
       })
       .finally(() => {
@@ -81,7 +79,9 @@ export function SyncPage() {
       setPremium(status);
       return status;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The action could not be completed.");
+      setError(
+        caught instanceof Error ? caught.message : "The action could not be completed.",
+      );
       return null;
     } finally {
       setBusy(null);
@@ -106,26 +106,13 @@ export function SyncPage() {
     );
     if (result) {
       setPassword("");
-      toast.success(
-        mode === "register" ? "Account created" : "Signed in",
-        { description: "Premium sync is ready." },
-      );
-      void bridge.syncNow().catch(() => undefined);
-    }
-  }
-
-  async function saveApiUrl(event: React.FormEvent) {
-    event.preventDefault();
-    if (!bridge) return;
-    const trimmed = apiUrl.trim();
-    if (!/^https?:\/\//i.test(trimmed)) {
-      setError("Enter an API URL starting with http:// or https://.");
-      return;
-    }
-    const result = await perform("api-url", () => bridge.setApiUrl(trimmed));
-    if (result) {
-      setNotice("API address saved. Sign in to connect this workspace.");
-      toast.success("API address updated");
+      const entitled = Boolean(result.entitlement?.entitled);
+      toast.success(mode === "register" ? "Account created" : "Signed in", {
+        description: entitled
+          ? "Premium sync is unlocked."
+          : "Choose a subscription to unlock premium sync.",
+      });
+      if (entitled) void bridge.syncNow().catch(() => undefined);
     }
   }
 
@@ -136,10 +123,14 @@ export function SyncPage() {
     try {
       if (action === "checkout") await bridge.startCheckout();
       else await bridge.openPortal();
-      setNotice("Complete the secure Stripe step in your browser, then refresh status here.");
+      setNotice(
+        "Complete the secure Stripe step in your browser, then refresh your status here.",
+      );
       toast.success("Browser opened");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not open billing.");
+      setError(
+        caught instanceof Error ? caught.message : "Could not open billing.",
+      );
     } finally {
       setBusy(null);
     }
@@ -152,9 +143,9 @@ export function SyncPage() {
           <PageHeading />
           <Card className="mt-6">
             <CardContent className="px-5 py-6 text-[13px] leading-relaxed text-muted-foreground">
-              Premium sync is available in the Masar desktop application. This
-              browser preview always uses the local SQLite workspace and works
-              fully offline.
+              Premium accounts are available in the Masar desktop application.
+              This browser preview always uses the local SQLite workspace and
+              works fully offline.
             </CardContent>
           </Card>
         </div>
@@ -167,7 +158,7 @@ export function SyncPage() {
       <div className="grid h-full place-items-center px-6">
         <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
-          Loading premium sync…
+          Loading account…
         </div>
       </div>
     );
@@ -182,43 +173,29 @@ export function SyncPage() {
         {notice && <Alert tone="info" title={notice} />}
 
         {premium.connected ? (
-          <div className="mt-6 space-y-5">
-            <ConnectedAccount
-              premium={premium}
-              sync={sync}
-              busy={busy}
-              onRefresh={() =>
-                void perform("refresh", async () => {
-                  const status = await bridge.refreshBilling();
-                  toast.success("Premium status refreshed");
+          <ConnectedAccount
+            premium={premium}
+            busy={busy}
+            onRefresh={() =>
+              void perform("refresh", async () => {
+                const status = await bridge.refreshBilling();
+                toast.success("Account status refreshed");
+                if (status.entitlement?.entitled) {
                   void bridge.syncNow().catch(() => undefined);
-                  return status;
-                })
-              }
-              onSync={() =>
-                void perform("sync", async () => {
-                  await bridge.syncNow();
-                  toast.success("Sync requested");
-                  return premium;
-                })
-              }
-              onCheckout={() => void openBilling("checkout")}
-              onPortal={() => void openBilling("portal")}
-              onLogout={() =>
-                void perform("logout", async () => {
-                  const status = await bridge.logout();
-                  toast.success("Signed out of premium sync");
-                  return status;
-                })
-              }
-            />
-            <ServerCard
-              apiUrl={apiUrl}
-              onChange={setApiUrl}
-              onSubmit={saveApiUrl}
-              busy={busy === "api-url"}
-            />
-          </div>
+                }
+                return status;
+              })
+            }
+            onCheckout={() => void openBilling("checkout")}
+            onPortal={() => void openBilling("portal")}
+            onLogout={() =>
+              void perform("logout", async () => {
+                const status = await bridge.logout();
+                toast.success("Signed out of the premium account");
+                return status;
+              })
+            }
+          />
         ) : (
           <div className="mt-6 space-y-5">
             <Card>
@@ -227,19 +204,18 @@ export function SyncPage() {
                   <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary">
                     <Cloud className="size-4" />
                   </span>
-                  <CardTitle>Optional premium sync</CardTitle>
+                  <CardTitle>Premium account</CardTitle>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 text-[12.5px] leading-relaxed text-muted-foreground">
                 <p>
                   Your local workspace stays free and fully functional offline.
-                  Connecting premium sync adds account access across devices,
-                  remote backup and subscription-backed online features.
+                  Signing in with a premium account enables automatic
+                  cross-device synchronisation while your subscription is active.
                 </p>
                 <p>
-                  Subscription and account management are handled by the
-                  separate Premium Sync API; no billing logic runs in the
-                  desktop app.
+                  Account, subscription and entitlement management are handled
+                  securely by the Masar Premium Sync API.
                 </p>
               </CardContent>
             </Card>
@@ -280,9 +256,9 @@ export function SyncPage() {
                 <form onSubmit={submitAuth} className="space-y-4">
                   {mode === "register" && (
                     <div className="space-y-1.5">
-                      <Label htmlFor="sync-name">Name</Label>
+                      <Label htmlFor="account-name">Name</Label>
                       <Input
-                        id="sync-name"
+                        id="account-name"
                         value={name}
                         onChange={(event) => setName(event.target.value)}
                         autoComplete="name"
@@ -292,9 +268,9 @@ export function SyncPage() {
                     </div>
                   )}
                   <div className="space-y-1.5">
-                    <Label htmlFor="sync-email">Email</Label>
+                    <Label htmlFor="account-email">Email</Label>
                     <Input
-                      id="sync-email"
+                      id="account-email"
                       type="email"
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
@@ -304,13 +280,15 @@ export function SyncPage() {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="sync-password">Password</Label>
+                    <Label htmlFor="account-password">Password</Label>
                     <Input
-                      id="sync-password"
+                      id="account-password"
                       type="password"
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
-                      autoComplete={mode === "register" ? "new-password" : "current-password"}
+                      autoComplete={
+                        mode === "register" ? "new-password" : "current-password"
+                      }
                       placeholder="At least 8 characters"
                       disabled={busy !== null}
                     />
@@ -326,13 +304,6 @@ export function SyncPage() {
                 </form>
               </CardContent>
             </Card>
-
-            <ServerCard
-              apiUrl={apiUrl}
-              onChange={setApiUrl}
-              onSubmit={saveApiUrl}
-              busy={busy === "api-url"}
-            />
           </div>
         )}
       </div>
@@ -347,11 +318,12 @@ function PageHeading() {
         Account
       </p>
       <h1 className="font-display mt-2 text-[28px] leading-tight font-semibold text-foreground sm:text-[32px]">
-        Premium sync
+        Premium account
       </h1>
       <p className="mt-1.5 max-w-xl text-[13.5px] leading-relaxed text-muted-foreground">
-        Manage your premium account and cross-device synchronisation. Local
-        boards, tasks and comments remain available offline at all times.
+        Manage your account and subscription. Premium sync starts automatically
+        when you sign in with an active subscription. Local work remains
+        available offline at all times.
       </p>
     </div>
   );
@@ -379,19 +351,15 @@ function Alert({ tone, title }: { tone: "error" | "info"; title: string }) {
 
 function ConnectedAccount({
   premium,
-  sync,
   busy,
   onRefresh,
-  onSync,
   onCheckout,
   onPortal,
   onLogout,
 }: {
   premium: PremiumStatus;
-  sync: SyncStatus | null;
   busy: string | null;
   onRefresh: () => void;
-  onSync: () => void;
   onCheckout: () => void;
   onPortal: () => void;
   onLogout: () => void;
@@ -406,25 +374,35 @@ function ConnectedAccount({
   const periodEnd = formatBillingDate(
     entitlement?.currentPeriodEnd ?? premium.subscription?.currentPeriodEnd,
   );
-  const trialEnd = formatBillingDate(entitlement?.trialEnd ?? premium.subscription?.trialEnd);
+  const trialEnd = formatBillingDate(
+    entitlement?.trialEnd ?? premium.subscription?.trialEnd,
+  );
 
   return (
-    <Card>
+    <Card className="mt-6">
       <CardHeader className="gap-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <CardTitle className="truncate">{premium.user?.name ?? "Premium account"}</CardTitle>
-            <p className="truncate text-[12px] text-muted-foreground">{premium.user?.email}</p>
+            <CardTitle className="truncate">
+              {premium.user?.name ?? "Premium account"}
+            </CardTitle>
+            <p className="truncate text-[12px] text-muted-foreground">
+              {premium.user?.email}
+            </p>
           </div>
           {entitlement && (
-            <Badge variant={statusTone(entitlement)}>{statusLabel(entitlement)}</Badge>
+            <Badge variant={statusTone(entitlement)}>
+              {statusLabel(entitlement)}
+            </Badge>
           )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {entitlement && summary && (
           <div>
-            <p className="text-[14px] font-medium text-foreground">{summary.title}</p>
+            <p className="text-[14px] font-medium text-foreground">
+              {summary.title}
+            </p>
             <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">
               {summary.description}
             </p>
@@ -435,10 +413,15 @@ function ConnectedAccount({
           <>
             <Separator />
             <dl className="grid gap-1.5 text-[12.5px] sm:grid-cols-2">
-              <Detail label="Plan" value={premium.subscription.planName ?? "Masar Pro"} />
+              <Detail
+                label="Plan"
+                value={premium.subscription.planName ?? "Masar Pro"}
+              />
               <Detail
                 label="Price"
-                value={price ? `${price}${interval ? ` / ${interval}` : ""}` : null}
+                value={
+                  price ? `${price}${interval ? ` / ${interval}` : ""}` : null
+                }
               />
               <Detail label="Trial ends" value={trialEnd} />
               <Detail label="Current period ends" value={periodEnd} />
@@ -448,63 +431,10 @@ function ConnectedAccount({
 
         <Separator />
 
-        <div className="grid gap-2 sm:grid-cols-2">
-          <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
-            <p className="text-[10.5px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">
-              Sync status
-            </p>
-            <p className="mt-1 flex items-center gap-1.5 text-[12.5px] font-medium">
-              {sync?.phase === "syncing" ? (
-                <>
-                  <Loader2 className="size-3.5 animate-spin" /> Syncing now
-                </>
-              ) : sync?.phase === "error" ? (
-                <>
-                  <CloudOff className="size-3.5 text-amber-600" /> Needs attention
-                </>
-              ) : sync?.phase === "subscription_required" ? (
-                <>
-                  <CloudOff className="size-3.5 text-amber-600" /> Subscription required
-                </>
-              ) : sync?.phase === "idle" ? (
-                <>
-                  <Cloud className="size-3.5 text-emerald-600" /> Up to date
-                </>
-              ) : (
-                <>
-                  <Cloud className="size-3.5 text-muted-foreground" /> Not syncing
-                </>
-              )}
-            </p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              {sync?.lastSyncedAt
-                ? `Last synced ${new Date(sync.lastSyncedAt).toLocaleString()}`
-                : "Not synced yet"}
-              {sync && sync.pendingChanges > 0
-                ? ` · ${sync.pendingChanges} local change${sync.pendingChanges === 1 ? "" : "s"} waiting`
-                : ""}
-            </p>
-          </div>
-          <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
-            <p className="text-[10.5px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">
-              Conflicts
-            </p>
-            <p className="mt-1 text-[12.5px] font-medium">
-              {sync?.lastConflictCount ?? 0} recorded
-            </p>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              {sync?.lastConflictCount
-                ? "Newer changes win; older edits are kept in sync diagnostics."
-                : "No conflicts on the last sync."}
-            </p>
-          </div>
-        </div>
-
-        {sync?.lastError && (
-          <p className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
-            {sync.lastError}
-          </p>
-        )}
+        <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+          Premium sync runs automatically in the background while you are
+          signed in with an active trial or subscription.
+        </p>
 
         {premium.error && (
           <p className="rounded-lg border border-destructive/25 bg-destructive/8 px-3 py-2 text-[12px] leading-relaxed text-destructive">
@@ -528,14 +458,6 @@ function ConnectedAccount({
             )}
             Refresh status
           </Button>
-          <Button variant="outline" onClick={onSync} disabled={busy !== null}>
-            {busy === "sync" ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Cloud className="size-4" />
-            )}
-            Sync now
-          </Button>
           {premium.billingConfigured && !entitlement?.entitled && (
             <Button onClick={onCheckout} disabled={busy !== null}>
               {busy === "checkout" ? (
@@ -557,7 +479,11 @@ function ConnectedAccount({
             </Button>
           )}
           <Button variant="ghost" onClick={onLogout} disabled={busy !== null}>
-            {busy === "logout" ? <Loader2 className="size-4 animate-spin" /> : <Signpost className="size-4" />}
+            {busy === "logout" ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <LogOut className="size-4" />
+            )}
             Sign out
           </Button>
         </div>
@@ -573,47 +499,5 @@ function Detail({ label, value }: { label: string; value: string | null }) {
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="text-right font-medium text-foreground">{value}</dd>
     </div>
-  );
-}
-
-function ServerCard({
-  apiUrl,
-  onChange,
-  onSubmit,
-  busy,
-}: {
-  apiUrl: string;
-  onChange: (value: string) => void;
-  onSubmit: (event: React.FormEvent) => void;
-  busy: boolean;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Server className="size-4 text-muted-foreground" />
-          <CardTitle>Sync server</CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={onSubmit} className="flex flex-col gap-2 sm:flex-row">
-          <Input
-            value={apiUrl}
-            onChange={(event) => onChange(event.target.value)}
-            placeholder="https://sync.example.com"
-            aria-label="Premium Sync API URL"
-            disabled={busy}
-          />
-          <Button type="submit" variant="outline" disabled={busy}>
-            {busy && <Loader2 className="size-4 animate-spin" />}
-            Save address
-          </Button>
-        </form>
-        <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-          Changing the address signs you out. Use HTTPS for any server that is
-          not on this computer.
-        </p>
-      </CardContent>
-    </Card>
   );
 }

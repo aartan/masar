@@ -1,7 +1,7 @@
 import { app, Menu, shell, type MenuItemConstructorOptions } from "electron";
 
 export interface MenuContext {
-  onOpenSync: () => void;
+  onOpenAccount: () => void;
   onSyncNow: () => void;
 }
 
@@ -48,7 +48,7 @@ export function buildMenu(ctx: MenuContext): Menu {
   template.push({
     label: "Workspace",
     submenu: [
-      { label: "Premium Sync…", click: ctx.onOpenSync },
+      { label: "Account…", click: ctx.onOpenAccount },
       { label: "Sync Now", click: ctx.onSyncNow },
       { type: "separator" },
       {

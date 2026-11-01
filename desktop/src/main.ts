@@ -28,7 +28,7 @@ import {
   savePremiumSession,
   type StoredPremiumSession,
 } from "./premium/token-store";
-import { saveApiUrl, resolveApiUrl } from "./settings";
+import { resolveApiUrl } from "./settings";
 import { getFreePort } from "./server/free-port";
 import { waitForHealth } from "./server/health";
 import {
@@ -96,7 +96,6 @@ function disconnectedStatus(error: string | null = null): PremiumStatus {
     entitlement: null,
     subscription: null,
     billingConfigured: false,
-    apiUrl: activeApiUrl,
     error,
   };
 }
@@ -113,7 +112,6 @@ async function getPremiumStatus(): Promise<PremiumStatus> {
       entitlement: billing.entitlement,
       subscription: billing.subscription,
       billingConfigured: billing.billingConfigured,
-      apiUrl: activeApiUrl,
       error: null,
     };
   } catch (error) {
@@ -130,7 +128,6 @@ async function getPremiumStatus(): Promise<PremiumStatus> {
       entitlement: null,
       subscription: null,
       billingConfigured: false,
-      apiUrl: activeApiUrl,
       error:
         error instanceof Error
           ? error.message
@@ -332,12 +329,12 @@ async function bootstrap(): Promise<void> {
   if (session) void syncEngine.syncNow("startup");
 }
 
-function showSyncSettings(): void {
+function showAccount(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
-  mainWindow.webContents.send("masar:navigate", "/settings/sync");
+  mainWindow.webContents.send("masar:navigate", "/account");
 }
 
 function requireClient(): PremiumApiClient {
@@ -403,7 +400,6 @@ function registerIpc(): void {
   ipcMain.handle("masar:get-state", (): DesktopState => ({
     isDesktop: true,
     mode: "local",
-    apiUrl: activeApiUrl,
     version: app.getVersion(),
   }));
 
@@ -444,15 +440,6 @@ function registerIpc(): void {
     return getPremiumStatus();
   });
 
-  ipcMain.handle("masar:set-api-url", async (_event, value: unknown) => {
-    const next = saveApiUrl(requireString(value, "API address", 500));
-    if (next !== activeApiUrl) {
-      expireSession();
-      activeApiUrl = next;
-    }
-    return getPremiumStatus();
-  });
-
   ipcMain.handle("masar:start-checkout", async () => {
     const result = await requireClient().startCheckout();
     const url = new URL(result.url);
@@ -484,16 +471,12 @@ function registerIpc(): void {
   ipcMain.handle("masar:notify-data-change", () => {
     syncEngine.notifyDataChanged();
   });
-
-  ipcMain.handle("masar:open-sync-settings", () => {
-    showSyncSettings();
-  });
 }
 
 function refreshMenu(): void {
   Menu.setApplicationMenu(
     buildMenu({
-      onOpenSync: showSyncSettings,
+      onOpenAccount: showAccount,
       onSyncNow: () => void syncEngine.syncNow("menu"),
     }),
   );

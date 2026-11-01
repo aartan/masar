@@ -41,7 +41,6 @@ export interface PremiumStatus {
   entitlement: EntitlementView | null;
   subscription: PremiumSubscriptionView | null;
   billingConfigured: boolean;
-  apiUrl: string;
   error: string | null;
 }
 

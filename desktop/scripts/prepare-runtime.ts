@@ -18,8 +18,11 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import path from "node:path";
+
+import { DEFAULT_API_URL, validateApiUrl } from "../src/api-config";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const runtimeDir = path.join(repoRoot, "desktop", "runtime");
@@ -122,6 +125,19 @@ function main(): void {
     path.join(runtimeDir, "migrate.js"),
   );
   console.log("[prepare-runtime] copied server and migrator");
+
+  // The API address is operator configuration. Bake it into the packaged
+  // runtime so end users never need to manage it in the UI. MASAR_API_URL can
+  // still override it at launch for development/testing.
+  const configuredApiUrl = validateApiUrl(
+    process.env.MASAR_API_URL?.trim() || DEFAULT_API_URL,
+  );
+  writeFileSync(
+    path.join(runtimeDir, "config.json"),
+    JSON.stringify({ apiUrl: configuredApiUrl }, null, 2) + "\n",
+    { mode: 0o644 },
+  );
+  console.log(`[prepare-runtime] configured API ${configuredApiUrl}`);
 
   const nodeModules = path.join(runtimeDir, "node_modules");
   mkdirSync(nodeModules, { recursive: true });

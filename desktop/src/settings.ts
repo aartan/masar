@@ -1,55 +1,38 @@
 import { app } from "electron";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { DEFAULT_API_URL, normalizeApiUrl, validateApiUrl } from "./api-config";
+import { DEFAULT_API_URL, validateApiUrl } from "./api-config";
+import { runtimeDir } from "./paths";
 
-export interface DesktopSettings {
-  /** Premium Sync API address, or null to use the build default. */
-  apiUrl: string | null;
-  /** Background sync is on by default once an account is connected. */
-  autoSync: boolean;
-  /** Legacy fields from older builds are ignored but preserved on write. */
-  mode?: string;
-  premiumUnlocked?: boolean;
-  syncUrl?: string | null;
+interface RuntimeConfig {
+  apiUrl?: unknown;
 }
 
-const DEFAULTS: DesktopSettings = {
-  apiUrl: null,
-  autoSync: true,
-};
-
-function settingsFile(): string {
-  return path.join(app.getPath("userData"), "masar-desktop.json");
-}
-
-export function readSettings(): DesktopSettings {
-  try {
-    const raw = JSON.parse(readFileSync(settingsFile(), "utf8")) as Partial<DesktopSettings>;
-    return { ...DEFAULTS, ...raw };
-  } catch {
-    return { ...DEFAULTS };
-  }
-}
-
-export function writeSettings(patch: Partial<DesktopSettings>): DesktopSettings {
-  const next = { ...readSettings(), ...patch };
-  writeFileSync(settingsFile(), JSON.stringify(next, null, 2), { mode: 0o600 });
-  return next;
-}
-
-/** Resolution order: saved setting, environment, build default. */
+/**
+ * The Premium Sync API address is operator configuration, not an in-app
+ * setting. Resolution order:
+ *   1. MASAR_API_URL environment variable (useful for development/testing)
+ *   2. runtime/config.json baked by `desktop:prepare`
+ *   3. the build default
+ */
 export function resolveApiUrl(): string {
-  const stored = readSettings().apiUrl?.trim();
-  if (stored) return normalizeApiUrl(stored);
   const fromEnv = process.env.MASAR_API_URL?.trim();
-  if (fromEnv) return normalizeApiUrl(fromEnv);
-  return normalizeApiUrl(DEFAULT_API_URL);
-}
+  if (fromEnv) return validateApiUrl(fromEnv);
 
-export function saveApiUrl(value: string): string {
-  const validated = validateApiUrl(value);
-  writeSettings({ apiUrl: validated });
-  return validated;
+  if (app.isPackaged) {
+    try {
+      const file = path.join(runtimeDir(), "config.json");
+      if (existsSync(file)) {
+        const config = JSON.parse(readFileSync(file, "utf8")) as RuntimeConfig;
+        if (typeof config.apiUrl === "string" && config.apiUrl.trim()) {
+          return validateApiUrl(config.apiUrl);
+        }
+      }
+    } catch {
+      /* fall back to the build default */
+    }
+  }
+
+  return validateApiUrl(DEFAULT_API_URL);
 }

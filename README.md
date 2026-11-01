@@ -93,11 +93,14 @@ Premium sync is optional and requires an account and subscription managed by the
 API. The desktop remains free and fully functional without it.
 
 1. Configure/run `masar-sync-api` (see its README).
-2. Open **Premium sync** in Masar.
-3. Set the API address (defaults to `http://127.0.0.1:8787`; use HTTPS for a
-   remote server), create an account or sign in, and subscribe.
-4. Masar pushes local changes and pulls remote changes automatically, or on
-   demand with **Sync now**.
+2. Open **Account** in Masar, create an account or sign in, and subscribe.
+3. Masar pushes and pulls changes automatically while you are signed in with an
+   active trial or subscription.
+
+The API address is operator configuration, not an in-app setting. It is baked
+into packaged builds from `MASAR_API_URL` (see Desktop builds) and can be
+overridden with the same environment variable when launching the app. The
+default is `http://127.0.0.1:8787`; use HTTPS for any remote server.
 
 The API bearer token is held in Electron's main process and encrypted with the
 OS keychain (Keychain, DPAPI or libsecret). It is never exposed to the renderer.
@@ -121,9 +124,10 @@ install GNOME Keyring/KWallet or explicitly opt into
 ## Desktop builds
 
 ```bash
-npm run desktop:build:mac
-npm run desktop:build:win
-npm run desktop:build:linux
+# Bake the production Premium Sync API address into the packaged app.
+MASAR_API_URL=https://sync.example.com npm run desktop:build:mac
+MASAR_API_URL=https://sync.example.com npm run desktop:build:win
+MASAR_API_URL=https://sync.example.com npm run desktop:build:linux
 ```
 
 The build bundles the SPA, local API, migrator and per-platform libSQL native
@@ -132,15 +136,16 @@ remain in `electron-builder.yml` and `desktop/scripts/`.
 
 ## Deployment and migration
 
-The desktop connects to whatever API address is configured in Settings. Moving
-the API from local infrastructure to a cloud host only requires:
+The desktop connects to the API address baked into its runtime configuration or
+set with `MASAR_API_URL`. Moving the API from local infrastructure to a cloud
+host requires:
 
 - deploying `masar-sync-api` with the same environment configuration,
 - pointing `PUBLIC_BASE_URL` at the new HTTPS origin,
-- changing the API address in Masar (sign-in is required again),
+- rebuilding the desktop with the new `MASAR_API_URL` (or setting the
+  environment variable in its launch configuration),
+- signing in again on each desktop, since tokens are bound to the API origin,
 - configuring Stripe webhooks against the new origin.
-
-No desktop rebuild is required for a server move.
 
 Existing hosted web accounts and Turso data are not migrated automatically.
 The new API has its own account and subscription records; local SQLite data is

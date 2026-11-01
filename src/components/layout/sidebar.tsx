@@ -75,8 +75,8 @@ export function SidebarContent({
         : sync?.phase === "subscription_required"
           ? "Subscription required"
           : sync?.phase === "idle"
-            ? "Premium sync on"
-            : "Sign in to sync";
+            ? "Cloud sync enabled"
+            : "Sign in to enable sync";
 
   function openAccount() {
     onNavigate?.();

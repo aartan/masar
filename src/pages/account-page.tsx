@@ -57,7 +57,7 @@ export function AccountPage() {
           setError(
             caught instanceof Error
               ? caught.message
-              : "Could not load the premium account.",
+              : "Could not load your account.",
           );
         }
       })
@@ -109,8 +109,8 @@ export function AccountPage() {
       const entitled = Boolean(result.entitlement?.entitled);
       toast.success(mode === "register" ? "Account created" : "Signed in", {
         description: entitled
-          ? "Premium sync is unlocked."
-          : "Choose a subscription to unlock premium sync.",
+          ? "Cloud sync is active."
+          : "Choose a subscription to unlock cloud sync.",
       });
       if (entitled) void bridge.syncNow().catch(() => undefined);
     }
@@ -130,7 +130,7 @@ export function AccountPage() {
         return;
       }
       toast.success("Local workspace imported", {
-        description: `${result.boards} board(s) and ${result.tasks} task(s) copied to your premium workspace and queued for sync.`,
+        description: `${result.boards} board(s) and ${result.tasks} task(s) copied to your cloud workspace and queued for sync.`,
       });
     } catch (caught) {
       setError(
@@ -170,7 +170,7 @@ export function AccountPage() {
           <PageHeading />
           <Card className="mt-6">
             <CardContent className="px-5 py-6 text-[13px] leading-relaxed text-muted-foreground">
-              Premium accounts are available in the Masar desktop application.
+              Cloud sync is available in the Masar desktop application.
               This browser preview always uses the local SQLite workspace and
               works fully offline.
             </CardContent>
@@ -219,7 +219,7 @@ export function AccountPage() {
             onLogout={() =>
               void perform("logout", async () => {
                 const status = await bridge.logout();
-                toast.success("Signed out of the premium account");
+                toast.success("Signed out");
                 return status;
               })
             }
@@ -232,20 +232,15 @@ export function AccountPage() {
                   <span className="grid size-8 place-items-center rounded-lg bg-primary/10 text-primary">
                     <Cloud className="size-4" />
                   </span>
-                  <CardTitle>Premium account</CardTitle>
+                  <CardTitle>Cloud Sync</CardTitle>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 text-[12.5px] leading-relaxed text-muted-foreground">
                 <p>
                   Your local workspace stays free and fully functional offline.
-                  Signing in opens your premium workspace, which synchronises
-                  automatically across devices while your subscription is
-                  active. Local data is never uploaded without an explicit
-                  import.
-                </p>
-                <p>
-                  Account, subscription and entitlement management are handled
-                  securely by the Masar Premium Sync API.
+                  Sign in to access your cloud workspace. Changes sync automatically
+                  across your devices while your subscription is active. Your local 
+                  data is only uploaded when you choose to import it.
                 </p>
               </CardContent>
             </Card>
@@ -345,15 +340,13 @@ function PageHeading() {
   return (
     <div>
       <p className="text-[10.5px] font-semibold tracking-[0.16em] text-muted-foreground/60 uppercase">
-        Account
+        ACCOUNT SETTINGS
       </p>
       <h1 className="font-display mt-2 text-[28px] leading-tight font-semibold text-foreground sm:text-[32px]">
-        Premium account
+        Account
       </h1>
       <p className="mt-1.5 max-w-xl text-[13.5px] leading-relaxed text-muted-foreground">
-        Manage your account and subscription. Premium sync starts automatically
-        when you sign in with an active subscription. Local work remains
-        available offline at all times.
+        Manage your sign-in details, subscription, and cloud sync preferences. Your local workspace is always available offline.
       </p>
     </div>
   );
@@ -416,7 +409,7 @@ function ConnectedAccount({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle className="truncate">
-              {premium.user?.name ?? "Premium account"}
+              {premium.user?.name ?? "Account"}
             </CardTitle>
             <p className="truncate text-[12px] text-muted-foreground">
               {premium.user?.email}
@@ -447,7 +440,7 @@ function ConnectedAccount({
             <dl className="grid gap-1.5 text-[12.5px] sm:grid-cols-2">
               <Detail
                 label="Plan"
-                value={premium.subscription.planName ?? "Masar Pro"}
+                value={premium.subscription.planName ?? "Cloud Sync"}
               />
               <Detail
                 label="Price"
@@ -464,9 +457,9 @@ function ConnectedAccount({
         <Separator />
 
         <p className="text-[11.5px] leading-relaxed text-muted-foreground">
-          You are viewing the premium workspace for this account. It syncs
-          automatically in the background while you are signed in. Your local
-          workspace is untouched and returns when you sign out.
+          You're using your cloud workspace. Changes sync automatically in 
+          the background while you're signed in. Your local workspace remains 
+          untouched and becomes active again when you sign out.
         </p>
 
         {premium.error && (
@@ -477,8 +470,7 @@ function ConnectedAccount({
 
         {!premium.billingConfigured && (
           <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-[12px] leading-relaxed text-muted-foreground">
-            Billing is not configured on the Premium Sync API. Existing access
-            rules still apply.
+            Billing is not currently available. Existing access rules still apply.
           </p>
         )}
 

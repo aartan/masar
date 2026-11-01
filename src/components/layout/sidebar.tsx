@@ -4,7 +4,6 @@ import {
   ChevronsUpDown,
   Keyboard,
   LayoutDashboard,
-  Loader2,
   Palette,
   Plus,
   Search,
@@ -130,20 +129,6 @@ export function SidebarContent({
           onClick={onNavigate}
         >
           Overview
-        </SidebarLink>
-        <SidebarLink
-          href="/account"
-          icon={UserRound}
-          active={pathname === "/account"}
-          onClick={onNavigate}
-        >
-          Account
-          {sync?.phase === "syncing" && (
-            <Loader2 className="ml-auto size-3 animate-spin opacity-60" />
-          )}
-          {sync?.phase === "idle" && (
-            <span className="ml-auto size-1.5 rounded-full bg-emerald-500" />
-          )}
         </SidebarLink>
       </nav>
 

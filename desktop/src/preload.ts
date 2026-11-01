@@ -6,7 +6,7 @@ import type {
   PremiumStatus,
   SyncStatus,
 } from "../../src/lib/premium-types";
-import type { DesktopState } from "../../src/lib/desktop-bridge";
+import type { DesktopState, ThemePreference } from "../../src/lib/desktop-bridge";
 
 function cleanError(error: unknown): Error {
   const message = error instanceof Error ? error.message : String(error);
@@ -25,7 +25,12 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
   }
 }
 
+const initialTheme = ipcRenderer.sendSync("masar:get-theme") as ThemePreference;
+
 contextBridge.exposeInMainWorld("masarDesktop", {
+  initialTheme,
+  setTheme: (theme: ThemePreference) =>
+    invoke<ThemePreference>("masar:set-theme", theme),
   getState: () => invoke<DesktopState>("masar:get-state"),
   getPremiumStatus: () => invoke<PremiumStatus>("masar:get-premium-status"),
   login: (input: PremiumCredentials) =>

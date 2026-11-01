@@ -5,6 +5,8 @@ import type {
   SyncStatus,
 } from "./premium-types";
 
+export type ThemePreference = "light" | "dark" | "system";
+
 export interface DesktopState {
   isDesktop: true;
   mode: "local";
@@ -12,6 +14,9 @@ export interface DesktopState {
 }
 
 export interface MasarDesktopBridge {
+  /** Synchronous startup value so the correct theme paints immediately. */
+  initialTheme: ThemePreference;
+  setTheme(theme: ThemePreference): Promise<ThemePreference>;
   getState(): Promise<DesktopState>;
   getPremiumStatus(): Promise<PremiumStatus>;
   login(input: PremiumCredentials): Promise<PremiumStatus>;

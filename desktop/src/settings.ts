@@ -1,12 +1,46 @@
 import { app } from "electron";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { DEFAULT_API_URL, validateApiUrl } from "./api-config";
 import { runtimeDir } from "./paths";
 
+export type ThemePreference = "light" | "dark" | "system";
+const THEMES = new Set<ThemePreference>(["light", "dark", "system"]);
+
 interface RuntimeConfig {
   apiUrl?: unknown;
+}
+
+function preferencesFile(): string {
+  return path.join(app.getPath("userData"), "masar-desktop.json");
+}
+
+function readRawPreferences(): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(readFileSync(preferencesFile(), "utf8")) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+/** UI preferences live in Electron's userData, not the SPA origin's storage. */
+export function readThemePreference(): ThemePreference {
+  const theme = readRawPreferences().theme;
+  return typeof theme === "string" && THEMES.has(theme as ThemePreference)
+    ? (theme as ThemePreference)
+    : "system";
+}
+
+export function writeThemePreference(theme: ThemePreference): void {
+  if (!THEMES.has(theme)) throw new Error("Invalid theme preference.");
+  const next = { ...readRawPreferences(), theme };
+  writeFileSync(preferencesFile(), JSON.stringify(next, null, 2), {
+    mode: 0o600,
+  });
 }
 
 /**

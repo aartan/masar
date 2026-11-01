@@ -4,6 +4,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeTheme,
   net,
   shell,
 } from "electron";
@@ -16,7 +17,7 @@ import type {
   PremiumStatus,
   SyncStatus,
 } from "../../src/lib/premium-types";
-import type { DesktopState } from "../../src/lib/desktop-bridge";
+import type { DesktopState, ThemePreference } from "../../src/lib/desktop-bridge";
 import { buildMenu } from "./menu";
 import { registerLifecycle } from "./lifecycle";
 import { databaseUrl, logFile, rendererDir } from "./paths";
@@ -28,7 +29,7 @@ import {
   savePremiumSession,
   type StoredPremiumSession,
 } from "./premium/token-store";
-import { resolveApiUrl } from "./settings";
+import { readThemePreference, resolveApiUrl, writeThemePreference } from "./settings";
 import { getFreePort } from "./server/free-port";
 import { waitForHealth } from "./server/health";
 import {
@@ -403,6 +404,20 @@ function registerIpc(): void {
     version: app.getVersion(),
   }));
 
+  ipcMain.on("masar:get-theme", (event) => {
+    event.returnValue = readThemePreference();
+  });
+
+  ipcMain.handle("masar:set-theme", (_event, value: unknown) => {
+    if (value !== "light" && value !== "dark" && value !== "system") {
+      throw new Error("Invalid theme preference.");
+    }
+    const theme: ThemePreference = value;
+    writeThemePreference(theme);
+    nativeTheme.themeSource = theme;
+    return theme;
+  });
+
   ipcMain.handle("masar:get-premium-status", () => getPremiumStatus());
   ipcMain.handle("masar:get-sync-status", () => getSyncStatus());
 
@@ -497,6 +512,7 @@ void app.whenReady().then(async () => {
   app.setAppUserModelId(APP_USER_MODEL_ID);
   log("[boot] app ready");
   try {
+    nativeTheme.themeSource = readThemePreference();
     registerIpc();
     refreshMenu();
     await bootstrap();

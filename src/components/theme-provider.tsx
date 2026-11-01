@@ -1,6 +1,8 @@
 import * as React from "react";
 
-export type Theme = "light" | "dark" | "system";
+import type { ThemePreference } from "@/lib/desktop-bridge";
+
+export type Theme = ThemePreference;
 
 interface ThemeContextValue {
   theme: Theme;
@@ -18,6 +20,14 @@ function systemTheme(): "light" | "dark" {
 }
 
 function readTheme(): Theme {
+  const bridgeTheme = window.masarDesktop?.initialTheme;
+  if (
+    bridgeTheme === "light" ||
+    bridgeTheme === "dark" ||
+    bridgeTheme === "system"
+  ) {
+    return bridgeTheme;
+  }
   const stored = window.localStorage.getItem(STORAGE_KEY);
   return stored === "light" || stored === "dark" || stored === "system"
     ? stored
@@ -52,6 +62,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setTheme = React.useCallback((next: Theme) => {
     window.localStorage.setItem(STORAGE_KEY, next);
+    const bridge = window.masarDesktop;
+    if (bridge) {
+      void bridge.setTheme(next).catch(() => undefined);
+    }
     setThemeState(next);
   }, []);
 

@@ -12,12 +12,18 @@
     <script>
       (function () {
         try {
-          var stored = localStorage.getItem("masar:theme") || "system";
+          var bridgeTheme =
+            window.masarDesktop && window.masarDesktop.initialTheme;
+          var stored =
+            bridgeTheme || localStorage.getItem("masar:theme") || "system";
           var dark =
             stored === "dark" ||
             (stored === "system" &&
               window.matchMedia("(prefers-color-scheme: dark)").matches);
-          if (dark) document.documentElement.classList.add("dark");
+          document.documentElement.classList.toggle("dark", dark);
+          document.documentElement.style.colorScheme = dark
+            ? "dark"
+            : "light";
         } catch (error) {
           /* localStorage can be unavailable in hardened contexts. */
         }

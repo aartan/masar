@@ -21,6 +21,20 @@ workspaceRoutes.get("/health", async () => {
 workspaceRoutes.get("/me", async (_c) => {
   try {
     const user = await requireApiUser();
+    const syncName = process.env.MASAR_SYNC_USER_NAME?.trim();
+    const syncEmail = process.env.MASAR_SYNC_USER_EMAIL?.trim();
+    if (syncName) {
+      // The local API is serving a premium sync mirror: report the premium
+      // account so the UI can distinguish the cloud workspace from local.
+      return jsonOk({
+        user: {
+          id: user.id,
+          name: syncName,
+          email: syncEmail || "",
+          premium: true,
+        },
+      });
+    }
     return jsonOk({
       user: { id: user.id, name: user.name, email: user.email },
     });

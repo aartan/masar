@@ -20,7 +20,7 @@ import type {
 import type { DesktopState, ThemePreference } from "../../src/lib/desktop-bridge";
 import { buildMenu } from "./menu";
 import { registerLifecycle } from "./lifecycle";
-import { databaseUrl, logFile, rendererDir } from "./paths";
+import { databaseUrl, logFile, rendererDir, syncDatabaseUrl } from "./paths";
 import { PremiumApiClient, PremiumApiError } from "./premium/client";
 import { SyncEngine } from "./premium/sync-engine";
 import {
@@ -51,6 +51,8 @@ let activeApiUrl = "";
 let session: StoredPremiumSession | null = null;
 let premiumClient: PremiumApiClient | null = null;
 let shuttingDown = false;
+/** Remote user id of the workspace the local API is currently serving. */
+let activeSyncUserId: string | null = null;
 
 function log(line: string): void {
   console.log(line);
@@ -76,13 +78,35 @@ const syncEngine = new SyncEngine({
   isOnline: () => net.isOnline(),
   log,
   onStatus: (status) => broadcastSyncStatus(status),
-  onUnauthorized: () => {
-    clearPremiumSession();
-    session = null;
-    premiumClient = null;
-    log("[premium] session expired");
+  onUnauthorized: (client) => {
+    // Ignore 401s from a sync cycle that belonged to a previous session; only
+    // expire the session when the rejected client is still the active one.
+    if (!session || !premiumClient || premiumClient !== client) return;
+    void handleSessionExpired();
   },
 });
+
+/**
+ * The API revoked or rejected the premium token (for example on logout from
+ * another device). Drop the session and move back to the local workspace.
+ */
+function handleSessionExpired(): void {
+  if (!session) return;
+  const expired = session;
+  session = null;
+  premiumClient = null;
+  clearPremiumSession();
+  syncEngine.disconnect();
+  log(`[premium] session expired for ${expired.user.email}`);
+  void (async () => {
+    try {
+      await switchWorkspace(null);
+    } catch (error) {
+      log(`[premium] could not restore the local workspace: ${String(error)}`);
+    }
+    refreshMenu();
+  })();
+}
 
 function broadcastSyncStatus(status: SyncStatus): void {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -117,11 +141,13 @@ async function getPremiumStatus(): Promise<PremiumStatus> {
     };
   } catch (error) {
     if (error instanceof PremiumApiError && error.status === 401) {
-      clearPremiumSession();
-      session = null;
-      premiumClient = null;
-      syncEngine.disconnect();
-      return disconnectedStatus("Your premium session expired. Sign in again.");
+      // Only expire the session if the rejected client is still the current
+      // one; a sign-in may have completed while this request was in flight.
+      if (premiumClient === client) {
+        handleSessionExpired();
+        return disconnectedStatus("Your premium session expired. Sign in again.");
+      }
+      return disconnectedStatus();
     }
     return {
       connected: true,
@@ -241,25 +267,52 @@ function serverOrigin(port: number): string {
   return `http://127.0.0.1:${port}`;
 }
 
-async function launchServer(): Promise<void> {
+/**
+ * Environment for the local API process. When `syncUser` is present the
+ * process serves that premium account's sync mirror database and advertises it
+ * through `MASAR_SYNC_SCOPE`; the sync routes refuse to mutate any database
+ * without a matching scope, which keeps local workspace data out of reach of
+ * sync requests for good.
+ */
+function serverEnvFor(
+  targetDatabaseUrl: string,
+  syncUser: StoredPremiumSession["user"] | null,
+): Record<string, string> {
+  return {
+    HOSTNAME: "127.0.0.1",
+    DATABASE_URL: targetDatabaseUrl,
+    MASAR_STATIC_DIR: rendererDir(),
+    NODE_ENV: "production",
+    ...(syncUser
+      ? {
+          MASAR_SYNC_SCOPE: syncUser.id,
+          MASAR_SYNC_USER_NAME: syncUser.name,
+          MASAR_SYNC_USER_EMAIL: syncUser.email,
+          // The import action reads the local workspace file; never the other
+          // way around.
+          MASAR_LOCAL_DB_URL: databaseUrl(),
+        }
+      : {}),
+  };
+}
+
+async function launchServer(
+  targetDatabaseUrl: string,
+  syncUser: StoredPremiumSession["user"] | null,
+): Promise<void> {
   for (let attempt = 1; attempt <= MAX_PORT_ATTEMPTS; attempt += 1) {
     const port = await getFreePort("127.0.0.1");
-    const handle = startServer(
-      {
-        HOSTNAME: "127.0.0.1",
-        PORT: String(port),
-        DATABASE_URL: databaseUrl(),
-        MASAR_STATIC_DIR: rendererDir(),
-        NODE_ENV: "production",
-      },
-      log,
-    );
+    const env = {
+      ...serverEnvFor(targetDatabaseUrl, syncUser),
+      PORT: String(port),
+    };
+    const handle = startServer(env, log);
     const candidateOrigin = serverOrigin(port);
     try {
       await Promise.race([
         waitForHealth(`${candidateOrigin}/api/health`, { timeoutMs: HEALTH_TIMEOUT_MS }),
         handle.exited.then((code) => {
-          throw new Error(`local server exited early with code ${code}`);
+          throw new Error(`server exited early with code ${code}`);
         }),
       ]);
       server = handle;
@@ -275,14 +328,99 @@ async function launchServer(): Promise<void> {
   }
 }
 
-function watchServerExit(): void {
-  void server?.exited.then((exitCode) => {
-    if (shuttingDown) return;
+function watchServerExit(handle: ServerHandle): void {
+  void handle.exited.then((exitCode) => {
+    // Ignore the exit of a server that was deliberately replaced by a
+    // workspace switch or an intentional shutdown.
+    if (shuttingDown || server !== handle) return;
     fatal(
       "Masar local workspace stopped",
       `The local API exited unexpectedly (code ${exitCode}).`,
     );
   });
+}
+
+/**
+ * Point the local API at a different workspace database and reload the
+ * renderer so it re-reads its data from that workspace.
+ *
+ *   - signed out: the local workspace (`masar.db`).
+ *   - signed in:  the premium account's own sync mirror (`sync/<user>.db`).
+ *
+ * The previous server process is stopped first so no request can land on the
+ * old database after the switch. A sync cycle that is still in flight either
+ * completes against the old process or fails cleanly; the scope guard in the
+ * sync routes makes it impossible for it to write into the wrong database.
+ *
+ * Switches are serialised: a session expiry and a new sign-in can race, and
+ * only the last requested workspace may win.
+ */
+let switchQueue: Promise<void> = Promise.resolve();
+
+function switchWorkspace(syncUser: StoredPremiumSession["user"] | null): Promise<void> {
+  const next = switchQueue.then(() => performWorkspaceSwitch(syncUser));
+  switchQueue = next.catch(() => undefined);
+  return next;
+}
+
+async function performWorkspaceSwitch(
+  syncUser: StoredPremiumSession["user"] | null,
+): Promise<void> {
+  if (isDevMode()) {
+    // The development launcher owns the local API and cannot switch
+    // databases. Premium sync is unavailable against the shared dev API; see
+    // desktop/scripts/dev.ts.
+    return;
+  }
+
+  const nextUserId = syncUser?.id ?? null;
+  if (server && activeSyncUserId === nextUserId) {
+    // Already serving the requested workspace (for example a duplicate
+    // logout). Avoid an unnecessary restart and reload.
+    return;
+  }
+
+  const targetDatabaseUrl = syncUser
+    ? syncDatabaseUrl(syncUser.id)
+    : databaseUrl();
+
+  const previous = server;
+  server = null;
+  activeSyncUserId = null;
+  previous?.kill();
+  if (previous) await previous.exited.catch(() => 0);
+
+  if (syncUser) {
+    // Keep the local workspace file migrated as well, so the explicit import
+    // action can always read it (for example a fresh install that signs in
+    // without ever opening the local workspace). Failure is not fatal: sync
+    // itself never reads the local database.
+    const localMigration = await runMigrations(log, databaseUrl());
+    if (localMigration.code !== 0) {
+      log(`[local] local workspace migration failed: ${localMigration.stderr.trim()}`);
+    }
+  }
+
+  const { code, stderr } = await runMigrations(log, targetDatabaseUrl);
+  if (code !== 0) {
+    fatal("Database migration failed", stderr.trim() || `exit code ${code}`);
+  }
+
+  await launchServer(targetDatabaseUrl, syncUser);
+  activeSyncUserId = nextUserId;
+  watchServerExit(server!);
+  startUrl = origin;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    // `origin` now points at the new server process; reload() would re-request
+    // the old (dead) origin instead.
+    void mainWindow.loadURL(origin).catch(() => {
+      /* did-fail-load renders the retry page */
+    });
+  }
+}
+
+function isDevMode(): boolean {
+  return Boolean(process.env.MASAR_DEV_SERVER_URL?.trim());
 }
 
 async function bootstrap(): Promise<void> {
@@ -300,10 +438,9 @@ async function bootstrap(): Promise<void> {
     ? new PremiumApiClient(session.apiUrl, session.token)
     : null;
 
-  const devUrl = process.env.MASAR_DEV_SERVER_URL?.trim();
-  if (devUrl) {
-    origin = devUrl;
-    startUrl = devUrl;
+  if (isDevMode()) {
+    origin = process.env.MASAR_DEV_SERVER_URL!.trim();
+    startUrl = origin;
     localApiOrigin = process.env.MASAR_DEV_API_URL?.trim() || "http://127.0.0.1:4782";
     log(`[dev] renderer ${origin}, local API ${localApiOrigin}`);
     createWindow();
@@ -312,20 +449,28 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
-  const { code, stderr } = await runMigrations(log);
+  // A stored premium session means the app opens that account's sync mirror;
+  // otherwise the local workspace.
+  const syncUser = session?.user ?? null;
+  const targetDatabaseUrl = syncUser
+    ? syncDatabaseUrl(syncUser.id)
+    : databaseUrl();
+
+  const { code, stderr } = await runMigrations(log, targetDatabaseUrl);
   if (code !== 0) {
     fatal("Database migration failed", stderr.trim() || `exit code ${code}`);
   }
 
   try {
-    await launchServer();
+    await launchServer(targetDatabaseUrl, syncUser);
   } catch (error) {
     fatal("Masar local workspace failed to start", String(error));
   }
+  activeSyncUserId = syncUser?.id ?? null;
 
   startUrl = origin;
   createWindow();
-  watchServerExit();
+  watchServerExit(server!);
   syncEngine.start();
   if (session) void syncEngine.syncNow("startup");
 }
@@ -352,7 +497,15 @@ function expireSession(): void {
   syncEngine.disconnect();
 }
 
-function adoptSession(auth: { token: string; user: StoredPremiumSession["user"] }): void {
+/**
+ * Adopt a freshly issued premium session and switch the local API to that
+ * account's sync mirror. The renderer reloads and shows the premium workspace.
+ * No local workspace data is touched: the mirror starts empty (or resumes the
+ * account's previous mirror) and is filled from the API by the sync engine.
+ */
+async function adoptSession(
+  auth: { token: string; user: StoredPremiumSession["user"] },
+): Promise<void> {
   if (!activeApiUrl) throw new Error("No API address is configured.");
   const next: StoredPremiumSession = {
     apiUrl: activeApiUrl,
@@ -363,6 +516,60 @@ function adoptSession(auth: { token: string; user: StoredPremiumSession["user"] 
   session = next;
   premiumClient = new PremiumApiClient(activeApiUrl, auth.token);
   syncEngine.disconnect();
+  try {
+    await switchWorkspace(next.user);
+  } catch (error) {
+    // Do not leave a stored session whose workspace could not be opened.
+    clearPremiumSession();
+    session = null;
+    premiumClient = null;
+    throw error;
+  }
+  refreshMenu();
+}
+
+/**
+ * Sign out: revoke the API session, drop the token, drain any in-flight sync
+ * cycle and switch the local API back to the local workspace. The account's
+ * mirror file stays on disk so signing in again resumes where it left off.
+ */
+async function disconnectSession(): Promise<void> {
+  if (premiumClient) {
+    try {
+      await premiumClient.logout();
+    } catch (error) {
+      log(`[premium] logout request failed: ${String(error)}`);
+    }
+  }
+  expireSession();
+  await syncEngine.idle();
+  await switchWorkspace(null);
+  refreshMenu();
+}
+
+/** Read the local workspace and copy it into the connected premium workspace. */
+async function importLocalWorkspace(): Promise<{ boards: number; tasks: number }> {
+  if (!session) throw new Error("Sign in to premium sync first.");
+  const apiOrigin = localApiOrigin;
+  if (!apiOrigin) throw new Error("The local workspace is not available.");
+  const response = await fetch(`${apiOrigin}/api/sync/import-local`, {
+    method: "POST",
+    signal: AbortSignal.timeout(30_000),
+  });
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+  if (!response.ok) {
+    const message =
+      payload && typeof payload === "object" && "error" in payload
+        ? String((payload as { error: unknown }).error)
+        : `Could not import the local workspace (${response.status}).`;
+    throw new Error(message);
+  }
+  return payload as { boards: number; tasks: number };
 }
 
 function requireString(
@@ -425,7 +632,7 @@ function registerIpc(): void {
     const credentials = parseCredentials(input);
     const client = new PremiumApiClient(activeApiUrl, null);
     const auth = await client.login(credentials.email, credentials.password);
-    adoptSession(auth);
+    await adoptSession(auth);
     void syncEngine.syncNow("login");
     return getPremiumStatus();
   });
@@ -438,21 +645,20 @@ function registerIpc(): void {
       registration.email,
       registration.password,
     );
-    adoptSession(auth);
+    await adoptSession(auth);
     void syncEngine.syncNow("register");
     return getPremiumStatus();
   });
 
   ipcMain.handle("masar:premium-logout", async () => {
-    if (premiumClient) {
-      try {
-        await premiumClient.logout();
-      } catch (error) {
-        log(`[premium] logout request failed: ${String(error)}`);
-      }
-    }
-    expireSession();
+    await disconnectSession();
     return getPremiumStatus();
+  });
+
+  ipcMain.handle("masar:import-local", async () => {
+    const result = await importLocalWorkspace();
+    void syncEngine.syncNow("import");
+    return result;
   });
 
   ipcMain.handle("masar:start-checkout", async () => {
@@ -493,6 +699,35 @@ function refreshMenu(): void {
     buildMenu({
       onOpenAccount: showAccount,
       onSyncNow: () => void syncEngine.syncNow("menu"),
+      canImportLocal: Boolean(session),
+      workspaceLabel: session
+        ? `Premium workspace — ${session.user.email}`
+        : "Masar Local Workspace",
+      onImportLocal: () => {
+        void importLocalWorkspace()
+          .then((result) => {
+            void syncEngine.syncNow("import");
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              dialog.showMessageBox(mainWindow, {
+                type: "info",
+                title: "Import complete",
+                message:
+                  result.boards === 0
+                    ? "There is no local workspace to import."
+                    : `Imported ${result.boards} board(s) and ${result.tasks} task(s) into your premium workspace.`,
+              });
+            }
+          })
+          .catch((error) => {
+            log(`[premium] import failed: ${String(error)}`);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              dialog.showErrorBox(
+                "Import failed",
+                error instanceof Error ? error.message : String(error),
+              );
+            }
+          });
+      },
     }),
   );
 }

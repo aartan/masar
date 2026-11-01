@@ -73,6 +73,20 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // When a background sync cycle completes, the local database may contain
+  // changes from another device (or a workspace import). Refresh the board
+  // list so the UI reflects them without a manual reload.
+  React.useEffect(() => {
+    const bridge = window.masarDesktop;
+    if (!bridge) return;
+    let previousPhase = "";
+    return bridge.onSyncStatus((status) => {
+      const completed = previousPhase === "syncing" && status.phase === "idle";
+      previousPhase = status.phase;
+      if (completed) void refreshBoards();
+    });
+  }, [refreshBoards]);
+
   const value = React.useMemo(
     () => ({ boards, user, loading, error, refreshBoards }),
     [boards, user, loading, error, refreshBoards],

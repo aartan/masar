@@ -102,7 +102,17 @@ export async function prepareSync(
     const deviceId = typeof row?.device_id === "string" ? row.device_id : randomUUID();
     const previousRemoteUser =
       typeof row?.remote_user_id === "string" ? row.remote_user_id : null;
-    const accountChanged = previousRemoteUser !== null && previousRemoteUser !== remoteUserId;
+
+    // A database file is bound to exactly one premium account (the Electron
+    // main process opens a dedicated mirror file per account). Re-bootstrapping
+    // on an account switch used to re-queue every local row — including the
+    // previous account's cloud data — into the next account's workspace. That
+    // must never happen again: refuse instead.
+    if (previousRemoteUser !== null && previousRemoteUser !== remoteUserId) {
+      throw new Error(
+        `This workspace is bound to premium account ${previousRemoteUser}. Sign out before connecting ${remoteUserId}.`,
+      );
+    }
 
     await tx.execute({
       sql: `insert into sync_state (id, device_id, remote_user_id, last_revision, last_synced_at, bootstrapped, applying)
@@ -113,12 +123,7 @@ export async function prepareSync(
       args: [deviceId, remoteUserId],
     });
 
-    if (accountChanged) {
-      await tx.execute(
-        "update sync_state set last_revision = 0, bootstrapped = 0, last_synced_at = null where id = 1",
-      );
-      await tx.execute("delete from sync_changes");
-    } else if (resetCursor) {
+    if (resetCursor) {
       // The server revision can move backwards after a restore. Keep the
       // outbox so unsynced local work is still pushed; only restart the pull
       // cursor.

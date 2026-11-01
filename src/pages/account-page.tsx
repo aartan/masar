@@ -116,6 +116,33 @@ export function AccountPage() {
     }
   }
 
+  async function importLocalWorkspace() {
+    if (!bridge) return;
+    setBusy("import");
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await bridge.importLocalWorkspace();
+      if (result.boards === 0) {
+        setNotice(
+          "There is no local workspace to import. Boards you create here are synced automatically.",
+        );
+        return;
+      }
+      toast.success("Local workspace imported", {
+        description: `${result.boards} board(s) and ${result.tasks} task(s) copied to your premium workspace and queued for sync.`,
+      });
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Could not import the local workspace.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function openBilling(action: "checkout" | "portal") {
     if (!bridge) return;
     setBusy(action);
@@ -176,6 +203,7 @@ export function AccountPage() {
           <ConnectedAccount
             premium={premium}
             busy={busy}
+            onImportLocal={() => void importLocalWorkspace()}
             onRefresh={() =>
               void perform("refresh", async () => {
                 const status = await bridge.refreshBilling();
@@ -210,8 +238,10 @@ export function AccountPage() {
               <CardContent className="space-y-3 text-[12.5px] leading-relaxed text-muted-foreground">
                 <p>
                   Your local workspace stays free and fully functional offline.
-                  Signing in with a premium account enables automatic
-                  cross-device synchronisation while your subscription is active.
+                  Signing in opens your premium workspace, which synchronises
+                  automatically across devices while your subscription is
+                  active. Local data is never uploaded without an explicit
+                  import.
                 </p>
                 <p>
                   Account, subscription and entitlement management are handled
@@ -352,6 +382,7 @@ function Alert({ tone, title }: { tone: "error" | "info"; title: string }) {
 function ConnectedAccount({
   premium,
   busy,
+  onImportLocal,
   onRefresh,
   onCheckout,
   onPortal,
@@ -359,6 +390,7 @@ function ConnectedAccount({
 }: {
   premium: PremiumStatus;
   busy: string | null;
+  onImportLocal: () => void;
   onRefresh: () => void;
   onCheckout: () => void;
   onPortal: () => void;
@@ -432,8 +464,9 @@ function ConnectedAccount({
         <Separator />
 
         <p className="text-[11.5px] leading-relaxed text-muted-foreground">
-          Premium sync runs automatically in the background while you are
-          signed in with an active trial or subscription.
+          You are viewing the premium workspace for this account. It syncs
+          automatically in the background while you are signed in. Your local
+          workspace is untouched and returns when you sign out.
         </p>
 
         {premium.error && (
@@ -450,6 +483,14 @@ function ConnectedAccount({
         )}
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <Button variant="outline" onClick={onImportLocal} disabled={busy !== null}>
+            {busy === "import" ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Cloud className="size-4" />
+            )}
+            Import local workspace
+          </Button>
           <Button variant="outline" onClick={onRefresh} disabled={busy !== null}>
             {busy === "refresh" ? (
               <Loader2 className="size-4 animate-spin" />

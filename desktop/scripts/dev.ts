@@ -5,6 +5,14 @@
  *   3. start the local API with tsx on 4782
  *   4. start Vite on 5173 (proxying /api to the local API)
  *   5. open Electron against Vite
+ *
+ * Premium sync in development: the packaged app switches the local API between
+ * the local workspace database and one per-account sync mirror database, but
+ * this single shared dev API cannot. Its sync routes therefore refuse requests
+ * (no `MASAR_SYNC_SCOPE`) instead of writing remote data into the dev
+ * database. To exercise sync in development, start the API manually with
+ * `MASAR_SYNC_SCOPE=<remote-user-id>` and `MASAR_LOCAL_DB_URL` pointing at a
+ * local database, and open the account page.
  */
 import { spawn } from "node:child_process";
 import path from "node:path";

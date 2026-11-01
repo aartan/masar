@@ -69,11 +69,30 @@ Migration `0003_stormy_robin_chapel.sql` adds:
   `created_at`.
 
 Triggers suppress themselves while remote changes are being applied, preventing
-sync echo loops. On first sync, bootstrap queues every existing local entity so
-no local work is lost.
+sync echo loops. On the first sync of a mirror, bootstrap queues every existing
+entity in that mirror so no local work is lost.
 
 Older unowned boards and boards parked behind the `legacy-workspace` account are
 claimed by the implicit `local-user` account on startup.
+
+## Workspace separation
+
+Local and premium workspaces are separate databases, exactly like the original
+two-mode desktop app:
+
+- The local workspace lives in `masar.db` and is never read or written by
+  sync. It is what the app shows while signed out.
+- Every premium account gets its own mirror database `sync/<user-id>.db`.
+  The Electron main process restarts the loopback API against the matching
+  database on sign-in, sign-out and session expiry, then reloads the renderer.
+- `MASAR_SYNC_SCOPE` binds an API process to one premium account; the sync
+  routes refuse to mutate any database without a matching scope, so sync can
+  never write into the local workspace (or another account's mirror), even if
+  a request races a workspace switch.
+- Local data only enters the cloud through the explicit "Import local
+  workspace" action, which copies the local database into the mirror (re-owning
+  boards and queueing changes for the next push). Signing in never uploads
+  local data by itself.
 
 ## Sync flow
 
@@ -88,6 +107,10 @@ claimed by the implicit `local-user` account on startup.
    remote batch.
 7. Duplicate pushes are ignored by timestamp/data equality; interrupted network
    calls can be retried safely.
+
+A mirror's pull cursor and outbox persist across restarts, so an interrupted or
+offline sync resumes where it left off. A fresh machine starts with an empty
+mirror (cursor 0) and pulls the complete workspace from the API.
 
 ## Known limitations
 

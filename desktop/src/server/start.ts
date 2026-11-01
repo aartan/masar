@@ -37,8 +37,11 @@ export function startServer(
   };
 }
 
-/** Apply Drizzle migrations before the local API starts. */
-export function runMigrations(log: Logger): Promise<{ code: number; stderr: string }> {
+/** Apply Drizzle migrations to the given database before the local API starts. */
+export function runMigrations(
+  log: Logger,
+  targetDatabaseUrl = databaseUrl(),
+): Promise<{ code: number; stderr: string }> {
   const dir = runtimeDir();
 
   return new Promise((resolve) => {
@@ -48,7 +51,7 @@ export function runMigrations(log: Logger): Promise<{ code: number; stderr: stri
       serviceName: "masar-migrate",
       env: {
         ...process.env,
-        DATABASE_URL: databaseUrl(),
+        DATABASE_URL: targetDatabaseUrl,
         MASAR_MIGRATIONS_DIR: migrationsDir(),
         NODE_PATH: path.join(dir, "node_modules"),
       },

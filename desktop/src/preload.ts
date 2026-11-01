@@ -43,6 +43,8 @@ contextBridge.exposeInMainWorld("masarDesktop", {
   refreshBilling: () => invoke<PremiumStatus>("masar:refresh-billing"),
   syncNow: () => invoke<SyncStatus>("masar:sync-now"),
   getSyncStatus: () => invoke<SyncStatus>("masar:get-sync-status"),
+  importLocalWorkspace: () =>
+    invoke<{ boards: number; tasks: number }>("masar:import-local"),
   notifyDataChanged: () => invoke<void>("masar:notify-data-change"),
   onSyncStatus: (listener: (status: SyncStatus) => void) => {
     const handler = (_event: unknown, status: SyncStatus) => listener(status);

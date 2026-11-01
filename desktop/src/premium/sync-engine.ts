@@ -18,7 +18,8 @@ interface SyncEngineOptions {
   isOnline(): boolean;
   log(line: string): void;
   onStatus(status: SyncStatus): void;
-  onUnauthorized(): void;
+  /** Called with the client whose request was rejected with 401. */
+  onUnauthorized(client: PremiumApiClient): void;
 }
 
 const INITIAL_STATUS: SyncStatus = {
@@ -82,6 +83,12 @@ export class SyncEngine {
     return this.inFlight;
   }
 
+  /** Resolves once any in-flight sync cycle has finished (or immediately). */
+  idle(): Promise<void> {
+    if (!this.inFlight) return Promise.resolve();
+    return this.inFlight.then(() => undefined);
+  }
+
   private update(patch: Partial<SyncStatus>): void {
     this.status = { ...this.status, ...patch };
     this.options.onStatus(this.status);
@@ -143,7 +150,7 @@ export class SyncEngine {
     } catch (error) {
       if (error instanceof PremiumApiError) {
         if (error.status === 401) {
-          this.options.onUnauthorized();
+          this.options.onUnauthorized(client);
           this.update({
             ...INITIAL_STATUS,
             phase: "error",

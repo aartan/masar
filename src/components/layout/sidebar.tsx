@@ -232,7 +232,7 @@ export function SidebarContent({
                 {initial}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[12px] font-medium">Local workspace</p>
+                <p className="truncate text-[12px] font-medium">{user.name}</p>
                 <p className="truncate text-[10px] text-muted-foreground">
                   {syncLabel}
                 </p>

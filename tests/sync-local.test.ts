@@ -223,16 +223,23 @@ describe("local sync outbox", () => {
     ).toBe(true);
   });
 
-  it("reboots local sync data when a different premium account connects", async () => {
+  it("refuses to reuse a sync database for a different premium account", async () => {
     await prepareSync("remote-user-a");
     await makeBoard("Local work");
+    await acknowledgeChanges(10_000);
     const first = await getSyncState();
-    expect(first.pendingChanges).toBeGreaterThan(0);
+    expect(first.remoteUserId).toBe("remote-user-a");
 
-    const second = await prepareSync("remote-user-b");
-    expect(second.remoteUserId).toBe("remote-user-b");
-    expect(second.pendingChanges).toBeGreaterThan(0);
-    const pending = await listPendingChanges(0, 500);
-    expect(pending.some((change) => change.entityType === "board")).toBe(true);
+    // A workspace database is bound to one premium account. Switching accounts
+    // on the same file used to re-queue every row (including the previous
+    // account's cloud data) for the new account; it must be refused instead.
+    await expect(prepareSync("remote-user-b")).rejects.toThrow(
+      /bound to premium account/,
+    );
+
+    const state = await getSyncState();
+    expect(state.remoteUserId).toBe("remote-user-a");
+    // Nothing was queued for the other account.
+    expect(await listPendingChanges(0, 500)).toHaveLength(0);
   });
 });

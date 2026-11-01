@@ -27,6 +27,8 @@ export interface MasarDesktopBridge {
   refreshBilling(): Promise<PremiumStatus>;
   syncNow(): Promise<SyncStatus>;
   getSyncStatus(): Promise<SyncStatus>;
+  /** Explicit one-way copy of the local workspace into the premium account. */
+  importLocalWorkspace(): Promise<{ boards: number; tasks: number }>;
   notifyDataChanged(): Promise<void>;
   onSyncStatus(listener: (status: SyncStatus) => void): () => void;
   onNavigate(listener: (path: string) => void): () => void;

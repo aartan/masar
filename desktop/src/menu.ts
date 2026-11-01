@@ -3,6 +3,9 @@ import { app, Menu, shell, type MenuItemConstructorOptions } from "electron";
 export interface MenuContext {
   onOpenAccount: () => void;
   onSyncNow: () => void;
+  onImportLocal: () => void;
+  canImportLocal: boolean;
+  workspaceLabel: string;
 }
 
 /** Platform-appropriate native menu with workspace and sync actions. */
@@ -50,9 +53,12 @@ export function buildMenu(ctx: MenuContext): Menu {
     submenu: [
       { label: "Account…", click: ctx.onOpenAccount },
       { label: "Sync Now", click: ctx.onSyncNow },
+      ...(ctx.canImportLocal
+        ? [{ label: "Import Local Workspace", click: ctx.onImportLocal }]
+        : []),
       { type: "separator" },
       {
-        label: "Masar Local Workspace",
+        label: ctx.workspaceLabel,
         enabled: false,
       },
     ],

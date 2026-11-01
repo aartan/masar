@@ -126,14 +126,13 @@ function main(): void {
   );
   console.log("[prepare-runtime] copied server and migrator");
 
-  // The API address is operator configuration. Bake it into the packaged
-  // runtime so end users never need to manage it in the UI. MASAR_API_URL can
-  // still override it at launch for development/testing.
+  // Bake the API address into the app archive at build time. Packaged builds
+  // ignore MASAR_API_URL at launch, so this is not user-configurable.
   const configuredApiUrl = validateApiUrl(
     process.env.MASAR_API_URL?.trim() || DEFAULT_API_URL,
   );
   writeFileSync(
-    path.join(runtimeDir, "config.json"),
+    path.join(repoRoot, "desktop", "dist", "api-config.json"),
     JSON.stringify({ apiUrl: configuredApiUrl }, null, 2) + "\n",
     { mode: 0o644 },
   );

@@ -2,8 +2,7 @@ import { app } from "electron";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { DEFAULT_API_URL, validateApiUrl } from "./api-config";
-import { runtimeDir } from "./paths";
+import { DEFAULT_API_URL, selectApiUrl } from "./api-config";
 
 export type ThemePreference = "light" | "dark" | "system";
 const THEMES = new Set<ThemePreference>(["light", "dark", "system"]);
@@ -44,23 +43,25 @@ export function writeThemePreference(theme: ThemePreference): void {
 }
 
 /**
- * The Premium Sync API address is operator configuration, not an in-app
- * setting. Resolution order:
- *   1. MASAR_API_URL environment variable (useful for development/testing)
- *   2. runtime/config.json baked by `desktop:prepare`
- *   3. the build default
+ * The Premium Sync API address is fixed at build time. Packaged builds ignore
+ * MASAR_API_URL so users cannot redirect premium accounts to another server.
+ * Development builds may set it to point at a local API.
  */
 export function resolveApiUrl(): string {
-  const fromEnv = process.env.MASAR_API_URL?.trim();
-  if (fromEnv) return validateApiUrl(fromEnv);
-
+  let configuredApiUrl: string | null = null;
   if (app.isPackaged) {
     try {
-      const file = path.join(runtimeDir(), "config.json");
+      // The address is packaged inside the app archive by `desktop:prepare`.
+      const file = path.join(
+        app.getAppPath(),
+        "desktop",
+        "dist",
+        "api-config.json",
+      );
       if (existsSync(file)) {
         const config = JSON.parse(readFileSync(file, "utf8")) as RuntimeConfig;
         if (typeof config.apiUrl === "string" && config.apiUrl.trim()) {
-          return validateApiUrl(config.apiUrl);
+          configuredApiUrl = config.apiUrl;
         }
       }
     } catch {
@@ -68,5 +69,10 @@ export function resolveApiUrl(): string {
     }
   }
 
-  return validateApiUrl(DEFAULT_API_URL);
+  return selectApiUrl({
+    packaged: app.isPackaged,
+    environmentUrl: process.env.MASAR_API_URL,
+    configuredUrl: configuredApiUrl,
+    defaultUrl: DEFAULT_API_URL,
+  });
 }

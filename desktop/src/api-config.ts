@@ -1,9 +1,41 @@
 /**
- * Default address of the Premium Sync API for this build. It is only a
- * convenience default: users and operators can override it in Settings or with
- * MASAR_API_URL. Never hardcode credentials here.
+ * Fallback address of the Premium Sync API. Operators can override it with
+ * MASAR_API_URL at build time. Never hardcode credentials here.
  */
-export const DEFAULT_API_URL = "http://127.0.0.1:8787";
+export const DEFAULT_API_URL = "https://masar-api-1hn1.onrender.com";
+
+export interface ApiUrlSelection {
+  /** Whether the app is running from a packaged build. */
+  packaged: boolean;
+  /** MASAR_API_URL. Honoured only during development. */
+  environmentUrl?: string | null;
+  /** Address baked into the app by desktop:prepare. */
+  configuredUrl?: string | null;
+  /** Fallback when no other address is available. */
+  defaultUrl?: string;
+}
+
+/**
+ * Choose the Premium Sync API origin. Packaged builds deliberately ignore
+ * MASAR_API_URL so users cannot redirect premium accounts to another server.
+ * Development builds may use it for local testing.
+ */
+export function selectApiUrl({
+  packaged,
+  environmentUrl,
+  configuredUrl,
+  defaultUrl = DEFAULT_API_URL,
+}: ApiUrlSelection): string {
+  if (!packaged) {
+    const fromEnvironment = environmentUrl?.trim();
+    if (fromEnvironment) return validateApiUrl(fromEnvironment);
+  }
+
+  const configured = configuredUrl?.trim();
+  if (configured) return validateApiUrl(configured);
+
+  return validateApiUrl(defaultUrl);
+}
 
 export function normalizeApiUrl(value: string): string {
   return value.trim().replace(/\/+$/, "");

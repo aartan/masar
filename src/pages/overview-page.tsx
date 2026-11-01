@@ -191,7 +191,7 @@ function OverviewContent({ data }: { data: DashboardData }) {
               />
             </section>
 
-            <div className="mt-8 grid gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+            <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
               <Card className="animate-rise overflow-hidden">
                 <CardHeader className="flex-row items-center justify-between pb-1">
                   <div>

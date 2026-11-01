@@ -85,7 +85,14 @@ export function PriorityBars({
       />
     );
   }
-  const filled = priority === "urgent" ? 3 : priority === "high" ? 3 : priority === "medium" ? 2 : 1;
+  const filled =
+    priority === "urgent"
+      ? 3
+      : priority === "high"
+        ? 3
+        : priority === "medium"
+          ? 2
+          : 1;
   const color =
     priority === "urgent"
       ? "bg-rose-500"

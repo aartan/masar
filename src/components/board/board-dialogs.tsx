@@ -311,9 +311,7 @@ function ColumnForm({
       const { column: saved } = await api<{ column: BoardColumn }>(endpoint, {
         method: editing ? "PATCH" : "POST",
         body: JSON.stringify(
-          editing
-            ? { name: name.trim() }
-            : { name: name.trim(), isDone },
+          editing ? { name: name.trim() } : { name: name.trim(), isDone },
         ),
       });
       onSaved(saved);
@@ -438,9 +436,7 @@ function BoardSettingsForm({
   onRequestDelete: () => void;
 }) {
   const [name, setName] = React.useState(board.name);
-  const [description, setDescription] = React.useState(
-    board.description ?? "",
-  );
+  const [description, setDescription] = React.useState(board.description ?? "");
   const [loading, setLoading] = React.useState(false);
 
   async function handleSubmit(event: React.FormEvent) {
@@ -501,24 +497,15 @@ function BoardSettingsForm({
             disabled={loading}
           />
         </div>
-        <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3.5 py-3">
-          <p className="text-[12px] font-medium text-destructive">
-            Delete this board
-          </p>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-            Every column and task will be removed. This cannot be undone.
-          </p>
+        <DialogFooter>
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="mt-2 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
             onClick={onRequestDelete}
           >
             Delete board…
           </Button>
-        </div>
-        <DialogFooter>
           <Button
             type="button"
             variant="outline"

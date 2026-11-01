@@ -237,3 +237,98 @@ describe("0001 auth and workspace ownership migration", () => {
     expect(legacyUser).toBeUndefined();
   });
 });
+
+describe("0004 causality tracking migration", () => {
+  let upgradeFixture: MigrationFixture;
+
+  beforeAll(async () => {
+    const directory = mkdtempSync(join(tmpdir(), "masar-upgrade-"));
+    const client = createClient({ url: `file:${join(directory, "upgrade.db")}` });
+    const db = drizzle(client, { schema });
+    const migrationsFolder = join(directory, "drizzle");
+
+    // Reproduce a database created by the previous build: migrations up to
+    // and including 0003, with data and the pre-causality triggers active.
+    mkdirSync(join(migrationsFolder, "meta"), { recursive: true });
+    const journal = JSON.parse(
+      readFileSync(join(SOURCE_MIGRATIONS, "meta", "_journal.json"), "utf8"),
+    ) as { entries: Array<{ tag: string }> };
+    journal.entries = journal.entries.filter((entry) =>
+      /^000[0-3]_/.test(entry.tag),
+    );
+    writeFileSync(
+      join(migrationsFolder, "meta", "_journal.json"),
+      JSON.stringify(journal, null, 2),
+    );
+    for (const entry of journal.entries) {
+      copyFileSync(
+        join(SOURCE_MIGRATIONS, `${entry.tag}.sql`),
+        join(migrationsFolder, `${entry.tag}.sql`),
+      );
+    }
+    await migrate(db, { migrationsFolder });
+
+    const timestamp = 1_700_000_000_000;
+    await client.batch(
+      [
+        `INSERT INTO users (id, name, email, email_verified, created_at, updated_at)
+           VALUES ('local-user', 'Local workspace', 'local@masar.app', 1, ${timestamp}, ${timestamp})`,
+        `INSERT INTO boards (id, owner_id, name, color, position, created_at, updated_at)
+           VALUES ('old-board', 'local-user', 'Old board', 'sage', 0, ${timestamp}, ${timestamp})`,
+        `INSERT INTO sync_state (id, device_id, remote_user_id, last_revision, last_synced_at, bootstrapped, applying)
+           VALUES (1, 'device-1', 'user-a', 3, null, 1, 0)`,
+      ],
+      "write",
+    );
+
+    upgradeFixture = {
+      client,
+      db,
+      migrationsFolder,
+      close() {
+        client.close();
+        rmSync(directory, { recursive: true, force: true });
+      },
+    };
+  });
+
+  afterAll(() => {
+    upgradeFixture.close();
+  });
+
+  it("backfills legacy bases and keeps queuing changes with base revisions", async () => {
+    // Pre-upgrade triggers queue changes for local edits.
+    await upgradeFixture.client.execute(
+      "UPDATE boards SET name = 'Edited pre-upgrade' WHERE id = 'old-board'",
+    );
+    const before = await upgradeFixture.client.execute(
+      "SELECT count(*) AS count FROM sync_changes WHERE entity_type = 'board' AND entity_id = 'old-board'",
+    );
+    expect(Number(before.rows[0]?.count)).toBe(1);
+
+    // Publish 0004 exactly like a deployment would.
+    cpSync(SOURCE_MIGRATIONS, upgradeFixture.migrationsFolder, {
+      recursive: true,
+      force: true,
+    });
+    await migrate(upgradeFixture.db, {
+      migrationsFolder: upgradeFixture.migrationsFolder,
+    });
+
+    // Existing entities are backfilled with the legacy base.
+    const states = await upgradeFixture.client.execute(
+      "SELECT base_revision FROM sync_entity_state WHERE entity_type = 'board' AND entity_id = 'old-board'",
+    );
+    expect(Number(states.rows[0]?.base_revision)).toBe(-1);
+
+    // The recreated triggers record the base for new edits.
+    await upgradeFixture.client.execute("DELETE FROM sync_changes");
+    await upgradeFixture.client.execute(
+      "UPDATE boards SET name = 'Edited post-upgrade' WHERE id = 'old-board'",
+    );
+    const after = await upgradeFixture.client.execute(
+      "SELECT base_revision FROM sync_changes WHERE entity_type = 'board' AND entity_id = 'old-board'",
+    );
+    expect(Number(after.rows[0]?.base_revision)).toBe(-1);
+  });
+});

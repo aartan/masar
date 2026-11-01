@@ -19,6 +19,8 @@ export interface LocalSyncChange {
   deleted: boolean;
   data: Record<string, unknown>;
   updatedAt: string;
+  /** Server revision this change was based on, or null for brand-new entities. */
+  baseRevision: number | null;
 }
 
 export interface RemoteSyncChange {
@@ -163,53 +165,60 @@ export async function prepareSync(
 
 async function bootstrapChanges(tx: Transaction): Promise<void> {
   const statements = [
-    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at, base_revision)
      select 'board', id, 0,
        json_object('id', id, 'owner_id', owner_id, 'name', name, 'description', description,
                    'color', color, 'position', position, 'created_at', created_at, 'updated_at', updated_at),
-       coalesce(updated_at, unixepoch() * 1000)
+       coalesce(updated_at, unixepoch() * 1000),
+       (select base_revision from sync_entity_state where entity_type = 'board' and entity_id = id)
      from boards
      order by position, created_at`,
-    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at, base_revision)
      select 'column', id, 0,
        json_object('id', id, 'board_id', board_id, 'name', name, 'position', position,
                    'is_done', is_done, 'created_at', created_at, 'updated_at', updated_at),
-       coalesce(updated_at, unixepoch() * 1000)
+       coalesce(updated_at, unixepoch() * 1000),
+       (select base_revision from sync_entity_state where entity_type = 'column' and entity_id = id)
      from columns
      order by board_id, position`,
-    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at, base_revision)
      select 'label', id, 0,
        json_object('id', id, 'board_id', board_id, 'name', name, 'color', color,
                    'created_at', created_at, 'updated_at', coalesce(updated_at, created_at)),
-       coalesce(updated_at, created_at, unixepoch() * 1000)
+       coalesce(updated_at, created_at, unixepoch() * 1000),
+       (select base_revision from sync_entity_state where entity_type = 'label' and entity_id = id)
      from labels
      order by board_id, name`,
-    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at, base_revision)
      select 'task', id, 0,
        json_object('id', id, 'board_id', board_id, 'column_id', column_id, 'title', title,
                    'description', description, 'priority', priority, 'due_date', due_date,
                    'assignee', assignee, 'position', position, 'completed_at', completed_at,
                    'created_at', created_at, 'updated_at', updated_at),
-       coalesce(updated_at, unixepoch() * 1000)
+       coalesce(updated_at, unixepoch() * 1000),
+       (select base_revision from sync_entity_state where entity_type = 'task' and entity_id = id)
      from tasks
      order by board_id, column_id, position`,
-    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at, base_revision)
      select 'task_label', task_id || ':' || label_id, 0,
        json_object('task_id', task_id, 'label_id', label_id),
-       unixepoch() * 1000
+       unixepoch() * 1000,
+       (select base_revision from sync_entity_state where entity_type = 'task_label' and entity_id = task_id || ':' || label_id)
      from task_labels`,
-    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at, base_revision)
      select 'subtask', id, 0,
        json_object('id', id, 'task_id', task_id, 'title', title, 'completed', completed,
                    'position', position, 'created_at', created_at, 'updated_at', coalesce(updated_at, created_at)),
-       coalesce(updated_at, created_at, unixepoch() * 1000)
+       coalesce(updated_at, created_at, unixepoch() * 1000),
+       (select base_revision from sync_entity_state where entity_type = 'subtask' and entity_id = id)
      from subtasks
      order by task_id, position`,
-    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at, base_revision)
      select 'comment', id, 0,
        json_object('id', id, 'task_id', task_id, 'author', author, 'body', body,
                    'created_at', created_at, 'updated_at', coalesce(updated_at, created_at)),
-       coalesce(updated_at, created_at, unixepoch() * 1000)
+       coalesce(updated_at, created_at, unixepoch() * 1000),
+       (select base_revision from sync_entity_state where entity_type = 'comment' and entity_id = id)
      from comments
      order by task_id, created_at`,
   ];
@@ -242,7 +251,7 @@ export async function listPendingChanges(
 ): Promise<LocalSyncChange[]> {
   const client = getClient();
   const result = await client.execute({
-    sql: `select id, entity_type, entity_id, deleted, data, updated_at
+    sql: `select id, entity_type, entity_id, deleted, data, updated_at, base_revision
           from sync_changes where id > ? order by id asc limit ?`,
     args: [afterId, limit],
   });
@@ -263,6 +272,8 @@ export async function listPendingChanges(
       deleted: Number(row.deleted) === 1,
       data,
       updatedAt: new Date(Number(row.updated_at)).toISOString(),
+      baseRevision:
+        typeof row.base_revision === "number" ? row.base_revision : null,
     };
   });
 }
@@ -308,30 +319,18 @@ export async function applyRemoteChanges(
       .sort((a, b) => dependencyRank(a.entityType) - dependencyRank(b.entityType));
 
     for (const change of deletions) {
-      if (await keepLocalIfNewer(tx, change)) {
-        skipped.push({
-          entityType: change.entityType,
-          entityId: change.entityId,
-          reason: "Local change is newer",
-        });
-        continue;
-      }
       await deleteEntity(tx, change);
+      await recordBaseRevision(tx, change);
       applied += 1;
     }
 
     for (const change of upserts) {
-      if (await keepLocalIfNewer(tx, change)) {
-        skipped.push({
-          entityType: change.entityType,
-          entityId: change.entityId,
-          reason: "Local change is newer",
-        });
-        continue;
-      }
       const reason = await applyUpsert(tx, change);
       if (reason) skipped.push({ entityType: change.entityType, entityId: change.entityId, reason });
-      else applied += 1;
+      else {
+        await recordBaseRevision(tx, change);
+        applied += 1;
+      }
     }
 
     await tx.execute({
@@ -346,6 +345,25 @@ export async function applyRemoteChanges(
   } finally {
     tx.close();
   }
+}
+
+/**
+ * The server resolves conflicts by comparing a push's base revision with the
+ * revision it currently holds — never by comparing client clocks. Applying a
+ * remote change records that change's revision as the new base, so the next
+ * local edit is recognised as a sequential edit.
+ */
+async function recordBaseRevision(
+  tx: Transaction,
+  change: RemoteSyncChange,
+): Promise<void> {
+  await tx.execute({
+    sql: `insert into sync_entity_state (entity_type, entity_id, base_revision)
+          values (?, ?, ?)
+          on conflict(entity_type, entity_id) do update set
+            base_revision = excluded.base_revision`,
+    args: [change.entityType, change.entityId, change.revision ?? 0],
+  });
 }
 
 function dependencyRank(type: SyncEntityType): number {
@@ -367,111 +385,6 @@ function dependencyRank(type: SyncEntityType): number {
     default:
       return 99;
   }
-}
-
-async function localTimestamp(
-  tx: Transaction,
-  entityType: SyncEntityType,
-  entityId: string,
-): Promise<number | null> {
-  const queries: Record<Exclude<SyncEntityType, "task_label">, string> = {
-    board: "select updated_at as value from boards where id = ?",
-    column: "select updated_at as value from columns where id = ?",
-    task: "select updated_at as value from tasks where id = ?",
-    label: "select coalesce(updated_at, created_at) as value from labels where id = ?",
-    subtask: "select coalesce(updated_at, created_at) as value from subtasks where id = ?",
-    comment: "select coalesce(updated_at, created_at) as value from comments where id = ?",
-  };
-  if (entityType === "task_label") return null;
-  const result = await tx.execute({ sql: queries[entityType], args: [entityId] });
-  const value = result.rows[0]?.value;
-  return typeof value === "number" ? value : null;
-}
-
-/**
- * A remote pull must not overwrite an unsynced local edit. Keep the local row,
- * queue it for the next push, and report it so the UI can explain the outcome.
- */
-async function keepLocalIfNewer(
-  tx: Transaction,
-  change: RemoteSyncChange,
-): Promise<boolean> {
-  if (change.entityType === "task_label") return false;
-  const remote = Date.parse(change.updatedAt);
-  if (!Number.isFinite(remote)) return false;
-
-  // A local deletion is not present in the entity table, so check the outbox
-  // tombstone before an older remote update can resurrect the row.
-  const tombstone = await tx.execute({
-    sql: `select max(updated_at) as value from sync_changes
-          where entity_type = ? and entity_id = ? and deleted = 1`,
-    args: [change.entityType, change.entityId],
-  });
-  const deletedAt = tombstone.rows[0]?.value;
-  if (typeof deletedAt === "number" && deletedAt > remote) {
-    return true;
-  }
-
-  const local = await localTimestamp(tx, change.entityType, change.entityId);
-  if (local === null) return false;
-  if (local <= remote) return false;
-
-  const pending = await tx.execute({
-    sql: "select 1 as found from sync_changes where entity_type = ? and entity_id = ? limit 1",
-    args: [change.entityType, change.entityId],
-  });
-  if (pending.rows.length === 0) {
-    await queueCurrentEntity(tx, change.entityType, change.entityId);
-  }
-  return true;
-}
-
-async function queueCurrentEntity(
-  tx: Transaction,
-  entityType: Exclude<SyncEntityType, "task_label">,
-  entityId: string,
-): Promise<void> {
-  const statements: Record<Exclude<SyncEntityType, "task_label">, string> = {
-    board: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
-      select 'board', id, 0,
-        json_object('id', id, 'owner_id', owner_id, 'name', name, 'description', description,
-                    'color', color, 'position', position, 'created_at', created_at, 'updated_at', updated_at),
-        coalesce(updated_at, unixepoch() * 1000)
-      from boards where id = ?`,
-    column: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
-      select 'column', id, 0,
-        json_object('id', id, 'board_id', board_id, 'name', name, 'position', position,
-                    'is_done', is_done, 'created_at', created_at, 'updated_at', updated_at),
-        coalesce(updated_at, unixepoch() * 1000)
-      from columns where id = ?`,
-    label: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
-      select 'label', id, 0,
-        json_object('id', id, 'board_id', board_id, 'name', name, 'color', color,
-                    'created_at', created_at, 'updated_at', coalesce(updated_at, created_at)),
-        coalesce(updated_at, created_at, unixepoch() * 1000)
-      from labels where id = ?`,
-    task: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
-      select 'task', id, 0,
-        json_object('id', id, 'board_id', board_id, 'column_id', column_id, 'title', title,
-                    'description', description, 'priority', priority, 'due_date', due_date,
-                    'assignee', assignee, 'position', position, 'completed_at', completed_at,
-                    'created_at', created_at, 'updated_at', updated_at),
-        coalesce(updated_at, unixepoch() * 1000)
-      from tasks where id = ?`,
-    subtask: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
-      select 'subtask', id, 0,
-        json_object('id', id, 'task_id', task_id, 'title', title, 'completed', completed,
-                    'position', position, 'created_at', created_at, 'updated_at', coalesce(updated_at, created_at)),
-        coalesce(updated_at, created_at, unixepoch() * 1000)
-      from subtasks where id = ?`,
-    comment: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
-      select 'comment', id, 0,
-        json_object('id', id, 'task_id', task_id, 'author', author, 'body', body,
-                    'created_at', created_at, 'updated_at', coalesce(updated_at, created_at)),
-        coalesce(updated_at, created_at, unixepoch() * 1000)
-      from comments where id = ?`,
-  };
-  await tx.execute({ sql: statements[entityType], args: [entityId] });
 }
 
 async function exists(tx: Transaction, table: string, id: string): Promise<boolean> {

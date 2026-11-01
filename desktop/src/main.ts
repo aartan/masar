@@ -8,6 +8,7 @@ import {
   net,
   shell,
 } from "electron";
+import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
@@ -53,6 +54,8 @@ let premiumClient: PremiumApiClient | null = null;
 let shuttingDown = false;
 /** Remote user id of the workspace the local API is currently serving. */
 let activeSyncUserId: string | null = null;
+/** Dedicated scope-bound sync API used by the engine in development. */
+let devSyncServer: ChildProcess | null = null;
 
 function log(line: string): void {
   console.log(line);
@@ -367,9 +370,7 @@ async function performWorkspaceSwitch(
   syncUser: StoredPremiumSession["user"] | null,
 ): Promise<void> {
   if (isDevMode()) {
-    // The development launcher owns the local API and cannot switch
-    // databases. Premium sync is unavailable against the shared dev API; see
-    // desktop/scripts/dev.ts.
+    await switchDevSyncServer(syncUser);
     return;
   }
 
@@ -423,6 +424,83 @@ function isDevMode(): boolean {
   return Boolean(process.env.MASAR_DEV_SERVER_URL?.trim());
 }
 
+/** Run a repository command in development and resolve on a clean exit. */
+function runDevCommand(
+  command: string,
+  args: string[],
+  env: Record<string, string>,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: app.getAppPath(),
+      env: { ...process.env, ...env },
+      stdio: "inherit",
+    });
+    child.on("error", reject);
+    child.on("exit", (code) =>
+      code === 0 ? resolve() : reject(new Error(`${command} exited ${code}`)),
+    );
+  });
+}
+
+/**
+ * Development mode: the shared dev API (started by desktop/scripts/dev.ts)
+ * serves the renderer and cannot switch databases. When a premium session is
+ * active, run a dedicated scope-bound API against the account's sync mirror
+ * and point the sync engine at it, so premium sync is fully usable in
+ * development without touching the dev database. The renderer keeps showing
+ * the dev API's workspace; inspect the mirror file or the API directly when
+ * following synced data.
+ */
+async function switchDevSyncServer(
+  syncUser: StoredPremiumSession["user"] | null,
+): Promise<void> {
+  const devApiOrigin =
+    process.env.MASAR_DEV_API_URL?.trim() || "http://127.0.0.1:4782";
+
+  devSyncServer?.kill();
+  devSyncServer = null;
+
+  if (!syncUser) {
+    localApiOrigin = devApiOrigin;
+    log(`[dev] sync engine uses the dev API ${devApiOrigin}`);
+    return;
+  }
+
+  const targetDatabaseUrl = syncDatabaseUrl(syncUser.id);
+  await runDevCommand("npx", ["tsx", "scripts/migrate.ts"], {
+    DATABASE_URL: targetDatabaseUrl,
+  });
+
+  const port = await getFreePort("127.0.0.1");
+  const syncOrigin = serverOrigin(port);
+  devSyncServer = spawn("npx", ["tsx", "src/server/entry.ts"], {
+    cwd: app.getAppPath(),
+    env: {
+      ...process.env,
+      NODE_ENV: "development",
+      HOSTNAME: "127.0.0.1",
+      PORT: String(port),
+      DATABASE_URL: targetDatabaseUrl,
+      MASAR_SYNC_SCOPE: syncUser.id,
+      MASAR_SYNC_USER_NAME: syncUser.name,
+      MASAR_SYNC_USER_EMAIL: syncUser.email,
+      MASAR_LOCAL_DB_URL:
+        process.env.DATABASE_URL?.trim() || "file:./data/app.db",
+    },
+    stdio: "inherit",
+  });
+  devSyncServer.on("error", (error) =>
+    log(`[dev] sync API failed to start: ${String(error)}`),
+  );
+
+  await waitForHealth(`${syncOrigin}/api/health`, {
+    timeoutMs: HEALTH_TIMEOUT_MS,
+  });
+  localApiOrigin = syncOrigin;
+  log(`[dev] premium sync API ${syncOrigin} (${syncUser.email})`);
+}
+
 async function bootstrap(): Promise<void> {
   // safeStorage and userData paths are reliable once Electron is ready. Load
   // the premium session here rather than at module import time.
@@ -444,6 +522,13 @@ async function bootstrap(): Promise<void> {
     localApiOrigin = process.env.MASAR_DEV_API_URL?.trim() || "http://127.0.0.1:4782";
     log(`[dev] renderer ${origin}, local API ${localApiOrigin}`);
     createWindow();
+    if (session) {
+      try {
+        await switchWorkspace(session.user);
+      } catch (error) {
+        log(`[dev] could not start the sync API: ${String(error)}`);
+      }
+    }
     syncEngine.start();
     if (session) void syncEngine.syncNow("startup");
     return;
@@ -735,6 +820,8 @@ function refreshMenu(): void {
 app.on("before-quit", () => {
   shuttingDown = true;
   syncEngine.stop();
+  devSyncServer?.kill();
+  devSyncServer = null;
 });
 
 registerLifecycle({

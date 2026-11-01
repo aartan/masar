@@ -72,6 +72,14 @@ Triggers suppress themselves while remote changes are being applied, preventing
 sync echo loops. On the first sync of a mirror, bootstrap queues every existing
 entity in that mirror so no local work is lost.
 
+Migration `0004_daily_shen.sql` adds causality tracking:
+
+- `sync_entity_state`: the server revision each entity was last seen at.
+- `sync_changes.base_revision`: the revision a queued change was based on
+  (`null` for new entities, `-1` for pre-causality legacy rows).
+- Triggers recreated to record the base, and existing entities backfilled with
+  the legacy base.
+
 Older unowned boards and boards parked behind the `legacy-workspace` account are
 claimed by the implicit `local-user` account on startup.
 
@@ -94,19 +102,30 @@ two-mode desktop app:
   boards and queueing changes for the next push). Signing in never uploads
   local data by itself.
 
+Upgrading from the broken single-database build: rows it synced into the local
+workspace stay there (nothing is deleted); the cloud copy remains authoritative
+and is pulled fresh into the new mirror on the next sign-in.
+
 ## Sync flow
 
-1. Desktop pushes pending outbox batches with an idempotency key.
-2. API applies changes per entity with last-write-wins timestamps. The server
-   wins exact ties and records rejected changes in `conflicts`.
+1. Desktop pushes pending outbox batches with an idempotency key. Every pushed
+   change carries the revision of the server state it was based on (recorded
+   locally when remote changes are applied; `null` for brand-new entities, `-1`
+   for pre-causality legacy rows).
+2. API resolves conflicts causally, never with client clocks: a change whose
+   base revision matches the current entity revision is a sequential edit and
+   applies; a stale base (or no base on an existing entity) is rejected and
+   recorded in `conflicts`. Accepted changes are stamped with the server's own
+   clock.
 3. Each accepted change receives a monotonic revision.
-4. Desktop pulls changes after its cursor and applies them in dependency order.
-5. If a pulled change is older than a newer unsynced local row, the local row is
-   kept and queued for the next push.
+4. Desktop pulls changes after its cursor and applies them in dependency order,
+   recording each applied revision as the entity's new base.
+5. Rejected pushes converge by pulling the server's winning version; the losing
+   concurrent edit is preserved in the API's `conflicts` table.
 6. Cursor and outbox are updated in the same SQLite transaction as the applied
    remote batch.
-7. Duplicate pushes are ignored by timestamp/data equality; interrupted network
-   calls can be retried safely.
+7. Duplicate pushes are ignored by data equality; interrupted network calls can
+   be retried safely.
 
 A mirror's pull cursor and outbox persist across restarts, so an interrupted or
 offline sync resumes where it left off. A fresh machine starts with an empty
@@ -114,14 +133,17 @@ mirror (cursor 0) and pulls the complete workspace from the API.
 
 ## Known limitations
 
-- Per-entity LWW uses client clocks. Clock skew can decide a conflict in favour
-  of the wrong side. A future version could use server-side vector clocks or
-  operation transforms for text fields.
-- `task_label` rows are relationships without their own timestamp; remote
-  relationship changes currently win during pull.
+- Concurrent offline edits of the same entity are resolved by arrival order:
+  the first accepted push wins and the losing edit is rejected and recorded in
+  `conflicts` (with its full payload) rather than merged. Per-field merging or
+  CRDTs could improve this in the future.
+- The `-1` legacy base means the first post-upgrade edit of a pre-causality
+  entity is still resolved by arrival order; every subsequent edit is causal.
 - Existing hosted accounts and Turso subscriptions are not migrated. Users
   create new API accounts; local data syncs normally afterwards.
 - In-memory rate limiting is per API process; use a proxy/shared store for
   multi-instance deployments.
 - Linux token encryption needs a system keyring. `MASAR_ALLOW_PLAINTEXT_TOKEN=1`
   is an explicit development-only fallback.
+- In development mode the renderer keeps showing the dev API's workspace while
+  the sync engine talks to a dedicated mirror; see `desktop/scripts/dev.ts`.

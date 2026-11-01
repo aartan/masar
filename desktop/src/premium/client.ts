@@ -35,6 +35,8 @@ export interface PushChange {
   deleted: boolean;
   data: Record<string, unknown>;
   updatedAt: string;
+  /** Server revision this change was based on, or null for brand-new entities. */
+  baseRevision: number | null;
 }
 
 export interface PushResponse {

@@ -273,10 +273,35 @@ export const syncChanges = sqliteTable(
     deleted: integer("deleted", { mode: "boolean" }).notNull().default(false),
     data: text("data").notNull().default("{}"),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    /**
+     * Revision of the server state this change was based on. NULL means the
+     * entity was created locally and never pulled from the server; -1 marks
+     * rows from before causality tracking existed. The server resolves
+     * conflicts with this value instead of comparing client clocks.
+     */
+    baseRevision: integer("base_revision"),
     createdAt: createdAt(),
   },
   (table) => [
     index("sync_changes_entity_idx").on(table.entityType, table.entityId),
+  ],
+);
+
+/**
+ * Records the server revision of the last remote change applied to each
+ * entity. Local edits carry that value as their base revision so the server
+ * can distinguish sequential edits from concurrent (stale) ones without any
+ * client clock comparison.
+ */
+export const syncEntityState = sqliteTable(
+  "sync_entity_state",
+  {
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    baseRevision: integer("base_revision").notNull().default(-1),
+  },
+  (table) => [
+    primaryKey({ columns: [table.entityType, table.entityId] }),
   ],
 );
 
@@ -387,3 +412,4 @@ export type PendingSignupRow = typeof pendingSignups.$inferSelect;
 export type StripeWebhookEventRow = typeof stripeWebhookEvents.$inferSelect;
 export type SyncStateRow = typeof syncState.$inferSelect;
 export type SyncChangeRow = typeof syncChanges.$inferSelect;
+export type SyncEntityStateRow = typeof syncEntityState.$inferSelect;

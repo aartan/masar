@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 
 import { createLocalApp } from "@/server/app";
 import { boards } from "@/db/schema";
-import { getDatabaseBundle, getDb } from "@/db";
+import { getClient, getDatabaseBundle, getDb } from "@/db";
 import { SyncEngine } from "../desktop/src/premium/sync-engine";
 import type { PremiumApiClient } from "../desktop/src/premium/client";
 import type { SyncStatus } from "@/lib/premium-types";
@@ -34,10 +34,29 @@ interface RemoteRow {
   revision: number;
 }
 
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+    .join(",")}}`;
+}
+
 /** Minimal per-user replica of the Premium Sync API sync semantics. */
 class FakeSyncApi {
   readonly workspaces = new Map<string, Map<string, RemoteRow>>();
   private revisions = new Map<string, number>();
+  readonly conflicts: Array<{
+    userId: string;
+    entityType: string;
+    entityId: string;
+    incomingData: Record<string, unknown>;
+    winningRevision: number;
+  }> = [];
 
   private rowsFor(userId: string): Map<string, RemoteRow> {
     let rows = this.workspaces.get(userId);
@@ -56,27 +75,59 @@ class FakeSyncApi {
       deleted: boolean;
       data: Record<string, unknown>;
       updatedAt: string;
+      baseRevision: number | null;
     }>,
   ) {
     const rows = this.rowsFor(userId);
     let revision = this.revisions.get(userId) ?? 0;
     let accepted = 0;
+    let ignored = 0;
     let rejected = 0;
     const conflicts: Array<{ entityType: string; entityId: string }> = [];
     for (const change of changes) {
       const key = `${change.entityType}:${change.entityId}`;
       const existing = rows.get(key);
-      if (existing && existing.updatedAt >= change.updatedAt) {
-        rejected += 1;
-        conflicts.push({ entityType: change.entityType, entityId: change.entityId });
-        continue;
+      if (existing) {
+        const same =
+          existing.deleted === change.deleted &&
+          stableJson(existing.data ?? {}) === stableJson(change.data ?? {});
+        if (same) {
+          ignored += 1;
+          continue;
+        }
+        // Causal resolution: apply only sequential edits and legacy data;
+        // client timestamps never participate.
+        const applies =
+          change.baseRevision === -1 ||
+          change.baseRevision === existing.revision;
+        if (!applies) {
+          rejected += 1;
+          conflicts.push({ entityType: change.entityType, entityId: change.entityId });
+          this.conflicts.push({
+            userId,
+            entityType: change.entityType,
+            entityId: change.entityId,
+            incomingData: change.data,
+            winningRevision: existing.revision,
+          });
+          continue;
+        }
       }
       revision += 1;
-      rows.set(key, { ...change, revision });
+      const stamped =
+        change.data && !change.deleted && "updated_at" in change.data
+          ? { ...change.data, updated_at: Date.now() }
+          : change.data;
+      rows.set(key, {
+        ...change,
+        data: stamped ?? {},
+        updatedAt: new Date().toISOString(),
+        revision,
+      });
       accepted += 1;
     }
     this.revisions.set(userId, revision);
-    return { revision, accepted, ignored: 0, rejected, conflicts };
+    return { revision, accepted, ignored, rejected, conflicts };
   }
 
   async pull(userId: string, since: number, limit = 500) {
@@ -126,6 +177,7 @@ function clientFor(user: typeof USER_A) {
         deleted: boolean;
         data: Record<string, unknown>;
         updatedAt: string;
+        baseRevision: number | null;
       }>,
     ) {
       return remote.push(user.id, changes);
@@ -338,6 +390,79 @@ describe("cross-device premium sync lifecycle", () => {
     expect((await getBoardDetail(localBoard!.id, "local-user", getDb())).tasks).toEqual(
       detail.tasks,
     );
+  });
+
+  it("resolves concurrent edits by revision, never by skewed client clocks", async () => {
+    // Machine A creates the board and syncs it.
+    await activateDatabase(mirrorA.url);
+    const apiA = await startLocalApi(USER_A.id);
+    try {
+      const engineA = makeEngine(apiA.url, USER_A.id);
+      await engineA.syncNow("startup");
+      await createBoard({ name: "Skew test" }, "local-user", getDb());
+      await engineA.syncNow("local-change");
+    } finally {
+      apiA.close();
+    }
+
+    // Machine B pulls it.
+    await activateDatabase(mirrorB.url);
+    const apiB = await startLocalApi(USER_A.id);
+    try {
+      const engineB = makeEngine(apiB.url, USER_A.id);
+      await engineB.syncNow("startup");
+      const boardsOnB = await getDb().select().from(boards);
+      const board = boardsOnB.find((row) => row.name === "Skew test");
+      expect(board).toBeDefined();
+
+      // Both devices edit the same base revision concurrently.
+      await updateBoard(board!.id, { name: "B edited later in real time" }, "local-user", getDb());
+      await engineB.syncNow("local-change");
+    } finally {
+      apiB.close();
+    }
+
+    // Machine A edited "first" but its clock is days ahead of real time. The
+    // skew must not let its stale edit overwrite B's newer one.
+    await activateDatabase(mirrorA.url);
+    const apiA2 = await startLocalApi(USER_A.id);
+    try {
+      const engineA = makeEngine(apiA2.url, USER_A.id);
+      const boardsOnA = await getDb().select().from(boards);
+      const board = boardsOnA.find((row) => row.name === "Skew test");
+      expect(board).toBeDefined();
+      await updateBoard(board!.id, { name: "A edited first, skewed clock" }, "local-user", getDb());
+      const skewed = Date.now() + 10 * 24 * 60 * 60 * 1000;
+      await getDb().update(boards).set({
+        updatedAt: new Date(skewed),
+      }).where(eq(boards.id, board!.id));
+      await getClient().execute(
+        "update sync_changes set updated_at = ?, data = json_set(data, '$.updated_at', ?) where entity_type = 'board' and entity_id = ?",
+        [skewed, skewed, board!.id],
+      );
+
+      await engineA.syncNow("local-change");
+
+      // The server kept B's version and rejected A's stale edit as a conflict,
+      // despite A's future timestamps. A converges to the winner.
+      const [row] = await getDb().select().from(boards).where(eq(boards.id, board!.id));
+      expect(row?.name).toBe("B edited later in real time");
+
+      const remoteBoards = [...remote.workspaces.get(USER_A.id)!.values()]
+        .filter((entry) => entry.entityType === "board" && !entry.deleted);
+      const winner = remoteBoards.find((entry) => entry.entityId === board!.id);
+      expect(winner?.data.name).toBe("B edited later in real time");
+      expect(
+        remote.conflicts.filter(
+          (conflict) =>
+            conflict.userId === USER_A.id &&
+            conflict.entityType === "board" &&
+            conflict.entityId === board!.id,
+        ),
+      ).toHaveLength(1);
+    } finally {
+      apiA2.close();
+    }
   });
 
   it("reports sync status that ends in idle without pending changes", async () => {

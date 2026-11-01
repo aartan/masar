@@ -78,7 +78,7 @@ describe("local sync outbox", () => {
     expect(pending).toHaveLength(0);
   });
 
-  it("applies remote changes without echoing them back", async () => {
+  it("applies remote changes without echoing them back and records their base revision", async () => {
     await prepareSync("remote-user-a");
     const now = Date.now();
     const result = await applyRemoteChanges(1, [
@@ -111,9 +111,15 @@ describe("local sync outbox", () => {
     expect(await listPendingChanges(0, 500)).toHaveLength(0);
     const state = await getSyncState();
     expect(state.lastRevision).toBe(1);
+
+    // The applied revision becomes the base for the next local edit.
+    await updateBoard("remote-board-1", { name: "Sequential edit" }, LOCAL_USER_ID, test.db);
+    const pending = await listPendingChanges(0, 500);
+    const change = pending.find((item) => item.entityId === "remote-board-1");
+    expect(change?.baseRevision).toBe(1);
   });
 
-  it("keeps a newer local edit and queues it when an older remote change arrives", async () => {
+  it("applies the server version regardless of client clocks", async () => {
     await prepareSync("remote-user-a");
     const now = Date.now();
     await applyRemoteChanges(1, [
@@ -136,10 +142,15 @@ describe("local sync outbox", () => {
     ]);
     await acknowledgeChanges(10_000);
 
-    await updateBoard("remote-board-2", { name: "Local newer" }, LOCAL_USER_ID, test.db);
-    await getClient().execute("delete from sync_changes");
+    // A local edit with a skewed (future) clock must not win over the
+    // server's version; causality is decided by revisions, not timestamps.
+    await updateBoard("remote-board-2", { name: "Local skewed" }, LOCAL_USER_ID, test.db);
+    await getClient().execute(
+      "update sync_changes set data = json_set(data, '$.updated_at', ?) where entity_type = 'board' and entity_id = 'remote-board-2'",
+      [Date.now() + 10 * 24 * 60 * 60 * 1000],
+    );
 
-    const older = new Date(now - 60_000).toISOString();
+    const remote = new Date(now + 60_000).toISOString();
     const result = await applyRemoteChanges(2, [
       {
         entityType: "board",
@@ -147,28 +158,25 @@ describe("local sync outbox", () => {
         deleted: false,
         data: {
           id: "remote-board-2",
-          name: "Remote older",
+          name: "Server winning version",
           description: null,
           color: "sage",
           position: 0,
-          created_at: now - 60_000,
-          updated_at: now - 60_000,
+          created_at: now,
+          updated_at: now + 60_000,
         },
-        updatedAt: older,
+        updatedAt: remote,
         revision: 2,
       },
     ]);
 
-    expect(result.skipped).toEqual([
-      expect.objectContaining({ entityId: "remote-board-2", reason: "Local change is newer" }),
-    ]);
+    expect(result.applied).toBe(1);
+    expect(result.skipped).toHaveLength(0);
     const [row] = await test.db
       .select()
       .from(boards)
       .where(eq(boards.id, "remote-board-2"));
-    expect(row?.name).toBe("Local newer");
-    const pending = await listPendingChanges(0, 10);
-    expect(pending.some((change) => change.entityId === "remote-board-2")).toBe(true);
+    expect(row?.name).toBe("Server winning version");
   });
 
 
@@ -189,12 +197,12 @@ describe("local sync outbox", () => {
   });
 
 
-  it("does not let an older remote update resurrect a locally deleted entity", async () => {
+  it("applies a server update after a local delete so replicas converge", async () => {
     await prepareSync("remote-user-a");
     const { board } = await makeBoard("Delete locally");
     await test.db.delete(boards).where(eq(boards.id, board.id));
 
-    const older = new Date(Date.now() - 60_000).toISOString();
+    const remote = new Date(Date.now()).toISOString();
     const result = await applyRemoteChanges(3, [
       {
         entityType: "board",
@@ -202,25 +210,47 @@ describe("local sync outbox", () => {
         deleted: false,
         data: {
           id: board.id,
-          name: "Resurrected",
+          name: "Recreated remotely",
           description: null,
           color: "sage",
           position: 0,
           created_at: Date.now() - 120_000,
-          updated_at: Date.now() - 60_000,
+          updated_at: Date.now(),
         },
-        updatedAt: older,
+        updatedAt: remote,
         revision: 3,
       },
     ]);
 
-    expect(result.skipped.some((item) => item.entityId === board.id)).toBe(true);
+    // The server's update applies; the outbox tombstone stays queued so the
+    // server can resolve it against the update by revision.
+    expect(result.applied).toBe(1);
     const rows = await test.db.select().from(boards).where(eq(boards.id, board.id));
-    expect(rows).toHaveLength(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.name).toBe("Recreated remotely");
     const pending = await listPendingChanges(0, 500);
     expect(
       pending.some((change) => change.entityId === board.id && change.deleted),
     ).toBe(true);
+  });
+
+  it("bootstraps legacy entities with the legacy base revision", async () => {
+    await test.client.execute(
+      "insert into sync_entity_state (entity_type, entity_id, base_revision) values ('board', 'legacy-board-9', -1)",
+    );
+    await test.db.insert(boards).values({
+      id: "legacy-board-9",
+      ownerId: LOCAL_USER_ID,
+      name: "Legacy",
+    });
+    const state = await prepareSync("remote-user-a");
+    expect(state.bootstrapped).toBe(true);
+
+    const pending = await listPendingChanges(0, 500);
+    const change = pending.find(
+      (item) => item.entityType === "board" && item.entityId === "legacy-board-9",
+    );
+    expect(change?.baseRevision).toBe(-1);
   });
 
   it("refuses to reuse a sync database for a different premium account", async () => {

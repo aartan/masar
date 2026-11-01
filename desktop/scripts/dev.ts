@@ -6,13 +6,11 @@
  *   4. start Vite on 5173 (proxying /api to the local API)
  *   5. open Electron against Vite
  *
- * Premium sync in development: the packaged app switches the local API between
- * the local workspace database and one per-account sync mirror database, but
- * this single shared dev API cannot. Its sync routes therefore refuse requests
- * (no `MASAR_SYNC_SCOPE`) instead of writing remote data into the dev
- * database. To exercise sync in development, start the API manually with
- * `MASAR_SYNC_SCOPE=<remote-user-id>` and `MASAR_LOCAL_DB_URL` pointing at a
- * local database, and open the account page.
+ * Premium sync in development: the shared dev API cannot switch databases, so
+ * when a premium session is active the Electron main process runs a dedicated
+ * scope-bound API (migrating `sync/<user>.db` first) and points the sync
+ * engine at it. The renderer keeps showing the dev API's workspace; inspect
+ * the mirror database or the dedicated API when following synced data.
  */
 import { spawn } from "node:child_process";
 import path from "node:path";

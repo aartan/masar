@@ -212,6 +212,7 @@ export class SyncEngine {
           deleted: change.deleted,
           data: change.data,
           updatedAt: change.updatedAt,
+          baseRevision: change.baseRevision,
         })),
         `${deviceId}:${first.id}:${last.id}`,
         deviceId,

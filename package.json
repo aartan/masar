@@ -4,7 +4,10 @@
   "private": true,
   "main": "desktop/dist/main.js",
   "description": "A local-first Kanban desktop app with optional premium sync.",
-  "author": "Masar",
+  "author": {
+    "name": "Masar",
+    "email": "abdifatah.artan@outlook.com"
+  },
   "scripts": {
     "dev": "tsx scripts/dev.ts",
     "dev:web": "vite",
@@ -27,7 +30,7 @@
     "desktop:prepare": "tsx desktop/scripts/prepare-runtime.ts",
     "desktop:build:mac": "cross-env NODE_ENV=production npm run build && npm run desktop:compile && cross-env MASAR_TARGETS=darwin-arm64,darwin-x64 npm run desktop:prepare && electron-builder --mac",
     "desktop:build:win": "cross-env NODE_ENV=production npm run build && npm run desktop:compile && cross-env MASAR_TARGETS=win32-x64-msvc npm run desktop:prepare && electron-builder --win",
-    "desktop:build:linux": "cross-env NODE_ENV=production npm run build && npm run desktop:compile && cross-env MASAR_TARGETS=linux-x64-gnu,linux-x64-musl,linux-arm64-gnu,linux-arm64-musl npm run desktop:prepare && electron-builder --linux rpm AppImage",
+    "desktop:build:linux": "cross-env NODE_ENV=production npm run build && npm run desktop:compile && cross-env MASAR_TARGETS=linux-x64-gnu,linux-x64-musl,linux-arm64-gnu,linux-arm64-musl npm run desktop:prepare && electron-builder --linux",
     "desktop:dev": "tsx desktop/scripts/dev.ts"
   },
   "dependencies": {

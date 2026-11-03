@@ -97,18 +97,6 @@ function OverviewContent({ data }: { data: DashboardData }) {
                 : "Your workspace is ready for its first board."}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            {data.totals.boards > 0 && (
-              <Link
-                to={`/boards/${data.boardStats[0]?.boardId ?? ""}`}
-                className="group inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card/60 px-3.5 text-[13px] font-medium text-foreground transition-colors hover:bg-accent/60"
-              >
-                Open a board
-                <ArrowUpRight className="size-3.5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-              </Link>
-            )}
-            <NewBoardButton />
-          </div>
         </header>
 
         {data.totals.boards === 0 ? (

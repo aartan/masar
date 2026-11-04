@@ -11,6 +11,7 @@ import {
   Loader2,
   MessageSquare,
   MoreHorizontal,
+  Pencil,
   Plus,
   Tag,
   Trash2,
@@ -100,6 +101,10 @@ export function TaskDetailSheet({
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [subtaskTitle, setSubtaskTitle] = React.useState("");
+  const [subtaskEdit, setSubtaskEdit] = React.useState<{
+    id: string;
+    title: string;
+  } | null>(null);
   const [commentBody, setCommentBody] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
@@ -151,6 +156,7 @@ export function TaskDetailSheet({
       setDeleteOpen(false);
       setCommentBody("");
       setSubtaskTitle("");
+      setSubtaskEdit(null);
       setLoading(true);
       setLoadError(null);
       try {
@@ -345,6 +351,75 @@ export function TaskDetailSheet({
     } finally {
       endBusy();
     }
+  }
+
+  function startEditingSubtask(subtask: Subtask) {
+    setSubtaskEdit({ id: subtask.id, title: subtask.title });
+  }
+
+  function stopEditingSubtask(subtaskId: string) {
+    setSubtaskEdit((current) =>
+      current?.id === subtaskId ? null : current,
+    );
+  }
+
+  async function saveSubtaskTitle(
+    subtask: Subtask,
+    editing = subtaskEdit,
+  ) {
+    if (!editing || editing.id !== subtask.id) return;
+    const trimmed = editing.title.trim();
+    if (!trimmed || trimmed === subtask.title) {
+      stopEditingSubtask(subtask.id);
+      return;
+    }
+    beginBusy();
+    try {
+      await enqueueMutation(async () => {
+        const active = detailRef.current;
+        if (!active) return;
+        const { subtask: updated } = await api<{ subtask: Subtask }>(
+          `/api/subtasks/${subtask.id}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ title: trimmed }),
+          },
+        );
+        const latest = detailRef.current;
+        if (!latest || latest.id !== active.id) return;
+        const nextSubtasks = latest.subtasks.map((item) =>
+          item.id === updated.id ? updated : item,
+        );
+        commitDetail({
+          ...latest,
+          subtasks: nextSubtasks,
+          subtaskCount: nextSubtasks.length,
+          subtaskDoneCount: nextSubtasks.filter((item) => item.completed)
+            .length,
+        });
+      });
+      stopEditingSubtask(subtask.id);
+    } catch (error) {
+      toast.error("Could not update subtask", {
+        description: errorMessage(error),
+      });
+    } finally {
+      endBusy();
+    }
+  }
+
+  function flushPendingSubtaskEdit() {
+    if (!subtaskEdit) return;
+    const subtask = detailRef.current?.subtasks.find(
+      (item) => item.id === subtaskEdit.id,
+    );
+    if (subtask) void saveSubtaskTitle(subtask, subtaskEdit);
+  }
+
+  function closeSheet() {
+    void saveDescription();
+    flushPendingSubtaskEdit();
+    onOpenChange(false);
   }
 
   async function toggleSubtask(subtask: Subtask) {
@@ -548,7 +623,10 @@ export function TaskDetailSheet({
       <Sheet
         open={open}
         onOpenChange={(nextOpen) => {
-          if (!nextOpen) void saveDescription();
+          if (!nextOpen) {
+            closeSheet();
+            return;
+          }
           onOpenChange(nextOpen);
         }}
       >
@@ -556,6 +634,11 @@ export function TaskDetailSheet({
           side="right"
           className="gap-0 p-0"
           aria-describedby={undefined}
+          onEscapeKeyDown={(event) => {
+            if (!subtaskEdit) return;
+            event.preventDefault();
+            stopEditingSubtask(subtaskEdit.id);
+          }}
         >
           <SheetTitle className="sr-only">Task details</SheetTitle>
           <SheetDescription className="sr-only">
@@ -599,7 +682,7 @@ export function TaskDetailSheet({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => onOpenChange(false)}
+                onClick={closeSheet}
                 aria-label="Close task details"
               >
                 <X className="size-4" />
@@ -819,36 +902,80 @@ export function TaskDetailSheet({
                     </div>
                   )}
                   <ul className="mt-2.5 space-y-0.5">
-                    {detail.subtasks.map((subtask) => (
-                      <li
-                        key={subtask.id}
-                        className="group/subtask flex items-start gap-2.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-muted/40"
-                      >
-                        <Checkbox
-                          checked={subtask.completed}
-                          onCheckedChange={() => void toggleSubtask(subtask)}
-                          className="mt-0.5 size-3.5"
-                          aria-label={`Subtask: ${subtask.title}`}
-                        />
-                        <span
-                          className={cn(
-                            "min-w-0 flex-1 text-[12.5px] leading-relaxed",
-                            subtask.completed &&
-                              "text-muted-foreground/60 line-through",
+                    {detail.subtasks.map((subtask) => {
+                      const editing = subtaskEdit?.id === subtask.id;
+                      return (
+                        <li
+                          key={subtask.id}
+                          className="group/subtask flex items-start gap-2.5 rounded-md px-1.5 py-1.5 transition-colors hover:bg-muted/40"
+                        >
+                          <Checkbox
+                            checked={subtask.completed}
+                            onCheckedChange={() => void toggleSubtask(subtask)}
+                            className="mt-0.5 size-3.5"
+                            aria-label={`Subtask: ${subtask.title}`}
+                          />
+                          {editing ? (
+                            <Input
+                              autoFocus
+                              value={subtaskEdit?.title ?? ""}
+                              onChange={(event) =>
+                                setSubtaskEdit((current) =>
+                                  current?.id === subtask.id
+                                    ? { ...current, title: event.target.value }
+                                    : current,
+                                )
+                              }
+                              onFocus={(event) => event.currentTarget.select()}
+                              onBlur={() => void saveSubtaskTitle(subtask)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
+                                  event.currentTarget.blur();
+                                } else if (event.key === "Escape") {
+                                  event.preventDefault();
+                                  stopEditingSubtask(subtask.id);
+                                }
+                              }}
+                              maxLength={200}
+                              aria-label={`Edit subtask ${subtask.title}`}
+                              className="h-7 flex-1 text-[12.5px]"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => startEditingSubtask(subtask)}
+                              title="Edit subtask"
+                              className={cn(
+                                "min-w-0 flex-1 text-left text-[12.5px] leading-relaxed transition-colors hover:text-foreground",
+                                subtask.completed &&
+                                  "text-muted-foreground/60 line-through",
+                              )}
+                            >
+                              {subtask.title}
+                            </button>
                           )}
-                        >
-                          {subtask.title}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => void deleteSubtask(subtask)}
-                          className="mt-0.5 text-muted-foreground/0 transition-colors group-hover/subtask:text-muted-foreground/50 hover:text-destructive"
-                          aria-label={`Delete subtask ${subtask.title}`}
-                        >
-                          <X className="size-3.5" />
-                        </button>
-                      </li>
-                    ))}
+                          {!editing && (
+                            <button
+                              type="button"
+                              onClick={() => startEditingSubtask(subtask)}
+                              className="mt-0.5 text-muted-foreground/0 transition-colors group-hover/subtask:text-muted-foreground/50 hover:text-foreground focus-visible:text-muted-foreground/50"
+                              aria-label={`Edit subtask ${subtask.title}`}
+                            >
+                              <Pencil className="size-3" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void deleteSubtask(subtask)}
+                            className="mt-0.5 text-muted-foreground/0 transition-colors group-hover/subtask:text-muted-foreground/50 hover:text-destructive"
+                            aria-label={`Delete subtask ${subtask.title}`}
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                   <form onSubmit={addSubtask} className="mt-2 flex items-center gap-1.5">
                     <Input

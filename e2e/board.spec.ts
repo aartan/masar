@@ -66,8 +66,26 @@ test.describe("board workflows", () => {
       // Subtask
       await sheet.getByPlaceholder("Add a subtask…").fill("Draft copy");
       await sheet.getByRole("button", { name: "Add subtask" }).click();
+      const updatedSubtaskTitle = "Draft copy updated";
+      await sheet.getByText("Draft copy", { exact: true }).click();
+      const subtaskEditor = sheet.getByRole("textbox", {
+        name: "Edit subtask Draft copy",
+      });
+      await subtaskEditor.fill(updatedSubtaskTitle);
+      const subtaskRenamePatch = page.waitForResponse(
+        (response) =>
+          /\/api\/subtasks\/[^/]+$/.test(new URL(response.url()).pathname) &&
+          response.request().method() === "PATCH",
+      );
+      await subtaskEditor.press("Enter");
+      const subtaskRenameResponse = await subtaskRenamePatch;
+      expect(subtaskRenameResponse.ok()).toBe(true);
+      expect(
+        ((await subtaskRenameResponse.json()) as { subtask: { title: string } })
+          .subtask.title,
+      ).toBe(updatedSubtaskTitle);
       const subtaskCheckbox = sheet.getByRole("checkbox", {
-        name: "Subtask: Draft copy",
+        name: `Subtask: ${updatedSubtaskTitle}`,
       });
       await expect(subtaskCheckbox).toBeVisible();
       const subtaskPatch = page.waitForResponse(
@@ -111,9 +129,13 @@ test.describe("board workflows", () => {
         .getByRole("button", { name: `Open task: ${updatedTitle}` })
         .click();
       const reopened = page.getByRole("dialog", { name: "Task details" });
-      await expect(reopened.getByText("Draft copy", { exact: true })).toBeVisible();
       await expect(
-        reopened.getByRole("checkbox", { name: "Subtask: Draft copy" }),
+        reopened.getByText(updatedSubtaskTitle, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        reopened.getByRole("checkbox", {
+          name: `Subtask: ${updatedSubtaskTitle}`,
+        }),
       ).toBeChecked();
       await expect(reopened.getByText("Ready for review.", { exact: true })).toBeVisible();
       await expect(

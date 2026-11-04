@@ -181,6 +181,134 @@ test.describe("board workflows", () => {
     }
   });
 
+  test("manages labels from board settings", async ({ page }) => {
+    const errors = collectPageErrors(page);
+    const boardName = uniqueName("E2E Labels");
+    const taskTitle = "Label target";
+    const labelName = uniqueName("Design");
+    const renamedLabel = `${labelName} updated`;
+    let boardId: string | undefined;
+
+    try {
+      const board = await createBoard(page.request, boardName);
+      boardId = board.id;
+      const detail = await getBoardDetail(page.request, boardId);
+      const todo = columnByName(detail.columns, "To Do");
+      await createTask(page.request, boardId, {
+        columnId: todo.id,
+        title: taskTitle,
+      });
+
+      await page.goto(`/boards/${boardId}`);
+      await page.getByRole("button", { name: "Board actions" }).click();
+      await page.getByRole("menuitem", { name: "Board settings" }).click();
+
+      const settings = page.getByRole("dialog", { name: "Board settings" });
+      await expect(settings).toBeVisible();
+      await settings.getByRole("button", { name: "Manage" }).click();
+
+      const createLabel = page.waitForResponse(
+        (response) =>
+          /\/api\/boards\/[^/]+\/labels$/.test(
+            new URL(response.url()).pathname,
+          ) && response.request().method() === "POST",
+      );
+      await page.getByPlaceholder("New label").fill(labelName);
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      expect((await createLabel).ok()).toBe(true);
+
+      await page
+        .getByRole("button", { name: `Edit label ${labelName}` })
+        .click();
+      await page
+        .getByRole("textbox", { name: "Label name", exact: true })
+        .fill(renamedLabel);
+      await page.getByRole("button", { name: "Color violet" }).first().click();
+      const updateLabel = page.waitForResponse(
+        (response) =>
+          /\/api\/labels\/[^/]+$/.test(new URL(response.url()).pathname) &&
+          response.request().method() === "PATCH",
+      );
+      await page.getByRole("button", { name: "Save label" }).click();
+      const updateResponse = await updateLabel;
+      expect(updateResponse.ok()).toBe(true);
+      expect(
+        ((await updateResponse.json()) as { label: { color: string } }).label
+          .color,
+      ).toBe("violet");
+
+      await page.keyboard.press("Escape");
+      await expect(
+        settings.getByText(renamedLabel, { exact: true }),
+      ).toBeVisible();
+
+      await settings.getByRole("button", { name: "Close" }).click();
+      await expect(settings).toHaveCount(0);
+
+      await page
+        .getByRole("button", { name: `Open task: ${taskTitle}` })
+        .click();
+      const sheet = page.getByRole("dialog", { name: "Task details" });
+      await sheet.getByRole("button", { name: "Manage" }).click();
+      await page
+        .getByRole("button", { name: renamedLabel, exact: true })
+        .click();
+      await page.keyboard.press("Escape");
+      await expect(sheet.getByText(renamedLabel, { exact: true })).toBeVisible();
+      await sheet.getByRole("button", { name: "Close task details" }).click();
+
+      const card = page.getByRole("button", { name: `Open task: ${taskTitle}` });
+      await expect(card.getByText(renamedLabel, { exact: true })).toBeVisible();
+
+      await page.getByRole("button", { name: "Board actions" }).click();
+      await page.getByRole("menuitem", { name: "Board settings" }).click();
+      const reopenedSettings = page.getByRole("dialog", {
+        name: "Board settings",
+      });
+      await reopenedSettings.getByRole("button", { name: "Manage" }).click();
+      await page
+        .getByRole("button", { name: `Delete label ${renamedLabel}` })
+        .click();
+      const confirm = page.getByRole("alertdialog");
+      await expect(confirm.getByText(`Delete ${renamedLabel}?`)).toBeVisible();
+      const deleteLabel = page.waitForResponse(
+        (response) =>
+          /\/api\/labels\/[^/]+$/.test(new URL(response.url()).pathname) &&
+          response.request().method() === "DELETE",
+      );
+      await confirm.getByRole("button", { name: "Delete label" }).click();
+      expect((await deleteLabel).ok()).toBe(true);
+      await expect(
+        page.getByRole("button", { name: `Delete label ${renamedLabel}` }),
+      ).toHaveCount(0);
+      await expect(
+        reopenedSettings.getByText(renamedLabel, { exact: true }),
+      ).toHaveCount(0);
+      await expect(confirm).toHaveCount(0);
+
+      await page.keyboard.press("Escape");
+      await expect(page.getByPlaceholder("New label")).toHaveCount(0);
+      await reopenedSettings.getByRole("button", { name: "Close" }).click();
+      await expect(reopenedSettings).toHaveCount(0);
+      await expect(
+        card.getByText(renamedLabel, { exact: true }),
+      ).toHaveCount(0);
+
+      await page.reload({ waitUntil: "networkidle" });
+      await expect(
+        page
+          .getByRole("button", { name: `Open task: ${taskTitle}` })
+          .getByText(renamedLabel, { exact: true }),
+      ).toHaveCount(0);
+      await page.getByRole("button", { name: "Labels", exact: true }).click();
+      await expect(page.getByText("No labels on this board")).toBeVisible();
+
+      expect(errors).toEqual([]);
+    } finally {
+      if (boardId) await deleteBoard(page.request, boardId);
+    }
+  });
+
   test("persists a drag-and-drop move across columns", async ({ page }) => {
     const errors = collectPageErrors(page);
     const boardName = uniqueName("E2E Drag");

@@ -4,6 +4,7 @@ import * as React from "react";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
+import { LabelSettingsSection } from "@/components/board/label-settings-section";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -393,17 +394,25 @@ export function BoardSettingsDialog({
   open,
   onOpenChange,
   board,
+  labels,
   onSaved,
+  onLabelCreated,
+  onLabelUpdated,
+  onLabelDeleted,
   onRequestDelete,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   board: { id: string; name: string; description: string | null };
+  labels: BoardLabel[];
   onSaved: (board: {
     id: string;
     name: string;
     description: string | null;
   }) => void;
+  onLabelCreated: (label: BoardLabel) => void;
+  onLabelUpdated: (label: BoardLabel) => void;
+  onLabelDeleted: (labelId: string) => void;
   onRequestDelete: () => void;
 }) {
   return (
@@ -411,7 +420,11 @@ export function BoardSettingsDialog({
       <DialogContent>
         <BoardSettingsForm
           board={board}
+          labels={labels}
           onSaved={onSaved}
+          onLabelCreated={onLabelCreated}
+          onLabelUpdated={onLabelUpdated}
+          onLabelDeleted={onLabelDeleted}
           onClose={() => onOpenChange(false)}
           onRequestDelete={onRequestDelete}
         />
@@ -422,16 +435,24 @@ export function BoardSettingsDialog({
 
 function BoardSettingsForm({
   board,
+  labels,
   onSaved,
+  onLabelCreated,
+  onLabelUpdated,
+  onLabelDeleted,
   onClose,
   onRequestDelete,
 }: {
   board: { id: string; name: string; description: string | null };
+  labels: BoardLabel[];
   onSaved: (board: {
     id: string;
     name: string;
     description: string | null;
   }) => void;
+  onLabelCreated: (label: BoardLabel) => void;
+  onLabelUpdated: (label: BoardLabel) => void;
+  onLabelDeleted: (labelId: string) => void;
   onClose: () => void;
   onRequestDelete: () => void;
 }) {
@@ -470,10 +491,15 @@ function BoardSettingsForm({
       <DialogHeader>
         <DialogTitle>Board settings</DialogTitle>
         <DialogDescription>
-          Rename your board or update its description and color.
+          Rename your board, update its description, and manage the labels used
+          across its tasks.
         </DialogDescription>
       </DialogHeader>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form
+        id="board-settings-form"
+        onSubmit={handleSubmit}
+        className="space-y-4"
+      >
         <div className="space-y-2">
           <Label htmlFor="board-settings-name">Name</Label>
           <Input
@@ -497,29 +523,40 @@ function BoardSettingsForm({
             disabled={loading}
           />
         </div>
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={onRequestDelete}
-          >
-            Delete board…
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-            disabled={loading}
-          >
-            Cancel
-          </Button>
-          <Button type="submit" disabled={!name.trim() || loading}>
-            {loading && <Loader2 className="size-4 animate-spin" />}
-            Save changes
-          </Button>
-        </DialogFooter>
       </form>
+      <LabelSettingsSection
+        boardId={board.id}
+        labels={labels}
+        onCreated={onLabelCreated}
+        onUpdated={onLabelUpdated}
+        onDeleted={onLabelDeleted}
+      />
+      <DialogFooter className="border-t border-border/60 pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          onClick={onRequestDelete}
+        >
+          Delete board…
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onClose}
+          disabled={loading}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          form="board-settings-form"
+          disabled={!name.trim() || loading}
+        >
+          {loading && <Loader2 className="size-4 animate-spin" />}
+          Save changes
+        </Button>
+      </DialogFooter>
     </>
   );
 }

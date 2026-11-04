@@ -3,7 +3,6 @@
 import * as React from "react";
 import {
   CalendarDays,
-  Check,
   CheckCircle2,
   ChevronRight,
   Circle,
@@ -13,7 +12,6 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
-  Tag,
   Trash2,
   X,
 } from "lucide-react";
@@ -31,11 +29,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -50,19 +43,16 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { LabelManagerPopover } from "@/components/shared/label-manager-popover";
 import { PrioritySelect } from "@/components/shared/priority-select";
 import {
   AuthorAvatar,
   LabelChip,
 } from "@/components/shared/task-meta";
-import { LABEL_COLOR_SWATCH } from "@/components/shared/colors";
 import { api, errorMessage } from "@/lib/client-api";
 import { formatDateTime, formatRelative } from "@/lib/dates";
-import {
-  LABEL_COLORS,
-  type LabelColor,
-  type Priority,
-} from "@/lib/constants";
+import type { Priority } from "@/lib/constants";
+import { createLabel, type LabelDraft } from "@/lib/labels";
 import type {
   BoardColumn,
   Comment,
@@ -283,19 +273,13 @@ export function TaskDetailSheet({
     });
   }
 
-  async function createLabel(name: string, color: LabelColor) {
+  async function createLabelForTask(draft: LabelDraft) {
     const current = detailRef.current;
-    if (!current || !name.trim()) return;
+    if (!current) return;
     beginBusy();
     try {
-      const label = await enqueueMutation(async () => {
-        const { label: created } = await api<{ label: BoardLabel }>(
-          `/api/boards/${current.boardId}/labels`,
-          {
-            method: "POST",
-            body: JSON.stringify({ name: name.trim(), color }),
-          },
-        );
+      await enqueueMutation(async () => {
+        const created = await createLabel(current.boardId, draft);
         onLabelCreated(created);
         const latest = detailRef.current;
         if (latest?.id === current.id) {
@@ -303,12 +287,6 @@ export function TaskDetailSheet({
             labelIds: [...latest.labelIds, created.id],
           });
         }
-        return created;
-      });
-      if (label) toast.success("Label created");
-    } catch (error) {
-      toast.error("Could not create label", {
-        description: errorMessage(error),
       });
     } finally {
       endBusy();
@@ -820,11 +798,11 @@ export function TaskDetailSheet({
                     <h3 className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/60 uppercase">
                       Labels
                     </h3>
-                    <LabelPicker
+                    <LabelManagerPopover
                       labels={labels}
                       selectedIds={detail.labelIds}
                       onToggle={(label) => void toggleLabel(label)}
-                      onCreate={(name, color) => void createLabel(name, color)}
+                      onCreate={createLabelForTask}
                     />
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -1113,124 +1091,5 @@ function MetaField({
       </Label>
       {children}
     </div>
-  );
-}
-
-function LabelPicker({
-  labels,
-  selectedIds,
-  onToggle,
-  onCreate,
-}: {
-  labels: BoardLabel[];
-  selectedIds: string[];
-  onToggle: (label: BoardLabel) => void;
-  onCreate: (name: string, color: LabelColor) => void;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const [name, setName] = React.useState("");
-  const [color, setColor] = React.useState<LabelColor>("sage");
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 rounded text-[10.5px] font-medium text-muted-foreground/60 transition-colors hover:text-foreground"
-        >
-          <Tag className="size-3" />
-          Manage
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-64 p-3">
-        <p className="px-1 pb-1.5 text-[10px] font-semibold tracking-[0.1em] text-muted-foreground/60 uppercase">
-          Labels
-        </p>
-        {labels.length === 0 ? (
-          <p className="px-1 py-2 text-[11.5px] text-muted-foreground">
-            No labels yet. Create one below.
-          </p>
-        ) : (
-          <div className="max-h-48 space-y-0.5 overflow-y-auto">
-            {labels.map((label) => {
-              const selected = selectedIds.includes(label.id);
-              return (
-                <button
-                  key={label.id}
-                  type="button"
-                  onClick={() => onToggle(label)}
-                  className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-[12px] transition-colors hover:bg-accent/60"
-                >
-                  <span
-                    className={cn(
-                      "grid size-4 place-items-center rounded border",
-                      selected
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border",
-                    )}
-                  >
-                    {selected && <Check className="size-2.5" strokeWidth={3} />}
-                  </span>
-                  <span
-                    className={cn(
-                      "size-2 rounded-full",
-                      LABEL_COLOR_SWATCH[label.color],
-                    )}
-                  />
-                  <span className="truncate">{label.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-        <div className="mt-2 border-t border-border/70 pt-2">
-          <Input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="New label"
-            maxLength={40}
-            className="h-7 text-[11.5px]"
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && name.trim()) {
-                event.preventDefault();
-                onCreate(name, color);
-                setName("");
-              }
-            }}
-          />
-          <div className="mt-1.5 flex items-center gap-1.5">
-            {LABEL_COLORS.map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setColor(item)}
-                aria-label={item}
-                aria-pressed={color === item}
-                className={cn(
-                  "grid size-5 place-items-center rounded-full border",
-                  color === item ? "border-foreground/30" : "border-transparent",
-                )}
-              >
-                <span
-                  className={cn("size-2.5 rounded-full", LABEL_COLOR_SWATCH[item])}
-                />
-              </button>
-            ))}
-            <Button
-              type="button"
-              size="xs"
-              className="ml-auto h-6"
-              disabled={!name.trim()}
-              onClick={() => {
-                onCreate(name, color);
-                setName("");
-              }}
-            >
-              Add
-            </Button>
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 }

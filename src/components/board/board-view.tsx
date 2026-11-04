@@ -298,6 +298,42 @@ export function BoardView({
     void refreshBoards();
   }
 
+  function handleLabelCreated(label: Label) {
+    setLabels((current) =>
+      current.some((item) => item.id === label.id)
+        ? current
+        : [...current, label],
+    );
+  }
+
+  function handleLabelUpdated(updated: Label) {
+    setLabels((current) =>
+      current.map((label) => (label.id === updated.id ? updated : label)),
+    );
+  }
+
+  function handleLabelDeleted(labelId: string) {
+    setLabels((current) => current.filter((label) => label.id !== labelId));
+    setTasks((current) =>
+      current.map((task) =>
+        task.labelIds.includes(labelId)
+          ? {
+              ...task,
+              labelIds: task.labelIds.filter((id) => id !== labelId),
+            }
+          : task,
+      ),
+    );
+    setFilters((current) =>
+      current.labelIds.includes(labelId)
+        ? {
+            ...current,
+            labelIds: current.labelIds.filter((id) => id !== labelId),
+          }
+        : current,
+    );
+  }
+
   async function duplicateTask(task: Task) {
     try {
       const { task: copy } = await api<{ task: Task }>(
@@ -939,10 +975,14 @@ export function BoardView({
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         board={board}
+        labels={labels}
         onSaved={(saved) => {
           setBoard((current) => ({ ...current, ...saved }));
           void refreshBoards();
         }}
+        onLabelCreated={handleLabelCreated}
+        onLabelUpdated={handleLabelUpdated}
+        onLabelDeleted={handleLabelDeleted}
         onRequestDelete={() => {
           setSettingsOpen(false);
           setDeleteBoardOpen(true);
@@ -958,9 +998,7 @@ export function BoardView({
         onTaskUpdated={handleTaskUpdated}
         onTaskDeleted={handleTaskDeletedFromSheet}
         onTaskDuplicated={handleTaskDuplicated}
-        onLabelCreated={(label) =>
-          setLabels((current) => [...current, label])
-        }
+        onLabelCreated={handleLabelCreated}
       />
 
       <ConfirmDialog

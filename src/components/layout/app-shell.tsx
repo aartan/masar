@@ -18,7 +18,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { boards, user, loading, error, refreshBoards } = useWorkspace();
+  const { boards, user, loading, error, refreshBoards, reorderBoards } =
+    useWorkspace();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
@@ -102,6 +103,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onOpenSearch={() => setSearchOpen(true)}
             onCreateBoard={openCreateBoard}
             onOpenShortcuts={() => setShortcutsOpen(true)}
+            onReorderBoards={reorderBoards}
           />
         </div>
       </aside>
@@ -129,6 +131,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onNavigate={() => setMobileOpen(false)}
             showClose
             onClose={() => setMobileOpen(false)}
+            onReorderBoards={reorderBoards}
           />
         </SheetContent>
       </Sheet>

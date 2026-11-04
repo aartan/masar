@@ -1,7 +1,25 @@
 import * as React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   ChevronsUpDown,
+  GripVertical,
   Keyboard,
   LayoutDashboard,
   Palette,
@@ -11,6 +29,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Logo } from "@/components/brand/logo";
 import { Kbd } from "@/components/shared/empty-state";
@@ -46,6 +65,7 @@ interface SidebarContentProps {
   onOpenSearch: () => void;
   onCreateBoard: () => void;
   onOpenShortcuts: () => void;
+  onReorderBoards: (boardIds: string[]) => Promise<void>;
   onNavigate?: () => void;
   showClose?: boolean;
   onClose?: () => void;
@@ -57,6 +77,7 @@ export function SidebarContent({
   onOpenSearch,
   onCreateBoard,
   onOpenShortcuts,
+  onReorderBoards,
   onNavigate,
   showClose,
   onClose,
@@ -66,6 +87,36 @@ export function SidebarContent({
   const { theme, setTheme } = useTheme();
   const sync = useSyncStatus();
   const initial = (user.name.trim()[0] ?? user.email[0] ?? "M").toUpperCase();
+  const boardsDndId = React.useId();
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+      bypassActivationConstraint: ({ event }) =>
+        event.target instanceof Element &&
+        Boolean(event.target.closest("[data-board-drag-handle]")),
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  function handleBoardDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = boards.findIndex((board) => board.id === active.id);
+    const newIndex = boards.findIndex((board) => board.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const nextBoards = arrayMove(boards, oldIndex, newIndex);
+    void onReorderBoards(nextBoards.map((board) => board.id)).catch(
+      (error) => {
+        toast.error("Could not reorder boards", {
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+        });
+      },
+    );
+  }
 
   const syncLabel =
     sync?.phase === "syncing"
@@ -167,47 +218,28 @@ export function SidebarContent({
               </button>
             </div>
           ) : (
-            <ul className="space-y-0.5">
-              {boards.map((board) => {
-                const active = pathname === `/boards/${board.id}`;
-                return (
-                  <li key={board.id}>
-                    <Link
-                      to={`/boards/${board.id}`}
-                      onClick={onNavigate}
-                      className={cn(
-                        "group flex h-8 items-center gap-2.5 rounded-lg px-2 text-[13px] transition-colors",
-                        active
-                          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "size-2 shrink-0 rounded-full",
-                          BOARD_COLOR_CLASS[board.color],
-                          "board-dot",
-                          active ? "opacity-100" : "opacity-70",
-                        )}
-                      />
-                      <span className="truncate">{board.name}</span>
-                      {board.taskCount > 0 && (
-                        <span
-                          className={cn(
-                            "ml-auto text-[10px] tabular-nums",
-                            active
-                              ? "text-sidebar-accent-foreground/60"
-                              : "text-muted-foreground/50",
-                          )}
-                        >
-                          {board.taskCount}
-                        </span>
-                      )}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            <DndContext
+              id={boardsDndId}
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleBoardDragEnd}
+            >
+              <SortableContext
+                items={boards.map((board) => board.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <ul className="space-y-0.5">
+                  {boards.map((board) => (
+                    <SortableBoardLink
+                      key={board.id}
+                      board={board}
+                      active={pathname === `/boards/${board.id}`}
+                      onNavigate={onNavigate}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
           )}
           <button
             type="button"
@@ -286,6 +318,92 @@ export function SidebarContent({
         </DropdownMenu>
       </div>
     </div>
+  );
+}
+
+function SortableBoardLink({
+  board,
+  active,
+  onNavigate,
+}: {
+  board: BoardSummary;
+  active: boolean;
+  onNavigate?: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: board.id });
+  const handlePointerDown = listeners?.onPointerDown as
+    | React.PointerEventHandler<HTMLElement>
+    | undefined;
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      data-board-id={board.id}
+      className={cn("group/board", isDragging && "relative z-20 opacity-60")}
+    >
+      <div
+        className={cn(
+          "flex h-8 items-center gap-1 rounded-lg pr-1 text-[13px] transition-colors",
+          active
+            ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+            : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+        )}
+      >
+        <Link
+          to={`/boards/${board.id}`}
+          onClick={onNavigate}
+          onPointerDown={handlePointerDown}
+          draggable={false}
+          className="flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+        >
+          <span
+            className={cn(
+              "size-2 shrink-0 rounded-full",
+              BOARD_COLOR_CLASS[board.color],
+              "board-dot",
+              active ? "opacity-100" : "opacity-70",
+            )}
+          />
+          <span className="truncate">{board.name}</span>
+          {board.taskCount > 0 && (
+            <span
+              className={cn(
+                "ml-auto text-[10px] tabular-nums",
+                active
+                  ? "text-sidebar-accent-foreground/60"
+                  : "text-muted-foreground/50",
+              )}
+            >
+              {board.taskCount}
+            </span>
+          )}
+        </Link>
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          data-board-drag-handle=""
+          className="grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground/40 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none active:cursor-grabbing sm:text-muted-foreground/0 sm:group-hover/board:text-muted-foreground/50 sm:group-focus-within/board:text-muted-foreground/50"
+          aria-label={`Reorder board ${board.name}`}
+          title="Drag to reorder"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="size-3.5" />
+        </button>
+      </div>
+    </li>
   );
 }
 

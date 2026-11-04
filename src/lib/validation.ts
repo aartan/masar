@@ -68,6 +68,10 @@ export const reorderColumnsSchema = z.object({
   columnIds: z.array(idSchema).min(1).max(50),
 });
 
+export const reorderBoardsSchema = z.object({
+  boardIds: z.array(idSchema).min(1).max(100),
+});
+
 export const taskCreateSchema = z.object({
   columnId: idSchema,
   title: nameSchema(200, "Title"),

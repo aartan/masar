@@ -25,6 +25,42 @@ export async function listBoards(
   return fetchBoardSummaries(database, ownerId);
 }
 
+export async function reorderBoards(
+  boardIds: string[],
+  ownerId: string,
+  database: AppDatabase = getDb(),
+): Promise<BoardSummary[]> {
+  const boardRows = await database
+    .select({ id: boards.id })
+    .from(boards)
+    .where(eq(boards.ownerId, ownerId));
+
+  const existing = new Set(boardRows.map((board) => board.id));
+  const incoming = new Set(boardIds);
+  if (
+    boardIds.length !== incoming.size ||
+    existing.size !== incoming.size ||
+    boardIds.some((id) => !existing.has(id))
+  ) {
+    throw new ApiError(
+      "Board order must include every board in the workspace exactly once.",
+      400,
+    );
+  }
+
+  const now = new Date();
+  await database.transaction(async (tx) => {
+    for (const [index, boardId] of boardIds.entries()) {
+      await tx
+        .update(boards)
+        .set({ position: index, updatedAt: now })
+        .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)));
+    }
+  });
+
+  return fetchBoardSummaries(database, ownerId);
+}
+
 export async function getBoardDetail(
   boardId: string,
   ownerId: string,

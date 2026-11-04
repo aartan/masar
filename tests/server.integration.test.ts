@@ -20,6 +20,7 @@ import {
   deleteBoard,
   getBoardDetail,
   listBoards,
+  reorderBoards,
   updateBoard,
 } from "@/lib/server/boards";
 import {
@@ -134,6 +135,35 @@ describe("boards", () => {
 
     const list = await listBoards(owner.id, test.db);
     expect(list.map((item) => item.name)).toEqual(["Renamed", "Second"]);
+  });
+
+  it("reorders boards and rejects incomplete or duplicate orders", async () => {
+    const first = await createBoard({ name: "First" }, owner.id, test.db);
+    const second = await createBoard({ name: "Second" }, owner.id, test.db);
+    const third = await createBoard({ name: "Third" }, owner.id, test.db);
+
+    const reordered = await reorderBoards(
+      [third.id, first.id, second.id],
+      owner.id,
+      test.db,
+    );
+    expect(reordered.map((item) => item.name)).toEqual([
+      "Third",
+      "First",
+      "Second",
+    ]);
+    expect(reordered.map((item) => item.position)).toEqual([0, 1, 2]);
+
+    await expect(
+      reorderBoards([first.id, second.id], owner.id, test.db),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      reorderBoards(
+        [first.id, first.id, second.id, third.id],
+        owner.id,
+        test.db,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   it("rejects updates for unknown boards", async () => {

@@ -7,6 +7,7 @@ import {
   deleteBoard,
   getBoardDetail,
   listBoards,
+  reorderBoards,
   updateBoard,
 } from "@/lib/server/boards";
 import { createColumn, deleteColumn, reorderColumns, updateColumn } from "@/lib/server/columns";
@@ -19,6 +20,7 @@ import {
   columnUpdateSchema,
   labelCreateSchema,
   labelUpdateSchema,
+  reorderBoardsSchema,
   reorderColumnsSchema,
   reorderTasksSchema,
   taskCreateSchema,
@@ -40,6 +42,16 @@ boardRoutes.post("/boards", async (c) => {
     const user = await requireApiUser();
     const input = await parseJsonBody(c.req.raw, boardCreateSchema);
     return jsonOk({ board: await createBoard(input, user.id) }, 201);
+  } catch (error) {
+    return handleRouteError(error);
+  }
+});
+
+boardRoutes.post("/boards/reorder", async (c) => {
+  try {
+    const user = await requireApiUser();
+    const input = await parseJsonBody(c.req.raw, reorderBoardsSchema);
+    return jsonOk({ boards: await reorderBoards(input.boardIds, user.id) });
   } catch (error) {
     return handleRouteError(error);
   }

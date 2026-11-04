@@ -9,6 +9,7 @@ import {
   dateOnlySchema,
   labelCreateSchema,
   labelUpdateSchema,
+  reorderBoardsSchema,
   reorderColumnsSchema,
   reorderTasksSchema,
   searchQuerySchema,
@@ -47,6 +48,13 @@ describe("board schemas", () => {
   it("rejects empty updates", () => {
     expect(boardUpdateSchema.safeParse({}).success).toBe(false);
     expect(boardUpdateSchema.safeParse({ name: "New" }).success).toBe(true);
+  });
+
+  it("validates board reorder payloads", () => {
+    expect(reorderBoardsSchema.parse({ boardIds: ["first", "second"] })).toEqual({
+      boardIds: ["first", "second"],
+    });
+    expect(reorderBoardsSchema.safeParse({ boardIds: [] }).success).toBe(false);
   });
 });
 

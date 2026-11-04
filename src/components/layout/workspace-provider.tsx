@@ -14,6 +14,7 @@ interface WorkspaceContextValue {
   loading: boolean;
   error: string | null;
   refreshBoards(): Promise<void>;
+  reorderBoards(boardIds: string[]): Promise<void>;
 }
 
 const FALLBACK_USER: WorkspaceUser = {
@@ -44,6 +45,43 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       );
     }
   }, []);
+
+  const reorderBoards = React.useCallback(
+    async (boardIds: string[]) => {
+      const byId = new Map(boards.map((board) => [board.id, board]));
+      if (
+        boardIds.length !== boards.length ||
+        new Set(boardIds).size !== boardIds.length
+      ) {
+        throw new Error("Could not reorder boards.");
+      }
+      const next = boardIds.map((id) => {
+        const board = byId.get(id);
+        if (!board) throw new Error("Could not reorder boards.");
+        return board;
+      });
+
+      const request = ++requestRef.current;
+      const previous = boards;
+      setBoards(next.map((board, index) => ({ ...board, position: index })));
+      try {
+        const data = await api<{ boards: BoardSummary[] }>(
+          "/api/boards/reorder",
+          {
+            method: "POST",
+            body: JSON.stringify({ boardIds }),
+          },
+        );
+        if (request !== requestRef.current) return;
+        setBoards(data.boards);
+        setError(null);
+      } catch (caught) {
+        if (request === requestRef.current) setBoards(previous);
+        throw caught;
+      }
+    },
+    [boards],
+  );
 
   React.useEffect(() => {
     let active = true;
@@ -88,8 +126,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, [refreshBoards]);
 
   const value = React.useMemo(
-    () => ({ boards, user, loading, error, refreshBoards }),
-    [boards, user, loading, error, refreshBoards],
+    () => ({ boards, user, loading, error, refreshBoards, reorderBoards }),
+    [boards, user, loading, error, refreshBoards, reorderBoards],
   );
 
   return (

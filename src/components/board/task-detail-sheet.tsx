@@ -105,6 +105,11 @@ export function TaskDetailSheet({
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const titleRef = React.useRef<HTMLTextAreaElement>(null);
   const detailRef = React.useRef<TaskDetail | null>(null);
+  // Keep the live description separate from render state so blur/close always
+  // saves the latest edit and older mutation responses cannot overwrite it.
+  const descriptionRef = React.useRef("");
+  const descriptionDirtyRef = React.useRef(false);
+  const descriptionVersionRef = React.useRef(0);
   const loadTokenRef = React.useRef(0);
   const mutationQueueRef = React.useRef<Promise<unknown>>(Promise.resolve());
   const busyCountRef = React.useRef(0);
@@ -156,6 +161,9 @@ export function TaskDetailSheet({
         detailRef.current = full;
         setDetail(full);
         setTitle(full.title);
+        descriptionRef.current = full.description ?? "";
+        descriptionDirtyRef.current = false;
+        descriptionVersionRef.current += 1;
         setDescription(full.description ?? "");
       } catch (error) {
         if (token === loadTokenRef.current) setLoadError(errorMessage(error));
@@ -189,9 +197,13 @@ export function TaskDetailSheet({
       { method: "PATCH", body: JSON.stringify(input) },
     );
     if (detailRef.current?.id !== targetId) return null;
+    const hasUnsavedDescription = descriptionDirtyRef.current;
     commitDetail(updated);
     setTitle(updated.title);
-    setDescription(updated.description ?? "");
+    if (!hasUnsavedDescription) {
+      descriptionRef.current = updated.description ?? "";
+      setDescription(updated.description ?? "");
+    }
     return updated;
   }
 
@@ -230,10 +242,18 @@ export function TaskDetailSheet({
   async function saveDescription() {
     const current = detailRef.current;
     if (!current) return;
-    const trimmed = description.trim();
+    const trimmed = descriptionRef.current.trim();
     const next = trimmed || null;
-    if (next === current.description) return;
-    await patchTask({ description: next });
+    if (next === current.description) {
+      descriptionDirtyRef.current = false;
+      return;
+    }
+    const version = descriptionVersionRef.current;
+    const updated = await patchTask({ description: next });
+    if (!updated || descriptionVersionRef.current !== version) return;
+    descriptionDirtyRef.current = false;
+    descriptionRef.current = updated.description ?? "";
+    setDescription(updated.description ?? "");
   }
 
   async function changeColumn(columnId: string) {
@@ -525,7 +545,13 @@ export function TaskDetailSheet({
 
   return (
     <>
-      <Sheet open={open} onOpenChange={onOpenChange}>
+      <Sheet
+        open={open}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) void saveDescription();
+          onOpenChange(nextOpen);
+        }}
+      >
         <SheetContent
           side="right"
           className="gap-0 p-0"
@@ -749,7 +775,12 @@ export function TaskDetailSheet({
                   </h3>
                   <textarea
                     value={description}
-                    onChange={(event) => setDescription(event.target.value)}
+                    onChange={(event) => {
+                      descriptionRef.current = event.target.value;
+                      descriptionDirtyRef.current = true;
+                      descriptionVersionRef.current += 1;
+                      setDescription(event.target.value);
+                    }}
                     onBlur={() => void saveDescription()}
                     placeholder="Add context, links, or acceptance criteria…"
                     rows={4}

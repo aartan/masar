@@ -11,7 +11,9 @@ import {
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
+import { DELETE_ACCOUNT_PHRASE } from "../../src/lib/premium-types";
 import type {
+  AccountDeletionResult,
   PremiumCredentials,
   PremiumRegistration,
   PremiumStatus,
@@ -20,8 +22,15 @@ import type {
 import type { DesktopState, ThemePreference } from "../../src/lib/desktop-bridge";
 import { buildMenu } from "./menu";
 import { registerLifecycle } from "./lifecycle";
-import { databaseUrl, logFile, rendererDir, syncDatabaseUrl } from "./paths";
+import {
+  databaseUrl,
+  logFile,
+  rendererDir,
+  syncDatabaseUrl,
+  syncDirectory,
+} from "./paths";
 import { PremiumApiClient, PremiumApiError } from "./premium/client";
+import { removeSyncMirrorFiles } from "./premium/local-data";
 import { SyncEngine } from "./premium/sync-engine";
 import {
   clearPremiumSession,
@@ -53,6 +62,8 @@ let premiumClient: PremiumApiClient | null = null;
 let shuttingDown = false;
 /** Remote user id of the workspace the local API is currently serving. */
 let activeSyncUserId: string | null = null;
+/** Prevents the sync interval from starting a new cycle during deletion. */
+let deletingPremiumAccount = false;
 
 function log(line: string): void {
   console.log(line);
@@ -73,7 +84,7 @@ function fatal(title: string, detail: string): never {
 }
 
 const syncEngine = new SyncEngine({
-  getClient: () => premiumClient,
+  getClient: () => (deletingPremiumAccount ? null : premiumClient),
   getLocalOrigin: () => localApiOrigin || origin,
   isOnline: () => net.isOnline(),
   log,
@@ -357,14 +368,24 @@ function watchServerExit(handle: ServerHandle): void {
  */
 let switchQueue: Promise<void> = Promise.resolve();
 
-function switchWorkspace(syncUser: StoredPremiumSession["user"] | null): Promise<void> {
-  const next = switchQueue.then(() => performWorkspaceSwitch(syncUser));
+function switchWorkspace(
+  syncUser: StoredPremiumSession["user"] | null,
+  reloadPath = "/",
+): Promise<void> {
+  const next = switchQueue.then(() =>
+    performWorkspaceSwitch(syncUser, reloadPath),
+  );
   switchQueue = next.catch(() => undefined);
   return next;
 }
 
+function rendererUrl(path: string): string {
+  return new URL(path.startsWith("/") ? path : `/${path}`, origin).toString();
+}
+
 async function performWorkspaceSwitch(
   syncUser: StoredPremiumSession["user"] | null,
+  reloadPath: string,
 ): Promise<void> {
   if (isDevMode()) {
     // The development launcher owns the local API and cannot switch
@@ -376,7 +397,14 @@ async function performWorkspaceSwitch(
   const nextUserId = syncUser?.id ?? null;
   if (server && activeSyncUserId === nextUserId) {
     // Already serving the requested workspace (for example a duplicate
-    // logout). Avoid an unnecessary restart and reload.
+    // logout). Avoid an unnecessary restart and reload. An explicit post-switch
+    // path still needs to be honoured (account deletion navigates to a notice).
+    if (reloadPath !== "/" && mainWindow && !mainWindow.isDestroyed()) {
+      startUrl = rendererUrl(reloadPath);
+      void mainWindow.loadURL(startUrl).catch(() => {
+        /* did-fail-load renders the retry page */
+      });
+    }
     return;
   }
 
@@ -409,11 +437,11 @@ async function performWorkspaceSwitch(
   await launchServer(targetDatabaseUrl, syncUser);
   activeSyncUserId = nextUserId;
   watchServerExit(server!);
-  startUrl = origin;
+  startUrl = rendererUrl(reloadPath);
   if (mainWindow && !mainWindow.isDestroyed()) {
     // `origin` now points at the new server process; reload() would re-request
     // the old (dead) origin instead.
-    void mainWindow.loadURL(origin).catch(() => {
+    void mainWindow.loadURL(startUrl).catch(() => {
       /* did-fail-load renders the retry page */
     });
   }
@@ -547,6 +575,84 @@ async function disconnectSession(): Promise<void> {
   refreshMenu();
 }
 
+/**
+ * Permanently delete the connected premium account.
+ *
+ * Ordering matters:
+ * 1. Stop new sync cycles and let the current one drain.
+ * 2. Delete the remote account, which cascades sessions and all cloud data.
+ * 3. Clear the local token and switch the local API back to `masar.db`.
+ * 4. Delete the per-account mirror and its SQLite sidecar files.
+ *
+ * The separate offline local workspace is deliberately untouched. If a local
+ * cleanup step fails after the remote deletion succeeded, the account is still
+ * gone; the caller receives a warning instead of a misleading failure.
+ */
+async function deletePremiumAccount(
+  confirmation: string,
+): Promise<AccountDeletionResult> {
+  if (confirmation !== DELETE_ACCOUNT_PHRASE) {
+    throw new Error(`Type "${DELETE_ACCOUNT_PHRASE}" exactly to confirm.`);
+  }
+  const currentSession = session;
+  const client = premiumClient;
+  if (!currentSession || !client) {
+    throw new Error("Sign in before deleting your account.");
+  }
+  if (deletingPremiumAccount) {
+    throw new Error("Account deletion is already in progress.");
+  }
+
+  deletingPremiumAccount = true;
+  try {
+    await syncEngine.idle();
+    await client.deleteAccount(confirmation);
+  } catch (error) {
+    deletingPremiumAccount = false;
+    throw error;
+  }
+
+  expireSession();
+
+  let cleanupWarning: string | null = null;
+  try {
+    // The renderer is reloaded when the local API switches databases. Use a
+    // query flag so the success notice survives that reload.
+    await switchWorkspace(null, "/account?deleted=1");
+  } catch (error) {
+    cleanupWarning =
+      "Your account was deleted, but Masar could not reopen the local workspace. Restart the app before continuing.";
+    log(`[premium] could not switch to the local workspace after deletion: ${String(error)}`);
+  }
+
+  try {
+    const removed = removeSyncMirrorFiles(syncDirectory(), currentSession.user.id);
+    log(`[premium] removed ${removed.length} mirror file(s) for ${currentSession.user.id}`);
+  } catch (error) {
+    if (!cleanupWarning) {
+      cleanupWarning =
+        "Your account was deleted, but the local synced copy could not be removed. Restart the app and try again.";
+    }
+    log(`[premium] could not remove the sync mirror: ${String(error)}`);
+  }
+
+  deletingPremiumAccount = false;
+  refreshMenu();
+  if (cleanupWarning && mainWindow && !mainWindow.isDestroyed()) {
+    void dialog
+      .showMessageBox(mainWindow, {
+        type: "warning",
+        title: "Account deleted",
+        message: cleanupWarning,
+        buttons: ["OK"],
+      })
+      .catch((error) => {
+        log(`[premium] could not show the deletion cleanup warning: ${String(error)}`);
+      });
+  }
+  return { status: await getPremiumStatus(), cleanupWarning };
+}
+
 /** Read the local workspace and copy it into the connected premium workspace. */
 async function importLocalWorkspace(): Promise<{ boards: number; tasks: number }> {
   if (!session) throw new Error("Sign in to premium sync first.");
@@ -570,6 +676,13 @@ async function importLocalWorkspace(): Promise<{ boards: number; tasks: number }
     throw new Error(message);
   }
   return payload as { boards: number; tasks: number };
+}
+
+function requireDeletionConfirmation(value: unknown): string {
+  if (typeof value !== "string" || value !== DELETE_ACCOUNT_PHRASE) {
+    throw new Error(`Type "${DELETE_ACCOUNT_PHRASE}" exactly to confirm.`);
+  }
+  return value;
 }
 
 function requireString(
@@ -653,6 +766,11 @@ function registerIpc(): void {
   ipcMain.handle("masar:premium-logout", async () => {
     await disconnectSession();
     return getPremiumStatus();
+  });
+
+  ipcMain.handle("masar:premium-delete-account", async (_event, input: unknown) => {
+    const confirmation = requireDeletionConfirmation(input);
+    return deletePremiumAccount(confirmation);
   });
 
   ipcMain.handle("masar:import-local", async () => {

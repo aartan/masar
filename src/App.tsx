@@ -12,6 +12,7 @@ import { BoardPage } from "@/pages/board-page";
 import { NotFoundPage } from "@/pages/not-found-page";
 import OverviewPage from "@/pages/overview-page";
 import { AccountPage } from "@/pages/account-page";
+import { DeleteAccountPage } from "@/pages/delete-account-page";
 
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -63,6 +64,7 @@ export function App() {
                   <Route path="/" element={<OverviewPage />} />
                   <Route path="/boards/:boardId" element={<BoardPage />} />
                   <Route path="/account" element={<AccountPage />} />
+                  <Route path="/account/delete" element={<DeleteAccountPage />} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
               </AppShell>

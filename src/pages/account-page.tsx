@@ -2,15 +2,21 @@ import * as React from "react";
 import {
   CheckCircle2,
   Cloud,
-  CreditCard,
   ExternalLink,
   Loader2,
   LogOut,
   RefreshCw,
   TriangleAlert,
 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
+import { AccountSettingsHeading } from "@/components/account/account-settings-heading";
+import { DeleteAccountLink } from "@/components/account/delete-account-link";
+import {
+  SubscribeButton,
+  SubscribeSection,
+} from "@/components/account/subscribe-section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +37,8 @@ type AuthMode = "login" | "register";
 
 export function AccountPage() {
   const bridge = window.masarDesktop;
+  const location = useLocation();
+  const navigate = useNavigate();
   const [premium, setPremium] = React.useState<PremiumStatus | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -68,6 +76,18 @@ export function AccountPage() {
       active = false;
     };
   }, [bridge]);
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("deleted") !== "1") return;
+    setNotice(
+      "Your Masar account and all synced data were permanently deleted. Your offline local workspace is still available.",
+    );
+    toast.success("Account deleted", {
+      description: "Your account and synced data were permanently deleted.",
+    });
+    navigate("/account", { replace: true });
+  }, [location.search, navigate]);
 
   async function perform(label: string, action: () => Promise<PremiumStatus>) {
     if (busy) return;
@@ -167,7 +187,10 @@ export function AccountPage() {
     return (
       <div className="h-full overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8 lg:py-10">
-          <PageHeading />
+          <AccountSettingsHeading
+            title="Account"
+            description="Manage your sign-in details, subscription, and cloud sync preferences. Your local workspace is always available offline."
+          />
           <Card className="mt-6">
             <CardContent className="px-5 py-6 text-[13px] leading-relaxed text-muted-foreground">
               Cloud sync is available in the Masar desktop application.
@@ -194,7 +217,10 @@ export function AccountPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8 lg:py-10">
-        <PageHeading />
+        <AccountSettingsHeading
+          title="Account"
+          description="Manage your sign-in details, subscription, and cloud sync preferences. Your local workspace is always available offline."
+        />
 
         {error && <Alert tone="error" title={error} />}
         {notice && <Alert tone="info" title={notice} />}
@@ -336,22 +362,6 @@ export function AccountPage() {
   );
 }
 
-function PageHeading() {
-  return (
-    <div>
-      <p className="text-[10.5px] font-semibold tracking-[0.16em] text-muted-foreground/60 uppercase">
-        ACCOUNT SETTINGS
-      </p>
-      <h1 className="font-display mt-2 text-[28px] leading-tight font-semibold text-foreground sm:text-[32px]">
-        Account
-      </h1>
-      <p className="mt-1.5 max-w-xl text-[13.5px] leading-relaxed text-muted-foreground">
-        Manage your sign-in details, subscription, and cloud sync preferences. Your local workspace is always available offline.
-      </p>
-    </div>
-  );
-}
-
 function Alert({ tone, title }: { tone: "error" | "info"; title: string }) {
   return (
     <div
@@ -402,10 +412,14 @@ function ConnectedAccount({
   const trialEnd = formatBillingDate(
     entitlement?.trialEnd ?? premium.subscription?.trialEnd,
   );
+  const showSubscribe = premium.billingConfigured && !entitlement?.entitled;
+  const hasEndedSubscription =
+    entitlement?.reason === "expired" || entitlement?.reason === "canceled";
 
   return (
-    <Card className="mt-6">
-      <CardHeader className="gap-3">
+    <>
+      <Card className="mt-6">
+        <CardHeader className="gap-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle className="truncate">
@@ -491,15 +505,8 @@ function ConnectedAccount({
             )}
             Refresh status
           </Button>
-          {premium.billingConfigured && !entitlement?.entitled && (
-            <Button onClick={onCheckout} disabled={busy !== null}>
-              {busy === "checkout" ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <CreditCard className="size-4" />
-              )}
-              Subscribe
-            </Button>
+          {showSubscribe && !hasEndedSubscription && (
+            <SubscribeButton busy={busy} onCheckout={onCheckout} />
           )}
           {premium.billingConfigured && premium.subscription && (
             <Button variant="outline" onClick={onPortal} disabled={busy !== null}>
@@ -521,7 +528,12 @@ function ConnectedAccount({
           </Button>
         </div>
       </CardContent>
-    </Card>
+      </Card>
+      {showSubscribe && hasEndedSubscription && (
+        <SubscribeSection busy={busy} onCheckout={onCheckout} />
+      )}
+      <DeleteAccountLink />
+    </>
   );
 }
 

@@ -1,4 +1,5 @@
 import type {
+  AccountDeletionResult,
   PremiumCredentials,
   PremiumRegistration,
   PremiumStatus,
@@ -22,6 +23,8 @@ export interface MasarDesktopBridge {
   login(input: PremiumCredentials): Promise<PremiumStatus>;
   register(input: PremiumRegistration): Promise<PremiumStatus>;
   logout(): Promise<PremiumStatus>;
+  /** Permanently delete the premium account after exact phrase confirmation. */
+  deleteAccount(confirmation: string): Promise<AccountDeletionResult>;
   startCheckout(): Promise<{ url: string }>;
   openPortal(): Promise<{ url: string }>;
   refreshBilling(): Promise<PremiumStatus>;

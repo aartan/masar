@@ -1,21 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 import type {
+  AccountDeletionResult,
   PremiumCredentials,
   PremiumRegistration,
   PremiumStatus,
   SyncStatus,
 } from "../../src/lib/premium-types";
 import type { DesktopState, ThemePreference } from "../../src/lib/desktop-bridge";
-
-function cleanError(error: unknown): Error {
-  const message = error instanceof Error ? error.message : String(error);
-  return new Error(
-    message
-      .replace(/^Error invoking remote method '[^']+':\s*/, "")
-      .replace(/^Error:\s*/, ""),
-  );
-}
+import { cleanError } from "./user-facing-error";
 
 async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
   try {
@@ -38,6 +31,8 @@ contextBridge.exposeInMainWorld("masarDesktop", {
   register: (input: PremiumRegistration) =>
     invoke<PremiumStatus>("masar:premium-register", input),
   logout: () => invoke<PremiumStatus>("masar:premium-logout"),
+  deleteAccount: (confirmation: string) =>
+    invoke<AccountDeletionResult>("masar:premium-delete-account", confirmation),
   startCheckout: () => invoke<{ url: string }>("masar:start-checkout"),
   openPortal: () => invoke<{ url: string }>("masar:open-portal"),
   refreshBilling: () => invoke<PremiumStatus>("masar:refresh-billing"),

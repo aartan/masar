@@ -8,12 +8,19 @@ import { normalizeApiUrl } from "../api-config";
 export class PremiumApiError extends Error {
   readonly status: number;
   readonly code: string | null;
+  readonly fieldErrors: Record<string, string> | null;
 
-  constructor(message: string, status: number, code: string | null = null) {
+  constructor(
+    message: string,
+    status: number,
+    code: string | null = null,
+    fieldErrors: Record<string, string> | null = null,
+  ) {
     super(message);
     this.name = "PremiumApiError";
     this.status = status;
     this.code = code;
+    this.fieldErrors = fieldErrors;
   }
 }
 
@@ -73,6 +80,7 @@ export interface ConflictResponse {
 interface ErrorBody {
   error?: string;
   code?: string;
+  fieldErrors?: Record<string, string>;
 }
 
 export class PremiumApiClient {
@@ -135,10 +143,16 @@ export class PremiumApiClient {
 
     if (!response.ok) {
       const body = payload as ErrorBody | null;
+      const firstFieldError = body?.fieldErrors
+        ? Object.values(body.fieldErrors)[0]
+        : undefined;
       throw new PremiumApiError(
-        body?.error ?? `The sync server returned ${response.status}.`,
+        firstFieldError ??
+          body?.error ??
+          `The sync server returned ${response.status}.`,
         response.status,
         body?.code ?? null,
+        body?.fieldErrors ?? null,
       );
     }
 
@@ -161,6 +175,14 @@ export class PremiumApiClient {
 
   logout(): Promise<void> {
     return this.request("POST", "/v1/auth/logout", { token: this.token });
+  }
+
+  deleteAccount(confirmation: string): Promise<{ deleted: true }> {
+    return this.request("DELETE", "/v1/auth/account", {
+      body: { confirmation },
+      token: this.token,
+      timeoutMs: 30_000,
+    });
   }
 
   me(): Promise<{ user: PremiumUser }> {

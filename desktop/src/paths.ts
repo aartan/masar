@@ -1,7 +1,8 @@
 import { app } from "electron";
-import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
+
+import { syncMirrorFileName } from "./premium/local-data";
 
 /**
  * Single source of truth for filesystem locations. Packaged resources live in
@@ -24,6 +25,17 @@ export function databaseUrl(): string {
 }
 
 /**
+ * Directory holding every premium account's local sync mirror. Mirror files
+ * are deleted when their account is deleted, but the directory can still
+ * contain other accounts.
+ */
+export function syncDirectory(): string {
+  const directory = path.join(userDataDir(), "sync");
+  mkdirSync(directory, { recursive: true });
+  return directory;
+}
+
+/**
  * libSQL `file:` URL for the premium sync mirror database of one remote
  * account. Every premium account gets its own mirror file so its cloud
  * workspace can never share tables with the local workspace or another
@@ -31,12 +43,7 @@ export function databaseUrl(): string {
  * reduced to a safe filename before touching the filesystem.
  */
 export function syncDatabaseUrl(remoteUserId: string): string {
-  const safe = /^[a-zA-Z0-9._-]{1,64}$/.test(remoteUserId)
-    ? remoteUserId
-    : createHash("sha256").update(remoteUserId).digest("hex").slice(0, 32);
-  const directory = path.join(userDataDir(), "sync");
-  mkdirSync(directory, { recursive: true });
-  return `file:${path.join(directory, `${safe}.db`)}`;
+  return `file:${path.join(syncDirectory(), syncMirrorFileName(remoteUserId))}`;
 }
 
 /** Bundled local API, migrator, migrations and renderer. */

@@ -1,3 +1,10 @@
+/**
+ * Exact phrase a user must type before the account deletion action becomes
+ * available. The desktop UI, Electron main process and API all check the same
+ * literal independently.
+ */
+export const DELETE_ACCOUNT_PHRASE = "DELETE";
+
 export interface PremiumUser {
   id: string;
   name: string;
@@ -42,6 +49,16 @@ export interface PremiumStatus {
   subscription: PremiumSubscriptionView | null;
   billingConfigured: boolean;
   error: string | null;
+}
+
+export interface AccountDeletionResult {
+  /** Always the disconnected status after a successful remote deletion. */
+  status: PremiumStatus;
+  /**
+   * Set when the account was deleted remotely but a local cleanup step (for
+   * example deleting the sync mirror file) could not complete.
+   */
+  cleanupWarning: string | null;
 }
 
 export type SyncPhase =

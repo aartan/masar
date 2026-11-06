@@ -62,7 +62,7 @@ Masar is distributed as a desktop application. Download the latest build for you
 
 ## Cloud sync
 
-The local workspace is free and does not require an account. Cloud sync runs on hosted infrastructure and requires an active subscription. From Account settings you can sign in or register, import a local workspace into your cloud workspace, refresh your subscription status, manage billing or delete your account. Deleting your account removes the synced data but leaves the separate local workspace on your device.
+The local workspace is free and does not require an account. Cloud sync runs on hosted infrastructure and requires an active subscription.
 
 ## Technology
 

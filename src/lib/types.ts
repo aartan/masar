@@ -82,6 +82,13 @@ export interface BoardDetail {
   labels: Label[];
 }
 
+export interface CalendarData {
+  boards: BoardSummary[];
+  columns: BoardColumn[];
+  labels: Label[];
+  tasks: Task[];
+}
+
 export interface SearchResult {
   taskId: string;
   title: string;

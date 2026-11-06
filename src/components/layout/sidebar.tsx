@@ -18,6 +18,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  CalendarDays,
   ChevronsUpDown,
   GripVertical,
   Keyboard,
@@ -180,6 +181,14 @@ export function SidebarContent({
           onClick={onNavigate}
         >
           Overview
+        </SidebarLink>
+        <SidebarLink
+          href="/calendar"
+          icon={CalendarDays}
+          active={pathname === "/calendar"}
+          onClick={onNavigate}
+        >
+          Calendar
         </SidebarLink>
       </nav>
 

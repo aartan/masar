@@ -9,6 +9,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BoardPage } from "@/pages/board-page";
+import { CalendarPage } from "@/pages/calendar-page";
 import { NotFoundPage } from "@/pages/not-found-page";
 import OverviewPage from "@/pages/overview-page";
 import { AccountPage } from "@/pages/account-page";
@@ -62,6 +63,7 @@ export function App() {
               <AppShell>
                 <Routes>
                   <Route path="/" element={<OverviewPage />} />
+                  <Route path="/calendar" element={<CalendarPage />} />
                   <Route path="/boards/:boardId" element={<BoardPage />} />
                   <Route path="/account" element={<AccountPage />} />
                   <Route path="/account/delete" element={<DeleteAccountPage />} />

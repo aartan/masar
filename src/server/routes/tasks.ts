@@ -2,6 +2,7 @@ import { Hono } from "hono";
 
 import { handleRouteError, jsonOk, parseJsonBody } from "@/lib/api";
 import { requireApiUser } from "@/lib/server/auth";
+import { getCalendarData } from "@/lib/server/calendar";
 import { createComment, deleteComment, listComments } from "@/lib/server/comments";
 import { searchTasks } from "@/lib/server/search";
 import { getDashboardData } from "@/lib/server/stats";
@@ -31,6 +32,15 @@ taskRoutes.get("/dashboard", async (_c) => {
   try {
     const user = await requireApiUser();
     return jsonOk({ dashboard: await getDashboardData(user.id) });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+});
+
+taskRoutes.get("/calendar", async (_c) => {
+  try {
+    const user = await requireApiUser();
+    return jsonOk({ calendar: await getCalendarData(user.id) });
   } catch (error) {
     return handleRouteError(error);
   }

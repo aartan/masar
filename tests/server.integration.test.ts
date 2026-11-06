@@ -44,6 +44,7 @@ import {
   reorderTasks,
   updateTask,
 } from "@/lib/server/tasks";
+import { getCalendarData } from "@/lib/server/calendar";
 import { getDashboardData } from "@/lib/server/stats";
 import { searchTasks } from "@/lib/server/search";
 import type { TestDatabase } from "./helpers/test-db";
@@ -998,6 +999,89 @@ describe("workspace isolation", () => {
     await expect(
       getBoardDetail(legacyId, other.id, test.db),
     ).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("calendar data", () => {
+  it("returns every workspace task with its columns and labels", async () => {
+    const { board, todo, done } = await makeBoard("Calendar board");
+    const label = await createLabel(
+      board.id,
+      { name: "Design", color: "violet" },
+      owner.id,
+      test.db,
+    );
+    const scheduled = await createTask(
+      board.id,
+      {
+        columnId: todo.id,
+        title: "Scheduled task",
+        dueDate: "2026-06-15",
+        labelIds: [label.id],
+      },
+      owner.id,
+      test.db,
+    );
+    const completed = await createTask(
+      board.id,
+      {
+        columnId: done.id,
+        title: "Completed task",
+        dueDate: "2026-06-10",
+      },
+      owner.id,
+      test.db,
+    );
+    const unscheduled = await createTask(
+      board.id,
+      { columnId: todo.id, title: "Unscheduled task" },
+      owner.id,
+      test.db,
+    );
+
+    const data = await getCalendarData(owner.id, test.db);
+    expect(data.boards.map((item) => item.name)).toEqual(["Calendar board"]);
+    expect(data.columns.filter((column) => column.boardId === board.id)).toHaveLength(
+      5,
+    );
+    expect(data.labels.map((item) => item.name)).toEqual(["Design"]);
+    expect(data.tasks.map((item) => item.id).sort()).toEqual(
+      [scheduled.id, completed.id, unscheduled.id].sort(),
+    );
+    expect(
+      data.tasks.find((item) => item.id === scheduled.id),
+    ).toMatchObject({
+      dueDate: "2026-06-15",
+      labelIds: [label.id],
+    });
+    expect(
+      data.tasks.find((item) => item.id === unscheduled.id)?.dueDate,
+    ).toBeNull();
+  });
+
+  it("scopes calendar data to the signed-in account", async () => {
+    const mine = await makeBoard("Mine");
+    const theirs = await makeBoard("Theirs", other.id);
+    await createTask(
+      mine.board.id,
+      { columnId: mine.todo.id, title: "My task", dueDate: "2026-06-15" },
+      owner.id,
+      test.db,
+    );
+    await createTask(
+      theirs.board.id,
+      { columnId: theirs.todo.id, title: "Their task", dueDate: "2026-06-15" },
+      other.id,
+      test.db,
+    );
+
+    const mineData = await getCalendarData(owner.id, test.db);
+    expect(mineData.boards.map((item) => item.name)).toEqual(["Mine"]);
+    expect(mineData.tasks.map((item) => item.title)).toEqual(["My task"]);
+
+    const theirData = await getCalendarData(other.id, test.db);
+    expect(theirData.boards.map((item) => item.name)).toEqual(["Theirs"]);
+    expect(theirData.tasks.map((item) => item.title)).toEqual(["Their task"]);
   });
 });
 

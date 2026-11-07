@@ -172,6 +172,90 @@ describe("local sync outbox", () => {
   });
 
 
+  it("applies project and whiteboard entities and records their revisions", async () => {
+    await prepareSync("remote-user-a");
+    const now = Date.now();
+
+    const result = await applyRemoteChanges(5, [
+      {
+        entityType: "project",
+        entityId: "remote-project-1",
+        deleted: false,
+        data: {
+          id: "remote-project-1",
+          name: "Remote project",
+          position: 0,
+          archived: false,
+          archived_at: null,
+          created_at: now,
+          updated_at: now,
+        },
+        updatedAt: new Date(now).toISOString(),
+        revision: 4,
+      },
+      {
+        entityType: "board",
+        entityId: "remote-wb-board",
+        deleted: false,
+        data: {
+          id: "remote-wb-board",
+          project_id: "remote-project-1",
+          type: "whiteboard",
+          name: "Canvas",
+          description: null,
+          color: "sage",
+          position: 0,
+          created_at: now,
+          updated_at: now,
+        },
+        updatedAt: new Date(now).toISOString(),
+        revision: 5,
+      },
+      {
+        entityType: "whiteboard",
+        entityId: "remote-wb-board",
+        deleted: false,
+        data: {
+          id: "remote-wb-board",
+          board_id: "remote-wb-board",
+          scene: '{"elements":[{"id":"a"}]}',
+          updated_at: now,
+        },
+        updatedAt: new Date(now).toISOString(),
+        revision: 6,
+      },
+    ]);
+
+    expect(result.applied).toBe(3);
+    expect(result.skipped).toEqual([]);
+
+    // The board landed in the project with the whiteboard type.
+    const [board] = await test.db
+      .select()
+      .from(boards)
+      .where(eq(boards.id, "remote-wb-board"));
+    expect(board?.type).toBe("whiteboard");
+    expect(board?.projectId).toBe("remote-project-1");
+
+    // The scene persisted and the base revision was recorded for the push path.
+    const scene = await getClient().execute({
+      sql: "select scene from whiteboards where board_id = ?",
+      args: ["remote-wb-board"],
+    });
+    expect(String(scene.rows[0]?.scene)).toContain("elements");
+
+    const revisions = await getClient().execute(
+      "select entity_type, revision from sync_entity_revisions order by revision",
+    );
+    const byType = new Map(
+      revisions.rows.map((row) => [String(row.entity_type), Number(row.revision)]),
+    );
+    expect(byType.get("project")).toBe(4);
+    expect(byType.get("board")).toBe(5);
+    expect(byType.get("whiteboard")).toBe(6);
+  });
+
+
   it("compacts repeated offline edits to the newest state per entity", async () => {
     await prepareSync("remote-user-a");
     const { board } = await makeBoard("Compact me");

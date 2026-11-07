@@ -7,6 +7,7 @@ import { importLocalWorkspace } from "@/sync/import-local";
 import { acknowledgeChanges, applyRemoteChanges, prepareSync } from "@/sync/local";
 
 const ENTITY_TYPES = [
+  "project",
   "board",
   "column",
   "task",
@@ -14,6 +15,7 @@ const ENTITY_TYPES = [
   "task_label",
   "subtask",
   "comment",
+  "whiteboard",
 ] as const;
 
 const remoteChangeSchema = z.object({

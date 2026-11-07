@@ -4,13 +4,15 @@ import type { Transaction } from "@libsql/client";
 import { getClient } from "@/db";
 
 export type SyncEntityType =
+  | "project"
   | "board"
   | "column"
   | "task"
   | "label"
   | "task_label"
   | "subtask"
-  | "comment";
+  | "comment"
+  | "whiteboard";
 
 export interface LocalSyncChange {
   id: number;
@@ -46,6 +48,7 @@ export interface SyncStateView {
 }
 
 const ENTITY_TYPES = new Set<SyncEntityType>([
+  "project",
   "board",
   "column",
   "task",
@@ -53,6 +56,7 @@ const ENTITY_TYPES = new Set<SyncEntityType>([
   "task_label",
   "subtask",
   "comment",
+  "whiteboard",
 ]);
 
 function assertEntityType(value: string): SyncEntityType {
@@ -192,8 +196,17 @@ export async function prepareSync(
 async function bootstrapChanges(tx: Transaction): Promise<void> {
   const statements = [
     `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+     select 'project', id, 0,
+       json_object('id', id, 'owner_id', owner_id, 'name', name, 'position', position,
+                   'archived', archived, 'archived_at', archived_at,
+                   'created_at', created_at, 'updated_at', updated_at),
+       coalesce(updated_at, unixepoch() * 1000)
+     from projects
+     order by position, created_at`,
+    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
      select 'board', id, 0,
-       json_object('id', id, 'owner_id', owner_id, 'name', name, 'description', description,
+       json_object('id', id, 'owner_id', owner_id, 'project_id', project_id, 'type', type,
+                   'name', name, 'description', description,
                    'color', color, 'position', position, 'created_at', created_at, 'updated_at', updated_at),
        coalesce(updated_at, unixepoch() * 1000)
      from boards
@@ -240,6 +253,11 @@ async function bootstrapChanges(tx: Transaction): Promise<void> {
        coalesce(updated_at, created_at, unixepoch() * 1000)
      from comments
      order by task_id, created_at`,
+    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+     select 'whiteboard', board_id, 0,
+       json_object('id', board_id, 'board_id', board_id, 'scene', scene, 'updated_at', updated_at),
+       coalesce(updated_at, unixepoch() * 1000)
+     from whiteboards`,
   ];
   for (const sql of statements) await tx.execute(sql);
 }
@@ -446,21 +464,26 @@ async function recordEntityRevision(
   });
 }
 
-function dependencyRank(type: SyncEntityType): number {  switch (type) {
-    case "board":
+function dependencyRank(type: SyncEntityType): number {
+  switch (type) {
+    case "project":
       return 0;
-    case "column":
+    case "board":
       return 1;
-    case "label":
+    case "column":
       return 2;
-    case "task":
+    case "label":
       return 3;
-    case "task_label":
+    case "task":
       return 4;
-    case "subtask":
+    case "task_label":
       return 5;
-    case "comment":
+    case "subtask":
       return 6;
+    case "comment":
+      return 7;
+    case "whiteboard":
+      return 8;
     default:
       return 99;
   }
@@ -472,12 +495,14 @@ async function localTimestamp(
   entityId: string,
 ): Promise<number | null> {
   const queries: Record<Exclude<SyncEntityType, "task_label">, string> = {
+    project: "select updated_at as value from projects where id = ?",
     board: "select updated_at as value from boards where id = ?",
     column: "select updated_at as value from columns where id = ?",
     task: "select updated_at as value from tasks where id = ?",
     label: "select coalesce(updated_at, created_at) as value from labels where id = ?",
     subtask: "select coalesce(updated_at, created_at) as value from subtasks where id = ?",
     comment: "select coalesce(updated_at, created_at) as value from comments where id = ?",
+    whiteboard: "select updated_at as value from whiteboards where board_id = ?",
   };
   if (entityType === "task_label") return null;
   const result = await tx.execute({ sql: queries[entityType], args: [entityId] });
@@ -529,9 +554,17 @@ async function queueCurrentEntity(
   entityId: string,
 ): Promise<void> {
   const statements: Record<Exclude<SyncEntityType, "task_label">, string> = {
+    project: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+      select 'project', id, 0,
+        json_object('id', id, 'owner_id', owner_id, 'name', name, 'position', position,
+                    'archived', archived, 'archived_at', archived_at,
+                    'created_at', created_at, 'updated_at', updated_at),
+        coalesce(updated_at, unixepoch() * 1000)
+      from projects where id = ?`,
     board: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
       select 'board', id, 0,
-        json_object('id', id, 'owner_id', owner_id, 'name', name, 'description', description,
+        json_object('id', id, 'owner_id', owner_id, 'project_id', project_id, 'type', type,
+                    'name', name, 'description', description,
                     'color', color, 'position', position, 'created_at', created_at, 'updated_at', updated_at),
         coalesce(updated_at, unixepoch() * 1000)
       from boards where id = ?`,
@@ -567,6 +600,11 @@ async function queueCurrentEntity(
                     'created_at', created_at, 'updated_at', coalesce(updated_at, created_at)),
         coalesce(updated_at, created_at, unixepoch() * 1000)
       from comments where id = ?`,
+    whiteboard: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+      select 'whiteboard', board_id, 0,
+        json_object('id', board_id, 'board_id', board_id, 'scene', scene, 'updated_at', updated_at),
+        coalesce(updated_at, unixepoch() * 1000)
+      from whiteboards where board_id = ?`,
   };
   await tx.execute({ sql: statements[entityType], args: [entityId] });
 }
@@ -581,6 +619,9 @@ async function exists(tx: Transaction, table: string, id: string): Promise<boole
 
 async function deleteEntity(tx: Transaction, change: RemoteSyncChange): Promise<void> {
   switch (change.entityType) {
+    case "project":
+      await tx.execute({ sql: "delete from projects where id = ?", args: [change.entityId] });
+      break;
     case "board":
       await tx.execute({ sql: "delete from boards where id = ?", args: [change.entityId] });
       break;
@@ -609,6 +650,12 @@ async function deleteEntity(tx: Transaction, change: RemoteSyncChange): Promise<
     case "comment":
       await tx.execute({ sql: "delete from comments where id = ?", args: [change.entityId] });
       break;
+    case "whiteboard":
+      await tx.execute({
+        sql: "delete from whiteboards where board_id = ?",
+        args: [change.entityId],
+      });
+      break;
   }
 }
 
@@ -620,15 +667,47 @@ async function applyUpsert(
   const now = nowMs();
 
   switch (change.entityType) {
-    case "board": {
+    case "project": {
       await tx.execute({
-        sql: `insert into boards (id, owner_id, name, description, color, position, created_at, updated_at)
+        sql: `insert into projects (id, owner_id, name, position, archived, archived_at, created_at, updated_at)
               values (?, 'local-user', ?, ?, ?, ?, ?, ?)
               on conflict(id) do update set
-                owner_id = 'local-user', name = excluded.name, description = excluded.description,
+                owner_id = 'local-user', name = excluded.name, position = excluded.position,
+                archived = excluded.archived, archived_at = excluded.archived_at,
+                updated_at = excluded.updated_at`,
+        args: [
+          change.entityId,
+          asString(data.name, "Untitled project"),
+          asNumber(data.position),
+          asBoolean(data.archived) ? 1 : 0,
+          data.archived_at === null || data.archived_at === undefined
+            ? null
+            : toMs(data.archived_at, now),
+          toMs(data.created_at, now),
+          toMs(data.updated_at, now),
+        ],
+      });
+      return null;
+    }
+    case "board": {
+      // A board may reference a project that has not been applied yet (older
+      // payloads, or an out-of-order pull). Keep the FK satisfiable by storing
+      // null until the project arrives; the board re-syncs with the project id
+      // once both are present.
+      const projectId = asNullableString(data.project_id);
+      const resolvedProjectId =
+        projectId && (await exists(tx, "projects", projectId)) ? projectId : null;
+      await tx.execute({
+        sql: `insert into boards (id, owner_id, project_id, type, name, description, color, position, created_at, updated_at)
+              values (?, 'local-user', ?, ?, ?, ?, ?, ?, ?, ?)
+              on conflict(id) do update set
+                owner_id = 'local-user', project_id = excluded.project_id, type = excluded.type,
+                name = excluded.name, description = excluded.description,
                 color = excluded.color, position = excluded.position, updated_at = excluded.updated_at`,
         args: [
           change.entityId,
+          resolvedProjectId,
+          asString(data.type, "kanban"),
           asString(data.name, "Untitled board"),
           asNullableString(data.description),
           asString(data.color, "sage"),
@@ -761,6 +840,22 @@ async function applyUpsert(
           asString(data.body, ""),
           toMs(data.created_at, now),
           toMs(data.updated_at, toMs(data.created_at, now)),
+        ],
+      });
+      return null;
+    }
+    case "whiteboard": {
+      const boardId = asString(data.board_id, change.entityId);
+      if (!(await exists(tx, "boards", boardId))) return "Parent board no longer exists";
+      await tx.execute({
+        sql: `insert into whiteboards (board_id, scene, updated_at)
+              values (?, ?, ?)
+              on conflict(board_id) do update set
+                scene = excluded.scene, updated_at = excluded.updated_at`,
+        args: [
+          boardId,
+          asString(data.scene, "{}"),
+          toMs(data.updated_at, now),
         ],
       });
       return null;

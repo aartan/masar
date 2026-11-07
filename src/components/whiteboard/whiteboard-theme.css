@@ -59,12 +59,14 @@
 }
 
 /*
- * Hide chrome Masar doesn't want: the main menu (hamburger, top-left) and the
- * help button (?, bottom-right). Excalidraw offers no prop to disable these,
- * so hide them by their stable class names. Scoped to the whiteboard so the
- * canvas stays clean and keyboard-first.
+ * Hide chrome Masar doesn't want: the main menu (hamburger, top-left), the
+ * help button (?, bottom-right) and the Library button (sidebar trigger,
+ * top-right). Excalidraw offers no prop to disable these, so hide them by
+ * their stable class names. Scoped to the whiteboard so the canvas stays
+ * clean and keyboard-first.
  */
 .masar-whiteboard .excalidraw .dropdown-menu-button,
-.masar-whiteboard .excalidraw .help-icon {
+.masar-whiteboard .excalidraw .help-icon,
+.masar-whiteboard .excalidraw .default-sidebar-trigger {
   display: none !important;
 }

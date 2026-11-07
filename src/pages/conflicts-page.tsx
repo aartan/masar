@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { api, errorMessage } from "@/lib/client-api";
 import { formatDateTime } from "@/lib/dates";
+import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { SyncConflictView } from "@/lib/types";
 
 type Choice = "cloud" | "local";
@@ -32,26 +33,35 @@ export function ConflictsPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
 
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const load = React.useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const data = await api<{ conflicts: SyncConflictView[] }>(
         "/api/sync/conflicts",
       );
       setConflicts(data.conflicts);
+      if (silent) setError(null);
     } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : "Could not load conflicts.",
-      );
+      if (!silent) {
+        setError(
+          caught instanceof Error ? caught.message : "Could not load conflicts.",
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   React.useEffect(() => {
     void load();
   }, [load]);
+
+  useOnSyncComplete(() => {
+    void load(true);
+  });
 
   async function resolve(conflict: SyncConflictView, choice: Choice) {
     if (!bridge) {

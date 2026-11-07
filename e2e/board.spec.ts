@@ -6,11 +6,49 @@ import {
   createBoard,
   createTask,
   deleteBoard,
+  emitSyncStatus,
   getBoardDetail,
+  installSyncBridgeMock,
   uniqueName,
 } from "./helpers";
 
 test.describe("board workflows", () => {
+  test("refreshes an open board when a sync cycle completes", async ({
+    page,
+  }) => {
+    await installSyncBridgeMock(page);
+    const boardName = uniqueName("Auto refresh board");
+    const taskTitle = uniqueName("Synced task");
+    let boardId: string | undefined;
+
+    try {
+      const board = await createBoard(page.request, boardName);
+      boardId = board.id;
+      const detail = await getBoardDetail(page.request, board.id);
+
+      await page.goto(`/boards/${board.id}`);
+      await expect(page.getByRole("heading", { name: boardName })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: `Open task: ${taskTitle}` }),
+      ).toHaveCount(0);
+
+      // Change the backing data without touching this page, then emit the same
+      // status transition the Electron sync engine broadcasts.
+      await createTask(page.request, board.id, {
+        columnId: detail.columns[0]!.id,
+        title: taskTitle,
+      });
+      await emitSyncStatus(page, "syncing");
+      await emitSyncStatus(page, "idle");
+
+      await expect(
+        page.getByRole("button", { name: `Open task: ${taskTitle}` }),
+      ).toBeVisible();
+    } finally {
+      if (boardId) await deleteBoard(page.request, boardId);
+    }
+  });
+
   test("creates a board, edits a task, filters, switches views, and searches", async ({
     page,
   }) => {

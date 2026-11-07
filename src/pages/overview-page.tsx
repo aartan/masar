@@ -16,6 +16,7 @@ import { format } from "date-fns";
 
 import { api } from "@/lib/client-api";
 import { PRIORITY_META, type Priority } from "@/lib/constants";
+import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import { completionPercent } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
 import type { DashboardData } from "@/lib/types";
@@ -60,6 +61,17 @@ export default function OverviewPage() {
       active = false;
     };
   }, []);
+
+  useOnSyncComplete(() => {
+    void api<{ dashboard: DashboardData }>("/api/dashboard")
+      .then((result) => {
+        setData(result.dashboard);
+        setError(null);
+      })
+      .catch(() => {
+        /* Keep the current overview if a background refresh fails. */
+      });
+  });
 
   if (!data) {
     return (

@@ -6,6 +6,7 @@ import { CalendarView } from "@/components/calendar/calendar-view";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/client-api";
+import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { CalendarData } from "@/lib/types";
 
 export function CalendarPage() {
@@ -38,6 +39,17 @@ export function CalendarPage() {
       active = false;
     };
   }, [attempt]);
+
+  useOnSyncComplete(() => {
+    void api<{ calendar: CalendarData }>("/api/calendar")
+      .then((result) => {
+        setData(result.calendar);
+        setError(null);
+      })
+      .catch(() => {
+        /* Keep the current calendar if a background refresh fails. */
+      });
+  });
 
   if (loading) {
     return (

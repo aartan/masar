@@ -6,6 +6,7 @@ import { useWorkspace } from "@/components/layout/workspace-provider";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/client-api";
+import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardDetail } from "@/lib/types";
 
 // Excalidraw is heavy; load the whiteboard view only when a whiteboard board
@@ -23,6 +24,7 @@ export function BoardPage() {
   const [data, setData] = React.useState<BoardDetail | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [refreshToken, setRefreshToken] = React.useState(0);
 
   React.useEffect(() => {
     let active = true;
@@ -44,6 +46,18 @@ export function BoardPage() {
       active = false;
     };
   }, [boardId]);
+
+  useOnSyncComplete(() => {
+    void api<{ board: BoardDetail }>(`/api/boards/${boardId}`)
+      .then((result) => {
+        setData(result.board);
+        setError(null);
+        setRefreshToken((value) => value + 1);
+      })
+      .catch(() => {
+        /* A background refresh should not replace a usable board with an error. */
+      });
+  });
 
   if (loading) {
     return (
@@ -113,6 +127,7 @@ export function BoardPage() {
       initialData={data}
       initialTaskId={initialTaskId}
       readOnly={readOnly}
+      refreshToken={refreshToken}
     />
   );
 }

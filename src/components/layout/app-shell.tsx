@@ -181,8 +181,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {conflictCount > 0 && (
-          <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-amber-500/25 bg-amber-500/[0.08] px-4 py-2 text-[12px]">
-            <span className="inline-flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-200">
+          <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-warning/25 bg-warning/10 px-4 py-2 text-[12px]">
+            <span className="inline-flex items-center gap-1.5 font-medium text-warning">
               <TriangleAlert className="size-3.5" />
               {conflictCount} sync conflict{conflictCount === 1 ? "" : "s"} need
               your review

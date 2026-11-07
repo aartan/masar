@@ -19,7 +19,7 @@ export function DeleteAccountLink() {
           variant="ghost"
           size="sm"
           asChild
-          className="text-destructive/80 hover:bg-destructive/5 hover:text-destructive"
+          className="text-destructive hover:bg-destructive/5 hover:text-destructive"
         >
           <Link to="/account/delete">
             <Trash2 />

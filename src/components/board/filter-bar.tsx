@@ -92,7 +92,7 @@ export function FilterBar({
       className="flex flex-wrap items-center gap-2"
     >
       <div className="relative min-w-[170px] max-w-[300px] flex-1 sm:flex-none sm:basis-[260px]">
-        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={filters.query}
           onChange={(event) => update({ query: event.target.value })}
@@ -104,7 +104,7 @@ export function FilterBar({
           <button
             type="button"
             onClick={() => update({ query: "" })}
-            className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 place-items-center rounded text-muted-foreground/60 hover:bg-accent hover:text-foreground"
+            className="absolute top-1/2 right-1.5 grid size-5 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
             aria-label="Clear search"
           >
             <X className="size-3" />
@@ -235,7 +235,7 @@ export function FilterBar({
       </FilterMenu>
 
       <div className="ml-auto flex items-center gap-2">
-        <span className="hidden text-[11px] tabular-nums text-muted-foreground/70 sm:inline">
+        <span className="hidden text-[11px] tabular-nums text-muted-foreground sm:inline">
           {active
             ? `${visibleCount} of ${totalCount}`
             : `${totalCount} task${totalCount === 1 ? "" : "s"}`}
@@ -252,7 +252,7 @@ export function FilterBar({
                 {SORT_LABELS[filters.sort]}
               </span>
               <span className="sm:hidden">Sort</span>
-              <ChevronDown className="size-3 opacity-50" />
+              <ChevronDown className="size-3 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -318,7 +318,7 @@ function FilterMenu({
         >
           <Icon className="size-3.5" />
           <span className="max-w-[110px] truncate">{label}</span>
-          <ChevronDown className="size-3 opacity-50" />
+          <ChevronDown className="size-3 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-52">

@@ -208,7 +208,7 @@ export function ConflictsPage() {
     <div className="h-full overflow-y-auto bg-canvas">
       <div className="mx-auto w-full max-w-[1000px] px-5 py-8 sm:px-8">
         <header className="animate-rise">
-          <p className="text-[10.5px] font-semibold tracking-[0.16em] text-muted-foreground/60 uppercase">
+          <p className="text-[10.5px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
             Sync
           </p>
           <h1 className="font-display mt-2 text-[26px] font-semibold">
@@ -221,7 +221,7 @@ export function ConflictsPage() {
         </header>
 
         {!loading && conflicts.length > 1 && (
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3">
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/25 bg-warning/10 px-4 py-3">
             <p className="text-[12px] text-muted-foreground">
               <span className="font-medium text-foreground">
                 {conflicts.length} conflicts
@@ -323,7 +323,7 @@ function ConflictCard({
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 bg-muted/20 px-5 py-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-amber-500/12 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-700 uppercase dark:text-amber-300">
+            <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-warning uppercase">
               {TYPE_LABEL[conflict.entityType]}
             </span>
             {context && (
@@ -339,11 +339,11 @@ function ConflictCard({
             Detected {formatDateTime(conflict.createdAt)} · {diff.summary}
           </p>
         </div>
-        <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <AlertTriangle className="size-4 shrink-0 text-warning" />
       </div>
 
       <div className="p-4 sm:p-5">
-        <h3 className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/60 uppercase">
+        <h3 className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
           What changed
         </h3>
         {diff.whiteboard && <WhiteboardDiffView stats={diff.whiteboard} />}
@@ -356,7 +356,7 @@ function ConflictCard({
         )}
         {diff.unchanged.length > 0 && (
           <details className="group mt-3">
-            <summary className="flex cursor-pointer list-none items-center gap-1 text-[11px] font-medium text-muted-foreground/70 hover:text-foreground">
+            <summary className="flex cursor-pointer list-none items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground">
               <ChevronRight className="size-3 transition-transform group-open:rotate-90" />
               Show {diff.unchanged.length} unchanged field
               {diff.unchanged.length === 1 ? "" : "s"}
@@ -400,7 +400,7 @@ function ConflictDiffTable({
 }) {
   return (
     <div className="mt-2 overflow-hidden rounded-lg border border-border/60">
-      <div className="grid grid-cols-[minmax(96px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/60 bg-muted/35 px-3 py-2 text-[9.5px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">
+      <div className="grid grid-cols-[minmax(96px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/60 bg-muted/35 px-3 py-2 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
         <span>Data</span>
         <span>This device</span>
         <span>Cloud</span>
@@ -421,7 +421,7 @@ function DiffRow({ row, muted }: { row: ConflictDiffRow; muted: boolean }) {
         className={
           muted
             ? "grid grid-cols-[minmax(96px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/40 px-3 py-2 text-[11.5px]"
-            : "grid grid-cols-[minmax(96px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/40 bg-amber-500/[0.025] px-3 py-2 text-[11.5px]"
+            : "grid grid-cols-[minmax(96px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/40 bg-warning/5 px-3 py-2 text-[11.5px]"
         }
       >
         <span className="font-medium text-muted-foreground">{row.label}</span>
@@ -461,7 +461,7 @@ function TextDiffView({ cloud, local }: { cloud: string; local: string }) {
   const lines = diffText(cloud, local);
   return (
     <div className="mt-2 max-h-64 overflow-y-auto rounded-md border border-border/60 bg-background/70 px-2 py-1.5 font-mono text-[10.5px] leading-relaxed">
-      <p className="mb-1 font-sans text-[9px] font-semibold tracking-[0.08em] text-muted-foreground/60 uppercase">
+      <p className="mb-1 font-sans text-[10px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
         Cloud → This device
       </p>
       {lines.map((line, index) => (
@@ -469,9 +469,9 @@ function TextDiffView({ cloud, local }: { cloud: string; local: string }) {
           key={index}
           className={
             line.kind === "added"
-              ? "whitespace-pre-wrap break-words bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+              ? "whitespace-pre-wrap break-words bg-success/10 text-success"
               : line.kind === "removed"
-                ? "whitespace-pre-wrap break-words bg-rose-500/10 text-rose-800 line-through dark:text-rose-300"
+                ? "whitespace-pre-wrap break-words bg-destructive/10 text-destructive line-through"
                 : "whitespace-pre-wrap break-words text-muted-foreground"
           }
         >
@@ -543,7 +543,7 @@ function ResolutionAction({
         <Icon className="size-3.5" />
         {label}
       </div>
-      <p className="text-[10.5px] text-muted-foreground/70">
+      <p className="text-[10.5px] text-muted-foreground">
         {formatDateTime(timestamp)}
       </p>
       <Button

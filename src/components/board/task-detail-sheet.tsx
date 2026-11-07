@@ -632,7 +632,7 @@ export function TaskDetailSheet({
               <span className="size-1.5 shrink-0 rounded-full bg-primary/60" />
               <span className="truncate">{column?.name ?? "Task"}</span>
               <ChevronRight className="size-3 shrink-0 opacity-40" />
-              <span className="truncate text-muted-foreground/70">Details</span>
+              <span className="truncate text-muted-foreground">Details</span>
             </span>
             <div className="ml-auto flex items-center gap-1">
               {!readOnly && (
@@ -690,7 +690,7 @@ export function TaskDetailSheet({
             </div>
           ) : loadError ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-              <Circle className="size-7 text-muted-foreground/40" />
+              <Circle className="size-7 text-muted-foreground" />
               <p className="text-[13px] font-medium">Task could not be loaded</p>
               <p className="max-w-xs text-[12px] text-muted-foreground">
                 {loadError}
@@ -727,10 +727,10 @@ export function TaskDetailSheet({
                     rows={1}
                     maxLength={200}
                     aria-label="Task title"
-                    className="font-display w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-0 py-0 text-[21px] leading-tight font-semibold text-foreground outline-none transition-colors hover:border-border/50 hover:bg-muted/20 focus:border-ring/40 focus:bg-muted/20 focus:ring-2 focus:ring-ring/10"
+                    className="font-display w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-0 py-0 text-[21px] leading-tight font-semibold text-foreground outline-none transition-colors hover:border-border/50 hover:bg-muted/20 focus:border-ring focus:bg-muted/20 focus:ring-2 focus:ring-ring"
                   />
                   {busy && (
-                    <Loader2 className="mt-1.5 size-3.5 shrink-0 animate-spin text-muted-foreground/50" />
+                    <Loader2 className="mt-1.5 size-3.5 shrink-0 animate-spin text-muted-foreground" />
                   )}
                 </div>
                 {readOnly && (
@@ -739,10 +739,10 @@ export function TaskDetailSheet({
                     project to make changes.
                   </p>
                 )}
-                <p className="mt-2 flex flex-wrap items-center gap-2 text-[10.5px] text-muted-foreground/60">
+                <p className="mt-2 flex flex-wrap items-center gap-2 text-[10.5px] text-muted-foreground">
                   <span>Created {formatDateTime(detail.createdAt)}</span>
                   {detail.completedAt && (
-                    <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                    <span className="inline-flex items-center gap-1 text-success">
                       <CheckCircle2 className="size-3" />
                       Completed
                     </span>
@@ -780,7 +780,7 @@ export function TaskDetailSheet({
                   <MetaField label="Due date" className="sm:col-span-2">
                     <div className="flex items-center gap-1">
                       <div className="relative flex-1">
-                        <CalendarDays className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
+                        <CalendarDays className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
                         <Input
                           type="date"
                           value={detail.dueDate ?? ""}
@@ -811,7 +811,7 @@ export function TaskDetailSheet({
 
                 <div className="mt-5">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/60 uppercase">
+                    <h3 className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
                       Labels
                     </h3>
                     {!readOnly && (
@@ -825,7 +825,7 @@ export function TaskDetailSheet({
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     {detail.labelIds.length === 0 && (
-                      <span className="text-[11.5px] text-muted-foreground/60">
+                      <span className="text-[11.5px] text-muted-foreground">
                         No labels yet.
                       </span>
                     )}
@@ -852,7 +852,7 @@ export function TaskDetailSheet({
                 </div>
 
                 <div className="mt-6">
-                  <h3 className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/60 uppercase">
+                  <h3 className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
                     Description
                   </h3>
                   <textarea
@@ -868,16 +868,16 @@ export function TaskDetailSheet({
                     placeholder="Add context, links, or acceptance criteria…"
                     rows={4}
                     maxLength={5000}
-                    className="mt-1.5 w-full resize-y rounded-lg border border-transparent bg-transparent px-2.5 py-2 text-[12.5px] leading-relaxed text-foreground/90 outline-none transition-colors placeholder:text-muted-foreground/45 hover:border-border/60 hover:bg-muted/20 focus:border-ring/40 focus:bg-muted/20 focus:ring-2 focus:ring-ring/10"
+                    className="mt-1.5 w-full resize-y rounded-lg border border-transparent bg-transparent px-2.5 py-2 text-[12.5px] leading-relaxed text-foreground/90 outline-none transition-colors placeholder:text-muted-foreground hover:border-border/60 hover:bg-muted/20 focus:border-ring focus:bg-muted/20 focus:ring-2 focus:ring-ring"
                   />
                 </div>
 
                 <section className="mt-6 border-t border-border/60 pt-5">
                   <div className="flex items-center justify-between">
-                    <h3 className="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/60 uppercase">
+                    <h3 className="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
                       Subtasks
                       {subtaskTotal > 0 && (
-                        <span className="rounded-full bg-muted px-1.5 py-px text-[9px] tracking-normal text-muted-foreground">
+                        <span className="rounded-full bg-muted px-1.5 py-px text-[10px] tracking-normal text-muted-foreground">
                           {doneSubtasks}/{subtaskTotal}
                         </span>
                       )}
@@ -890,13 +890,13 @@ export function TaskDetailSheet({
                           className={cn(
                             "h-full rounded-full transition-all",
                             subtaskPercent === 100
-                              ? "bg-emerald-500"
+                              ? "bg-success"
                               : "bg-primary/70",
                           )}
                           style={{ width: `${subtaskPercent}%` }}
                         />
                       </div>
-                      <span className="text-[10px] tabular-nums text-muted-foreground/70">
+                      <span className="text-[10px] tabular-nums text-muted-foreground">
                         {subtaskPercent}%
                       </span>
                     </div>
@@ -951,7 +951,7 @@ export function TaskDetailSheet({
                               className={cn(
                                 "min-w-0 flex-1 text-left text-[12.5px] leading-relaxed transition-colors hover:text-foreground disabled:hover:text-inherit",
                                 subtask.completed &&
-                                  "text-muted-foreground/60 line-through",
+                                  "text-muted-foreground line-through",
                               )}
                             >
                               {subtask.title}
@@ -961,7 +961,7 @@ export function TaskDetailSheet({
                             <button
                               type="button"
                               onClick={() => startEditingSubtask(subtask)}
-                              className="mt-0.5 text-muted-foreground/0 transition-colors group-hover/subtask:text-muted-foreground/50 hover:text-foreground focus-visible:text-muted-foreground/50"
+                              className="mt-0.5 text-muted-foreground/0 transition-colors group-hover/subtask:text-muted-foreground hover:text-foreground focus-visible:text-muted-foreground"
                               aria-label={`Edit subtask ${subtask.title}`}
                             >
                               <Pencil className="size-3" />
@@ -971,7 +971,7 @@ export function TaskDetailSheet({
                             <button
                               type="button"
                               onClick={() => void deleteSubtask(subtask)}
-                              className="mt-0.5 text-muted-foreground/0 transition-colors group-hover/subtask:text-muted-foreground/50 hover:text-destructive"
+                              className="mt-0.5 text-muted-foreground/0 transition-colors group-hover/subtask:text-muted-foreground hover:text-destructive"
                               aria-label={`Delete subtask ${subtask.title}`}
                             >
                               <X className="size-3.5" />
@@ -1005,16 +1005,16 @@ export function TaskDetailSheet({
                 </section>
 
                 <section className="mt-6 border-t border-border/60 pt-5">
-                  <h3 className="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/60 uppercase">
+                  <h3 className="flex items-center gap-1.5 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
                     Comments
                     {detail.comments.length > 0 && (
-                      <span className="rounded-full bg-muted px-1.5 py-px text-[9px] tracking-normal text-muted-foreground">
+                      <span className="rounded-full bg-muted px-1.5 py-px text-[10px] tracking-normal text-muted-foreground">
                         {detail.comments.length}
                       </span>
                     )}
                   </h3>
                   {detail.comments.length === 0 ? (
-                    <p className="mt-2 text-[11.5px] text-muted-foreground/60">
+                    <p className="mt-2 text-[11.5px] text-muted-foreground">
                       No comments yet. Start the conversation.
                     </p>
                   ) : (
@@ -1027,14 +1027,14 @@ export function TaskDetailSheet({
                               <span className="text-[11.5px] font-medium">
                                 {comment.author}
                               </span>
-                              <span className="text-[10px] text-muted-foreground/60">
+                              <span className="text-[10px] text-muted-foreground">
                                 {formatRelative(comment.createdAt)}
                               </span>
                               {!readOnly && (
                                 <button
                                   type="button"
                                   onClick={() => void deleteComment(comment)}
-                                  className="ml-auto text-muted-foreground/0 transition-colors group-hover/comment:text-muted-foreground/40 hover:text-destructive"
+                                  className="ml-auto text-muted-foreground/0 transition-colors group-hover/comment:text-muted-foreground hover:text-destructive"
                                   aria-label="Delete comment"
                                 >
                                   <Trash2 className="size-3" />
@@ -1066,7 +1066,7 @@ export function TaskDetailSheet({
                         }}
                       />
                       <div className="mt-1.5 flex items-center justify-between">
-                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground/50">
+                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
                           <MessageSquare className="size-3" />
                           ⌘↵ to comment
                         </span>
@@ -1118,7 +1118,7 @@ function MetaField({
 }) {
   return (
     <div className={cn("space-y-1.5", className)}>
-      <Label className="text-[10px] font-semibold tracking-[0.1em] text-muted-foreground/60 uppercase">
+      <Label className="text-[10px] font-semibold tracking-[0.1em] text-muted-foreground uppercase">
         {label}
       </Label>
       {children}

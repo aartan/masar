@@ -43,7 +43,7 @@ export function ShortcutsDialog({
               <span className="text-[13px] text-muted-foreground">
                 {shortcut.label}
                 {shortcut.alternate && (
-                  <span className="ml-1 text-[11px] text-muted-foreground/50">
+                  <span className="ml-1 text-[11px] text-muted-foreground">
                     ({shortcut.alternate})
                   </span>
                 )}

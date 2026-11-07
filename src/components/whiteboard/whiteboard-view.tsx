@@ -371,14 +371,14 @@ function SaveIndicator({
   if (status.phase === "saved") {
     return (
       <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-        <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+        <Check className="size-3.5 text-success" />
         Saved
       </span>
     );
   }
   if (status.phase === "too_large") {
     return (
-      <span className="flex items-center gap-1.5 text-[12px] text-amber-700 dark:text-amber-300">
+      <span className="flex items-center gap-1.5 text-[12px] text-warning">
         <CloudOff className="size-3.5" />
         Too large to save — reduce images
       </span>
@@ -390,7 +390,7 @@ function SaveIndicator({
         type="button"
         onClick={onRetry}
         className={cn(
-          "flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[12px] text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-300",
+          "flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[12px] text-warning transition-colors hover:bg-warning/10",
         )}
         title={status.message}
       >

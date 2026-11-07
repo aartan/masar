@@ -10,7 +10,7 @@ export function NotFoundPage() {
         <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-muted text-muted-foreground">
           <Compass className="size-5" strokeWidth={1.6} />
         </span>
-        <p className="mt-5 text-[10.5px] font-semibold tracking-[0.16em] text-muted-foreground/60 uppercase">
+        <p className="mt-5 text-[10.5px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
           404
         </p>
         <h1 className="font-display mt-1 text-xl font-semibold">

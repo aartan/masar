@@ -112,14 +112,14 @@ export function LabelManagerPopover({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="inline-flex items-center gap-1 rounded text-[10.5px] font-medium text-muted-foreground/60 transition-colors hover:text-foreground"
+          className="inline-flex items-center gap-1 rounded text-[10.5px] font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           <Tag className="size-3" />
           Manage
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 p-3">
-        <p className="px-1 pb-1.5 text-[10px] font-semibold tracking-[0.1em] text-muted-foreground/60 uppercase">
+        <p className="px-1 pb-1.5 text-[10px] font-semibold tracking-[0.1em] text-muted-foreground uppercase">
           Labels
         </p>
         {labels.length === 0 ? (

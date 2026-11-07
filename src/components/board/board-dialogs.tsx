@@ -229,7 +229,7 @@ function NewTaskForm({
                       "rounded-full border p-0.5 transition-all",
                       selected
                         ? "border-primary/50 bg-primary/8"
-                        : "border-transparent opacity-60 hover:opacity-100",
+                        : "border-transparent opacity-90 hover:opacity-100",
                     )}
                     aria-pressed={selected}
                   >

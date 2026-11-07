@@ -99,7 +99,7 @@ function OverviewContent({ data }: { data: DashboardData }) {
       <div className="mx-auto w-full max-w-[1220px] px-5 py-8 sm:px-8 lg:py-10">
         <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="animate-rise">
-            <p className="text-[10.5px] font-semibold tracking-[0.16em] text-muted-foreground/60 uppercase">
+            <p className="text-[10.5px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
               {format(new Date(), "EEEE, MMMM d")}
             </p>
             <h1 className="font-display mt-2 text-[28px] leading-tight font-semibold text-foreground sm:text-[32px]">
@@ -142,7 +142,7 @@ function OverviewContent({ data }: { data: DashboardData }) {
                       key={title}
                       className="rounded-lg border border-border/60 bg-background/50 px-3.5 py-3"
                     >
-                      <p className="text-[11px] font-semibold tracking-[0.1em] text-muted-foreground/60 uppercase">
+                      <p className="text-[11px] font-semibold tracking-[0.1em] text-muted-foreground uppercase">
                         {title}
                       </p>
                       <p className="mt-1 text-[12.5px] text-foreground">
@@ -202,7 +202,7 @@ function OverviewContent({ data }: { data: DashboardData }) {
                       Progress across every project in this workspace.
                     </p>
                   </div>
-                  <FolderKanban className="size-4 text-muted-foreground/50" />
+                  <FolderKanban className="size-4 text-muted-foreground" />
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {data.projects.map((project) => {
@@ -297,7 +297,7 @@ function OverviewContent({ data }: { data: DashboardData }) {
                               </p>
                               <p className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
                                 {task.boardName}
-                                <span className="text-muted-foreground/40">
+                                <span className="text-muted-foreground">
                                   /
                                 </span>
                                 {task.columnName}
@@ -357,12 +357,12 @@ function OverviewContent({ data }: { data: DashboardData }) {
                               style={{ width: `${percent}%` }}
                             />
                           </div>
-                          <span className="w-8 text-right text-[10px] tabular-nums text-muted-foreground/70">
+                          <span className="w-8 text-right text-[10px] tabular-nums text-muted-foreground">
                             {percent}%
                           </span>
                         </div>
                         {board.overdue > 0 && (
-                          <p className="mt-1.5 flex items-center gap-1 text-[10.5px] text-rose-600 dark:text-rose-400">
+                          <p className="mt-1.5 flex items-center gap-1 text-[10.5px] text-destructive">
                             <CircleAlert className="size-3" />
                             {board.overdue} overdue
                           </p>
@@ -448,9 +448,9 @@ function OverviewContent({ data }: { data: DashboardData }) {
                             className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-accent/50"
                           >
                             {item.boardType === "whiteboard" ? (
-                              <PenLine className="size-3.5 shrink-0 text-muted-foreground/60" />
+                              <PenLine className="size-3.5 shrink-0 text-muted-foreground" />
                             ) : (
-                              <LayoutGrid className="size-3.5 shrink-0 text-muted-foreground/60" />
+                              <LayoutGrid className="size-3.5 shrink-0 text-muted-foreground" />
                             )}
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-[12.5px]">
@@ -463,7 +463,7 @@ function OverviewContent({ data }: { data: DashboardData }) {
                                 {item.detail ? ` · ${item.detail}` : ""}
                               </span>
                             </span>
-                            <span className="shrink-0 text-[10px] text-muted-foreground/70">
+                            <span className="shrink-0 text-[10px] text-muted-foreground">
                               {format(new Date(item.timestamp), "MMM d")}
                             </span>
                           </Link>
@@ -515,10 +515,10 @@ function MetricCard({
           className={cn(
             "mt-2 text-[10.5px]",
             tone === "warning"
-              ? "text-rose-600 dark:text-rose-400"
+              ? "text-destructive"
               : tone === "success"
-                ? "text-emerald-700 dark:text-emerald-400"
-                : "text-muted-foreground/70",
+                ? "text-success"
+                : "text-muted-foreground",
           )}
         >
           {detail}

@@ -34,7 +34,7 @@ export function LabelColorPicker({
           className={cn(
             "grid size-5 place-items-center rounded-full border transition-colors disabled:opacity-50",
             value === color
-              ? "border-foreground/30"
+              ? "border-foreground"
               : "border-transparent hover:border-border",
           )}
         >

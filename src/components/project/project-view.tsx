@@ -56,7 +56,7 @@ export function ProjectView({
     <div className="h-full overflow-y-auto bg-canvas">
       <div className="mx-auto w-full max-w-[1220px] px-5 py-8">
         <header className="animate-rise">
-          <p className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground/70 uppercase">
+          <p className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
             Project
           </p>
           <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
@@ -118,7 +118,7 @@ export function ProjectView({
             </span>
             <span>{completion}% complete</span>
             {totals.overdue > 0 && (
-              <span className="text-rose-600 dark:text-rose-400">
+              <span className="text-destructive">
                 {totals.overdue} overdue
               </span>
             )}
@@ -264,9 +264,9 @@ export function ProjectView({
                         className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-accent/50"
                       >
                         {item.boardType === "whiteboard" ? (
-                          <PenLine className="size-3.5 shrink-0 text-muted-foreground/60" />
+                          <PenLine className="size-3.5 shrink-0 text-muted-foreground" />
                         ) : (
-                          <LayoutGrid className="size-3.5 shrink-0 text-muted-foreground/60" />
+                          <LayoutGrid className="size-3.5 shrink-0 text-muted-foreground" />
                         )}
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[12.5px]">
@@ -277,7 +277,7 @@ export function ProjectView({
                             {item.detail ? ` · ${item.detail}` : ""}
                           </span>
                         </span>
-                        <span className="shrink-0 text-[10px] text-muted-foreground/70">
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
                           {formatDateTime(item.timestamp)}
                         </span>
                       </Link>

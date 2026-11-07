@@ -69,7 +69,7 @@ export function CalendarTaskChip({
         onClick();
       }}
       className={cn(
-        "group/calendar-task relative flex w-full min-w-0 touch-none items-start gap-1.5 rounded-md border border-l-2 border-border/65 bg-card text-left outline-none transition-[background-color,border-color,box-shadow,opacity] hover:border-border hover:shadow-soft focus-visible:ring-2 focus-visible:ring-ring/40",
+        "group/calendar-task relative flex w-full min-w-0 touch-none items-start gap-1.5 rounded-md border border-l-2 border-border/65 bg-card text-left outline-none transition-[background-color,border-color,box-shadow,opacity] hover:border-border hover:shadow-soft focus-visible:ring-2 focus-visible:ring-ring",
         task.dueDate ? STATUS_BORDER[status] : "border-l-border/70",
         detailed ? "px-2 py-1.5" : "items-center px-1.5 py-px",
         card && "rounded-lg px-2.5 py-2 shadow-soft",
@@ -105,13 +105,13 @@ export function CalendarTaskChip({
             {task.title}
           </span>
           {detailed && status === "overdue" && (
-            <AlertTriangle className="size-3 shrink-0 text-rose-600 dark:text-rose-400" />
+            <AlertTriangle className="size-3 shrink-0 text-destructive" />
           )}
         </span>
         {detailed && (
-          <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[9.5px] text-muted-foreground/75">
+          <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
             <span className="min-w-0 truncate">{task.boardName}</span>
-            <span className="text-muted-foreground/35">·</span>
+            <span className="text-muted-foreground">·</span>
             <span className="shrink-0">{task.columnName}</span>
             {task.priority !== "none" && (
               <PriorityBars priority={task.priority} className="ml-auto" />
@@ -120,7 +120,7 @@ export function CalendarTaskChip({
         )}
       </span>
       {card && (
-        <GripVertical className="mt-[1px] size-3 shrink-0 text-muted-foreground/35 transition-colors group-hover/calendar-task:text-muted-foreground/60" />
+        <GripVertical className="mt-[1px] size-3 shrink-0 text-muted-foreground transition-colors group-hover/calendar-task:text-foreground" />
       )}
     </button>
   );
@@ -141,7 +141,7 @@ export function CalendarTaskDragOverlay({ task }: { task: CalendarTask }) {
       </div>
       <div className="mt-1.5 flex items-center gap-2 pl-3 text-[10px] text-muted-foreground">
         <span className="truncate">{task.boardName}</span>
-        <span className="text-muted-foreground/40">/</span>
+        <span className="text-muted-foreground">/</span>
         <span className="truncate">{task.columnName}</span>
         <PriorityBars priority={task.priority} className="ml-auto" />
       </div>

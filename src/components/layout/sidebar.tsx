@@ -323,7 +323,7 @@ export function SidebarContent({
           >
             <span className="flex min-w-0 flex-1 items-center gap-2">
               <span className="truncate">Sync conflicts</span>
-              <span className="ml-auto rounded-full bg-amber-500/15 px-1.5 py-px text-[10px] font-semibold tabular-nums text-amber-700 dark:text-amber-300">
+              <span className="ml-auto rounded-full bg-warning/10 px-1.5 py-px text-[10px] font-semibold tabular-nums text-warning">
                 {conflictCount}
               </span>
             </span>
@@ -333,7 +333,7 @@ export function SidebarContent({
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col">
         <div className="flex items-center justify-between px-5 pb-1.5">
-          <span className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground/60 uppercase">
+          <span className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
             Projects
           </span>
           <Tooltip>
@@ -341,7 +341,7 @@ export function SidebarContent({
               <button
                 type="button"
                 onClick={() => setCreateProjectOpen(true)}
-                className="grid size-5 place-items-center rounded text-muted-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                className="grid size-5 place-items-center rounded text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 aria-label="Create project"
               >
                 <FolderPlus className="size-3.5" />
@@ -432,7 +432,7 @@ export function SidebarContent({
                   {syncLabel}
                 </p>
               </div>
-              <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground/60" />
+              <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="start" className="w-[248px]">
@@ -471,7 +471,7 @@ export function SidebarContent({
             {sync?.phase === "error" && sync.lastError && (
               <DropdownMenuItem
                 onSelect={() => void window.masarDesktop?.syncNow()}
-                className="text-amber-700 dark:text-amber-300"
+                className="text-warning"
               >
                 <Settings2 />
                 Retry sync
@@ -560,13 +560,13 @@ function SortableProjectGroup({
           projectActive
             ? "bg-sidebar-accent text-sidebar-accent-foreground"
             : "text-sidebar-foreground/90 hover:bg-sidebar-accent/50",
-          isOver && draggingBoard && "ring-1 ring-primary/40",
+          isOver && draggingBoard && "ring-2 ring-primary/60",
         )}
       >
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/60 hover:text-sidebar-foreground"
+          className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-sidebar-foreground"
           aria-label={expanded ? "Collapse project" : "Expand project"}
           aria-expanded={expanded}
         >
@@ -577,11 +577,11 @@ function SortableProjectGroup({
         <button
           type="button"
           onClick={onOpenProject}
-          className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="truncate">{project.name}</span>
           {boards.length > 0 && (
-            <span className="ml-auto text-[10px] tabular-nums text-muted-foreground/50">
+            <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
               {boards.length}
             </span>
           )}
@@ -591,7 +591,7 @@ function SortableProjectGroup({
             <button
               type="button"
               onClick={onCreateBoard}
-              className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/0 transition-colors group-hover/project:text-muted-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/0 transition-colors group-hover/project:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
               aria-label={`Add board to ${project.name}`}
             >
               <Plus className="size-3.5" />
@@ -608,7 +608,7 @@ function SortableProjectGroup({
           ref={setActivatorNodeRef}
           type="button"
           data-drag-handle=""
-          className="grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground/0 transition-colors group-hover/project:text-muted-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-foreground active:cursor-grabbing"
+          className="grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground/0 transition-colors group-hover/project:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:cursor-grabbing"
           aria-label={`Reorder project ${project.name}`}
           {...attributes}
           {...listeners}
@@ -624,7 +624,7 @@ function SortableProjectGroup({
               type="button"
               onClick={onCreateBoard}
               className={cn(
-                "flex h-7 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-muted-foreground/60 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+                "flex h-7 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-muted-foreground transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                 isOver && draggingBoard && "bg-sidebar-accent/40",
               )}
             >
@@ -668,7 +668,7 @@ function ProjectActionsMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/0 transition-colors group-hover/project:text-muted-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground data-[state=open]:text-sidebar-foreground"
+          className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/0 transition-colors group-hover/project:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground data-[state=open]:text-sidebar-foreground"
           aria-label="Project actions"
         >
           <Settings2 className="size-3.5" />
@@ -709,12 +709,12 @@ function ArchivedSection({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex h-7 w-full items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium tracking-wide text-muted-foreground/70 uppercase transition-colors hover:text-sidebar-foreground"
+        className="flex h-7 w-full items-center gap-1.5 rounded-lg px-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase transition-colors hover:text-sidebar-foreground"
         aria-expanded={open}
       >
         <ChevronRight className={cn("size-3 transition-transform", open && "rotate-90")} />
         Archived
-        <span className="tabular-nums opacity-60">({projects.length})</span>
+        <span className="tabular-nums">({projects.length})</span>
       </button>
       {open && (
         <ul className="mt-0.5 space-y-0.5">
@@ -737,7 +737,7 @@ function ArchivedSection({
                     <button
                       type="button"
                       onClick={() => onRestore(project)}
-                      className="grid size-5 place-items-center rounded text-muted-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                      className="grid size-5 place-items-center rounded text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
                       aria-label={`Restore ${project.name}`}
                     >
                       <ArchiveRestore className="size-3.5" />
@@ -748,7 +748,7 @@ function ArchivedSection({
                 <button
                   type="button"
                   onClick={() => onDelete(project)}
-                  className="grid size-5 place-items-center rounded text-muted-foreground/0 transition-colors group-hover/archived:text-muted-foreground/60 hover:bg-sidebar-accent hover:text-destructive"
+                  className="grid size-5 place-items-center rounded text-muted-foreground/0 transition-colors group-hover/archived:text-muted-foreground hover:bg-sidebar-accent hover:text-destructive"
                   aria-label={`Delete ${project.name}`}
                 >
                   <Trash2 className="size-3.5" />
@@ -808,12 +808,12 @@ function SortableBoardLink({
           onClick={onNavigate}
           onPointerDown={handlePointerDown}
           draggable={false}
-          className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <TypeIcon
             className={cn(
               "size-3.5 shrink-0",
-              active ? "opacity-90" : "opacity-55",
+              active ? "opacity-100" : "opacity-80",
             )}
           />
           <span
@@ -830,8 +830,8 @@ function SortableBoardLink({
               className={cn(
                 "ml-auto text-[10px] tabular-nums",
                 active
-                  ? "text-sidebar-accent-foreground/60"
-                  : "text-muted-foreground/50",
+                  ? "text-sidebar-accent-foreground/80"
+                  : "text-muted-foreground",
               )}
             >
               {board.taskCount}
@@ -842,7 +842,7 @@ function SortableBoardLink({
           ref={setActivatorNodeRef}
           type="button"
           data-drag-handle=""
-          className="grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground/40 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none active:cursor-grabbing sm:text-muted-foreground/0 sm:group-hover/board:text-muted-foreground/50 sm:group-focus-within/board:text-muted-foreground/50"
+          className="grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:cursor-grabbing sm:text-muted-foreground/0 sm:group-hover/board:text-muted-foreground sm:group-focus-within/board:text-muted-foreground"
           aria-label={`Reorder board ${board.name}`}
           title="Drag to reorder or move between projects"
           {...attributes}

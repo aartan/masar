@@ -173,7 +173,7 @@ export function CommandPalette({
       >
         <DialogTitle className="sr-only">Search Masar</DialogTitle>
         <div className="flex items-center gap-3 border-b border-border/70 px-4">
-          <Search className="size-4 shrink-0 text-muted-foreground/70" />
+          <Search className="size-4 shrink-0 text-muted-foreground" />
           <input
             value={query}
             onChange={(event) => {
@@ -187,7 +187,7 @@ export function CommandPalette({
             }}
             onKeyDown={handleKeyDown}
             placeholder="Search tasks or jump to a board…"
-            className="h-13 w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
+            className="h-13 w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
             aria-label="Search tasks and boards"
             aria-controls="command-results"
             aria-activedescendant={
@@ -198,7 +198,7 @@ export function CommandPalette({
             autoFocus
           />
           {loading ? (
-            <Loader2 className="size-4 animate-spin text-muted-foreground/60" />
+            <Loader2 className="size-4 animate-spin text-muted-foreground" />
           ) : (
             <Kbd>esc</Kbd>
           )}
@@ -226,7 +226,7 @@ export function CommandPalette({
           ) : (
             <>
               {items.slice(0, navCount).length > 0 && (
-                <p className="px-2.5 pt-2 pb-1 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/60 uppercase">
+                <p className="px-2.5 pt-2 pb-1 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
                   {hasQuery ? "Jump to" : "Go to"}
                 </p>
               )}
@@ -282,7 +282,7 @@ export function CommandPalette({
                 ) {
                   return (
                     <React.Fragment key={item.key}>
-                      <p className="px-2.5 pt-4 pb-1 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/60 uppercase">
+                      <p className="px-2.5 pt-4 pb-1 text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
                         Tasks
                       </p>
                       <TaskRow
@@ -367,7 +367,7 @@ function TaskRow({
         </span>
         <span className="flex items-center gap-1.5 truncate text-[11px] text-muted-foreground">
           {task.boardName}
-          <span className="text-muted-foreground/40">/</span>
+          <span className="text-muted-foreground">/</span>
           {task.columnName}
         </span>
       </span>

@@ -64,7 +64,7 @@ export function LabelSettingsSection({
   return (
     <section className="border-t border-border/60 pt-5">
       <div className="flex items-center justify-between">
-        <h3 className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/60 uppercase">
+        <h3 className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
           Labels
         </h3>
         <LabelManagerPopover
@@ -77,7 +77,7 @@ export function LabelSettingsSection({
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {labels.length === 0 ? (
-          <span className="text-[11.5px] text-muted-foreground/60">
+          <span className="text-[11.5px] text-muted-foreground">
             No labels yet.
           </span>
         ) : (

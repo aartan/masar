@@ -384,6 +384,26 @@ describe("local sync outbox", () => {
     expect(String(whiteboardChanges[0]?.data.scene)).toContain('"id":"two"');
   });
 
+  it("does not queue a board change when a whiteboard scene is saved", async () => {
+    await prepareSync("remote-user-a");
+    const board = await createBoard(
+      { name: "Canvas", type: "whiteboard" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+    await getClient().execute("delete from sync_changes");
+
+    await saveWhiteboardScene(
+      board.id,
+      '{"elements":[]}',
+      LOCAL_USER_ID,
+      test.db,
+    );
+
+    const pending = await listPendingChanges(0, 500);
+    expect(pending.map((change) => change.entityType)).toEqual(["whiteboard"]);
+  });
+
   it("does not let an older remote update resurrect a locally deleted entity", async () => {
     await prepareSync("remote-user-a");
     const { board } = await makeBoard("Delete locally");

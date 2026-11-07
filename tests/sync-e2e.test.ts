@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 
 import { createLocalApp } from "@/server/app";
 import { boards } from "@/db/schema";
-import { getDatabaseBundle, getDb } from "@/db";
+import { getClient, getDatabaseBundle, getDb } from "@/db";
 import { SyncEngine } from "../desktop/src/premium/sync-engine";
 import type { PremiumApiClient } from "../desktop/src/premium/client";
 import type { SyncStatus } from "@/lib/premium-types";
@@ -15,6 +15,7 @@ import {
   updateBoard,
 } from "@/lib/server/boards";
 import { createTask, updateTask } from "@/lib/server/tasks";
+import { saveWhiteboardScene } from "@/lib/server/whiteboards";
 import { keepLocalConflict, listSyncConflicts } from "@/sync/local";
 import { createTestDatabase, type TestDatabase } from "./helpers/test-db";
 
@@ -171,7 +172,8 @@ class FakeSyncApi {
       // Faithful reproduction of masar-api decideChange: causality is proven
       // only by baseRevision, never by comparing timestamps. Omitting
       // baseRevision on an existing entity is a conflict — this is what makes
-      // the e2e suite actually catch the revision bug.
+      // the e2e suite actually catch the revision bug. Whiteboards are the
+      // exception: whole-scene snapshots converge last-write-wins.
       let decision: "apply" | "ignore" | "conflict";
       if (!existing) {
         decision = "apply";
@@ -180,6 +182,8 @@ class FakeSyncApi {
         stableStringify(existing.data ?? {}) === stableStringify(change.data ?? {})
       ) {
         decision = "ignore";
+      } else if (change.entityType === "whiteboard") {
+        decision = "apply";
       } else {
         const base = change.baseRevision;
         if (base === null || base === undefined) decision = "conflict";
@@ -740,6 +744,101 @@ describe("cross-device premium sync lifecycle", () => {
         expect(detail.tasks.find((task) => task.id === taskId)?.columnId).toBe(
           columnB,
         );
+      });
+    } finally {
+      await mirrorA.close();
+      await mirrorB.close();
+    }
+  });
+
+  it("converges concurrent whiteboard saves without conflicts", async () => {
+    const userId = "user-whiteboard";
+    const user = {
+      id: userId,
+      name: "Whiteboard",
+      email: "whiteboard@example.test",
+    };
+    const mirrorA = await createTestDatabase();
+    const mirrorB = await createTestDatabase();
+    await mirrorA.client.execute(LOCAL_USER_STUB);
+    await mirrorB.client.execute(LOCAL_USER_STUB);
+    const fakeClient = clientFor(user);
+
+    const withApi = async <T,>(
+      db: TestDatabase,
+      operation: (origin: string) => Promise<T>,
+    ): Promise<T> => {
+      await activateDatabase(db.url);
+      const api = await startLocalApi(userId);
+      try {
+        return await operation(api.url);
+      } finally {
+        api.close();
+      }
+    };
+    const engineFor = (origin: string) =>
+      new SyncEngine({
+        getClient: () => fakeClient as unknown as PremiumApiClient,
+        getLocalOrigin: () => origin,
+        isOnline: () => true,
+        log: () => undefined,
+        onStatus: () => undefined,
+        onUnauthorized: () => undefined,
+      });
+    const scene = (label: string) =>
+      JSON.stringify({
+        elements: [{ id: label, version: 1 }],
+        appState: {},
+        files: {},
+      });
+
+    try {
+      let boardId = "";
+      await withApi(mirrorA, async (origin) => {
+        const engine = engineFor(origin);
+        await engine.syncNow("startup");
+        const board = await createBoard(
+          { name: "Shared canvas", type: "whiteboard" },
+          "local-user",
+          getDb(),
+        );
+        boardId = board.id;
+        await engine.syncNow("local-change");
+      });
+
+      await withApi(mirrorB, async (origin) => {
+        await engineFor(origin).syncNow("startup");
+      });
+
+      // Device A saves and pushes a new scene.
+      await withApi(mirrorA, async (origin) => {
+        await saveWhiteboardScene(boardId, scene("cloud"), "local-user", getDb());
+        await engineFor(origin).syncNow("local-change");
+      });
+
+      // Device B has not pulled that change yet, so its snapshot is based on a
+      // stale revision. The server must accept it (last-write-wins) instead of
+      // recording a whiteboard conflict, and saving a scene must not queue a
+      // phantom board change.
+      await withApi(mirrorB, async (origin) => {
+        await saveWhiteboardScene(boardId, scene("local"), "local-user", getDb());
+        const pending = await getClient().execute(
+          "select entity_type from sync_changes",
+        );
+        expect(pending.rows.map((row) => row.entity_type)).toEqual(["whiteboard"]);
+
+        await engineFor(origin).syncNow("local-change");
+        expect(await listSyncConflicts()).toEqual([]);
+      });
+
+      // Device A converges on B's last-written scene.
+      await withApi(mirrorA, async (origin) => {
+        await engineFor(origin).syncNow("pull");
+        const result = await getClient().execute({
+          sql: "select scene from whiteboards where board_id = ?",
+          args: [boardId],
+        });
+        expect(String(result.rows[0]?.scene)).toBe(scene("local"));
       });
     } finally {
       await mirrorA.close();

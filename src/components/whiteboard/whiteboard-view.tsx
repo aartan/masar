@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   Check,
@@ -6,6 +7,7 @@ import {
   Loader2,
   PenLine,
   RefreshCw,
+  Settings2,
 } from "lucide-react";
 import { Excalidraw } from "@excalidraw/excalidraw";
 import type {
@@ -18,19 +20,22 @@ import type { OrderedExcalidrawElement } from "@excalidraw/excalidraw/element/ty
 import "@excalidraw/excalidraw/index.css";
 import "./whiteboard-theme.css";
 
+import { BoardSettingsDialog } from "@/components/board/board-dialogs";
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { useTheme } from "@/components/theme-provider";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { api, errorMessage } from "@/lib/client-api";
 import type { BoardSummary, WhiteboardScene } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-/** Matches the server MAX_SCENE_BYTES / MAX_ENTITY_BYTES ceiling. */
+/** Matches the server's interim scene limit (the sync envelope is larger). */
 const MAX_SCENE_BYTES = 2 * 1024 * 1024;
 const SAVE_DEBOUNCE_MS = 1_200;
 
 type SaveStatus =
   | { phase: "idle" }
+  | { phase: "unsaved" }
   | { phase: "saving" }
   | { phase: "saved"; at: number }
   | { phase: "error"; message: string }
@@ -59,7 +64,10 @@ function parseScene(raw: string): ExcalidrawInitialDataState | null {
     if (!parsed || typeof parsed !== "object") return null;
     return {
       elements: Array.isArray(parsed.elements) ? parsed.elements : [],
-      appState: parsed.appState ?? {},
+      appState: {
+        ...(parsed.appState ?? {}),
+        showWelcomeScreen: false,
+      },
       files: parsed.files ?? {},
       scrollToContent: true,
     };
@@ -68,9 +76,11 @@ function parseScene(raw: string): ExcalidrawInitialDataState | null {
   }
 }
 
-export function WhiteboardView({ board }: { board: BoardSummary }) {
+export function WhiteboardView({ board: initialBoard }: { board: BoardSummary }) {
+  const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
-  const { projects } = useWorkspace();
+  const { projects, refresh } = useWorkspace();
+  const [board, setBoard] = React.useState(initialBoard);
   const readOnly =
     projects.find((project) => project.id === board.projectId)?.archived ?? false;
 
@@ -78,6 +88,8 @@ export function WhiteboardView({ board }: { board: BoardSummary }) {
     React.useState<ExcalidrawInitialDataState | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<SaveStatus>({ phase: "idle" });
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
 
   const apiRef = React.useRef<ExcalidrawImperativeAPI | null>(null);
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -92,7 +104,12 @@ export function WhiteboardView({ board }: { board: BoardSummary }) {
       .then((result) => {
         if (!active) return;
         lastSavedRef.current = result.scene.scene || "{}";
-        setInitialData(parseScene(result.scene.scene) ?? { elements: [] });
+        setInitialData(
+          parseScene(result.scene.scene) ?? {
+            elements: [],
+            appState: { showWelcomeScreen: false },
+          },
+        );
       })
       .catch((error: unknown) => {
         if (active) setLoadError(errorMessage(error));
@@ -105,7 +122,7 @@ export function WhiteboardView({ board }: { board: BoardSummary }) {
   const persist = React.useCallback(
     async (serialized: string) => {
       if (serialized === lastSavedRef.current) return;
-      if (serialized.length > MAX_SCENE_BYTES) {
+      if (new TextEncoder().encode(serialized).length > MAX_SCENE_BYTES) {
         setStatus({ phase: "too_large" });
         return;
       }
@@ -140,6 +157,9 @@ export function WhiteboardView({ board }: { board: BoardSummary }) {
       });
       if (serialized === lastSavedRef.current) return;
       pendingRef.current = serialized;
+      setStatus((current) =>
+        current.phase === "unsaved" ? current : { phase: "unsaved" },
+      );
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         debounceRef.current = null;
@@ -169,6 +189,17 @@ export function WhiteboardView({ board }: { board: BoardSummary }) {
     if (pending) void persist(pending);
   }
 
+  async function deleteBoard() {
+    try {
+      await api(`/api/boards/${board.id}`, { method: "DELETE" });
+      setDeleteOpen(false);
+      void refresh();
+      navigate("/");
+    } catch (error) {
+      setStatus({ phase: "error", message: errorMessage(error) });
+    }
+  }
+
   if (loadError) {
     return (
       <div className="grid h-full place-items-center px-6">
@@ -191,6 +222,7 @@ export function WhiteboardView({ board }: { board: BoardSummary }) {
   }
 
   return (
+    <>
     <div className="flex h-full flex-col bg-canvas">
       <div className="flex items-center gap-3 border-b border-border/60 bg-background/65 px-4 py-3 sm:px-6">
         <PenLine className="size-4 text-muted-foreground" />
@@ -202,8 +234,18 @@ export function WhiteboardView({ board }: { board: BoardSummary }) {
             Read-only (archived)
           </span>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           <SaveIndicator status={status} onRetry={retry} />
+          {!readOnly && (
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Whiteboard settings"
+            >
+              <Settings2 className="size-3.5" />
+            </Button>
+          )}
         </div>
       </div>
       <div
@@ -233,6 +275,29 @@ export function WhiteboardView({ board }: { board: BoardSummary }) {
         )}
       </div>
     </div>
+    <BoardSettingsDialog
+      open={settingsOpen}
+      onOpenChange={setSettingsOpen}
+      board={board}
+      labels={[]}
+      onSaved={(saved) => {
+        setBoard(saved);
+        void refresh();
+      }}
+      onRequestDelete={() => {
+        setSettingsOpen(false);
+        setDeleteOpen(true);
+      }}
+    />
+    <ConfirmDialog
+      open={deleteOpen}
+      onOpenChange={setDeleteOpen}
+      title={`Delete ${board.name}?`}
+      description="The whiteboard canvas will be permanently deleted. This cannot be undone."
+      confirmLabel="Delete whiteboard"
+      onConfirm={deleteBoard}
+    />
+    </>
   );
 }
 
@@ -243,6 +308,11 @@ function SaveIndicator({
   status: SaveStatus;
   onRetry: () => void;
 }) {
+  if (status.phase === "unsaved") {
+    return (
+      <span className="text-[12px] text-muted-foreground">Unsaved changes</span>
+    );
+  }
   if (status.phase === "saving") {
     return (
       <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">

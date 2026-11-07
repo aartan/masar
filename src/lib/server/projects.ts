@@ -8,11 +8,13 @@ import { ApiError } from "@/lib/api";
 import type { ProjectDetail, ProjectSummary } from "@/lib/types";
 import type { ProjectCreateInput, ProjectUpdateInput } from "@/lib/validation";
 import {
+  assertProjectWritable,
   fetchBoardSummaries,
   fetchProjectSummaries,
   nextProjectPosition,
   requireProject,
 } from "./queries";
+import { getDashboardData } from "./stats";
 
 export async function listProjects(
   ownerId: string,
@@ -42,6 +44,7 @@ export async function createProject(
     id,
     ownerId,
     name: input.name,
+    description: input.description?.trim() || null,
     position,
     archived: false,
     createdAt: now,
@@ -65,7 +68,7 @@ export async function ensureDefaultProject(
   const [existing] = await database
     .select({ id: projects.id })
     .from(projects)
-    .where(eq(projects.ownerId, ownerId))
+    .where(and(eq(projects.ownerId, ownerId), eq(projects.archived, false)))
     .orderBy(asc(projects.position), asc(projects.createdAt))
     .limit(1);
   if (existing) return existing.id;
@@ -79,11 +82,15 @@ export async function updateProject(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<ProjectSummary> {
-  await requireProject(database, projectId, ownerId);
+  const project = await requireProject(database, projectId, ownerId);
+  assertProjectWritable(project);
   await database
     .update(projects)
     .set({
       ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.description !== undefined
+        ? { description: input.description?.trim() || null }
+        : {}),
       updatedAt: new Date(),
     })
     .where(and(eq(projects.id, projectId), eq(projects.ownerId, ownerId)));
@@ -166,10 +173,23 @@ export async function getProjectDetail(
   await requireProject(database, projectId, ownerId);
   const summary = await fetchProjectSummary(database, projectId, ownerId);
   if (!summary) throw new ApiError("Project not found.", 404);
-  const allBoards = await fetchBoardSummaries(database, ownerId);
+  const [allBoards, dashboard] = await Promise.all([
+    fetchBoardSummaries(database, ownerId),
+    getDashboardData(ownerId, database, projectId),
+  ]);
   return {
     project: summary,
     boards: allBoards.filter((board) => board.projectId === projectId),
+    totals: {
+      boards: dashboard.totals.boards,
+      tasks: dashboard.totals.tasks,
+      done: dashboard.totals.done,
+      open: dashboard.totals.open,
+      overdue: dashboard.totals.overdue,
+      dueSoon: dashboard.totals.dueSoon,
+    },
+    upcoming: dashboard.upcoming,
+    activity: dashboard.activity,
   };
 }
 
@@ -177,25 +197,39 @@ export async function getProjectDeletionSummary(
   projectId: string,
   ownerId: string,
   database: AppDatabase = getDb(),
-): Promise<{ boardCount: number }> {
+): Promise<{ boardCount: number; taskCount: number; whiteboardCount: number }> {
   const summary = await fetchProjectSummary(database, projectId, ownerId);
   if (!summary) throw new ApiError("Project not found.", 404);
-  return { boardCount: summary.boardCount };
+  return {
+    boardCount: summary.boardCount,
+    taskCount: summary.taskCount,
+    whiteboardCount: summary.whiteboardCount,
+  };
 }
 
 /**
  * Permanent deletion. Children are deleted explicitly, child-first, inside one
  * transaction so the SQLite delete triggers queue a tombstone for every row —
  * relying on FK cascade would skip the row triggers and leave orphaned cloud
- * data after the next sync. The caller has already confirmed the destructive
- * action via the "DELETE" phrase.
+ * data after the next sync. The caller must have archived the project and
+ * typed its exact name to confirm the destructive action.
  */
 export async function deleteProject(
   projectId: string,
   ownerId: string,
+  confirmation: string,
   database: AppDatabase = getDb(),
 ): Promise<void> {
-  await requireProject(database, projectId, ownerId);
+  const project = await requireProject(database, projectId, ownerId);
+  if (!project.archived) {
+    throw new ApiError(
+      "Archive this project before deleting it permanently.",
+      409,
+    );
+  }
+  if (confirmation.trim() !== project.name) {
+    throw new ApiError(`Type "${project.name}" exactly to confirm deletion.`, 400);
+  }
 
   const projectBoards = await database
     .select({ id: boards.id })

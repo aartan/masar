@@ -678,6 +678,62 @@ async function importLocalWorkspace(): Promise<{ boards: number; tasks: number }
   return payload as { boards: number; tasks: number };
 }
 
+async function requestLocalApi<T = unknown>(
+  path: string,
+  init: { method?: string; body?: unknown } = {},
+): Promise<T> {
+  const apiOrigin = localApiOrigin || origin;
+  if (!apiOrigin) throw new Error("The local workspace is not available.");
+  const response = await fetch(`${apiOrigin}${path}`, {
+    method: init.method ?? "GET",
+    headers:
+      init.body === undefined ? {} : { "Content-Type": "application/json" },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+    signal: AbortSignal.timeout(30_000),
+  });
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+  if (!response.ok) {
+    const message =
+      payload && typeof payload === "object" && "error" in payload
+        ? String((payload as { error: unknown }).error)
+        : `Local request failed (${response.status}).`;
+    throw new Error(message);
+  }
+  return payload as T;
+}
+
+/**
+ * Resolve one conflict with an explicit user choice. The server is marked
+ * first so the conflict inbox stops returning it; the local apply is
+ * idempotent and can be retried if the process dies in between.
+ */
+async function resolveSyncConflict(
+  conflictId: string,
+  choice: "cloud" | "local",
+): Promise<void> {
+  const client = requireClient();
+  const detail = await client.resolveConflict(conflictId, choice);
+  if (choice === "cloud") {
+    await requestLocalApi(`/api/sync/conflicts/${encodeURIComponent(conflictId)}/apply-cloud`, {
+      method: "POST",
+      body: { current: detail.current },
+    });
+  } else {
+    await requestLocalApi(`/api/sync/conflicts/${encodeURIComponent(conflictId)}/keep-local`, {
+      method: "POST",
+      body: {
+        revision: detail.current?.revision ?? detail.conflict.revision,
+      },
+    });
+  }
+  void syncEngine.syncNow("conflict-resolution");
+}
+
 function requireDeletionConfirmation(value: unknown): string {
   if (typeof value !== "string" || value !== DELETE_ACCOUNT_PHRASE) {
     throw new Error(`Type "${DELETE_ACCOUNT_PHRASE}" exactly to confirm.`);
@@ -806,6 +862,21 @@ function registerIpc(): void {
     if (!session) return getSyncStatus();
     return syncEngine.syncNow("manual");
   });
+
+  ipcMain.handle(
+    "masar:resolve-sync-conflict",
+    async (_event, input: unknown) => {
+      if (!input || typeof input !== "object") {
+        throw new Error("Invalid conflict resolution.");
+      }
+      const record = input as Record<string, unknown>;
+      const conflictId = requireString(record.conflictId, "Conflict", 120);
+      if (record.choice !== "cloud" && record.choice !== "local") {
+        throw new Error("Choose which version to keep.");
+      }
+      await resolveSyncConflict(conflictId, record.choice);
+    },
+  );
 
   ipcMain.handle("masar:notify-data-change", () => {
     syncEngine.notifyDataChanged();

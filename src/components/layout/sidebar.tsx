@@ -37,6 +37,7 @@ import {
   Search,
   Settings2,
   Trash2,
+  TriangleAlert,
   UserRound,
   X,
 } from "lucide-react";
@@ -79,6 +80,7 @@ import { cn } from "@/lib/utils";
 interface SidebarContentProps {
   projects: ProjectSummary[];
   boards: BoardSummary[];
+  conflictCount: number;
   user: { name: string; email: string };
   onOpenSearch: () => void;
   onCreateBoard: (projectId: string | null) => void;
@@ -99,6 +101,7 @@ interface DragData {
 export function SidebarContent({
   projects,
   boards,
+  conflictCount,
   user,
   onOpenSearch,
   onCreateBoard,
@@ -311,6 +314,21 @@ export function SidebarContent({
         >
           Calendar
         </SidebarLink>
+        {conflictCount > 0 && (
+          <SidebarLink
+            href="/conflicts"
+            icon={TriangleAlert}
+            active={pathname === "/conflicts"}
+            onClick={onNavigate}
+          >
+            <span className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="truncate">Sync conflicts</span>
+              <span className="ml-auto rounded-full bg-amber-500/15 px-1.5 py-px text-[10px] font-semibold tabular-nums text-amber-700 dark:text-amber-300">
+                {conflictCount}
+              </span>
+            </span>
+          </SidebarLink>
+        )}
       </nav>
 
       <div className="mt-5 flex min-h-0 flex-1 flex-col">
@@ -376,7 +394,6 @@ export function SidebarContent({
                       }}
                       onRename={() => setRenameProject(project)}
                       onArchive={() => void handleArchive(project)}
-                      onDelete={() => setDeleteProject(project)}
                     />
                   ))}
                 </ul>
@@ -387,6 +404,10 @@ export function SidebarContent({
           {archived.length > 0 && (
             <ArchivedSection
               projects={archived}
+              onOpen={(project) => {
+                onNavigate?.();
+                navigate(`/projects/${project.id}`);
+              }}
               onRestore={(project) => void handleRestore(project)}
               onDelete={(project) => setDeleteProject(project)}
             />
@@ -496,7 +517,6 @@ function SortableProjectGroup({
   onOpenProject,
   onRename,
   onArchive,
-  onDelete,
 }: {
   project: ProjectSummary;
   boards: BoardSummary[];
@@ -507,7 +527,6 @@ function SortableProjectGroup({
   onOpenProject: () => void;
   onRename: () => void;
   onArchive: () => void;
-  onDelete: () => void;
 }) {
   const [expanded, setExpanded] = React.useState(true);
   const {
@@ -583,7 +602,6 @@ function SortableProjectGroup({
         <ProjectActionsMenu
           onRename={onRename}
           onArchive={onArchive}
-          onDelete={onDelete}
           onAddBoard={onCreateBoard}
         />
         <button
@@ -639,12 +657,10 @@ function SortableProjectGroup({
 function ProjectActionsMenu({
   onRename,
   onArchive,
-  onDelete,
   onAddBoard,
 }: {
   onRename: () => void;
   onArchive: () => void;
-  onDelete: () => void;
   onAddBoard: () => void;
 }) {
   return (
@@ -671,14 +687,6 @@ function ProjectActionsMenu({
           <Archive />
           Archive
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onSelect={onDelete}
-          className="text-destructive focus:text-destructive"
-        >
-          <Trash2 />
-          Delete…
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -686,10 +694,12 @@ function ProjectActionsMenu({
 
 function ArchivedSection({
   projects,
+  onOpen,
   onRestore,
   onDelete,
 }: {
   projects: ProjectSummary[];
+  onOpen: (project: ProjectSummary) => void;
   onRestore: (project: ProjectSummary) => void;
   onDelete: (project: ProjectSummary) => void;
 }) {
@@ -714,7 +724,13 @@ function ArchivedSection({
               className="group/archived flex h-8 items-center gap-1 rounded-lg px-2 text-[12.5px] text-muted-foreground"
             >
               <Archive className="size-3.5 shrink-0 opacity-50" />
-              <span className="truncate">{project.name}</span>
+              <button
+                type="button"
+                onClick={() => onOpen(project)}
+                className="min-w-0 flex-1 truncate text-left hover:text-sidebar-foreground hover:underline"
+              >
+                {project.name}
+              </button>
               <div className="ml-auto flex items-center gap-0.5">
                 <Tooltip>
                   <TooltipTrigger asChild>

@@ -224,6 +224,57 @@ describe("projects", () => {
     expect(restored.archivedAt).toBeNull();
   });
 
+  it("returns project-scoped totals, upcoming work, and activity", async () => {
+    const project = await createProject(
+      { name: "Launch", description: "Ship the release" },
+      owner.id,
+      test.db,
+    );
+    const board = await createBoard(
+      { name: "Sprint", projectId: project.id },
+      owner.id,
+      test.db,
+    );
+    const detail = await getBoardDetail(board.id, owner.id, test.db);
+    const task = await createTask(
+      board.id,
+      {
+        columnId: detail.columns[0]!.id,
+        title: "Write release notes",
+        dueDate: addDaysIso(todayIso(), 2),
+      },
+      owner.id,
+      test.db,
+    );
+    await createBoard(
+      { name: "Release sketch", type: "whiteboard", projectId: project.id },
+      owner.id,
+      test.db,
+    );
+
+    const projectDetail = await getProjectDetail(project.id, owner.id, test.db);
+    expect(projectDetail.project.description).toBe("Ship the release");
+    expect(projectDetail.totals).toMatchObject({
+      boards: 2,
+      tasks: 1,
+      open: 1,
+    });
+    expect(projectDetail.upcoming.map((item) => item.id)).toContain(task.id);
+    expect(projectDetail.activity.some((item) => item.title === task.title)).toBe(
+      true,
+    );
+    expect(
+      projectDetail.activity.some((item) => item.kind === "whiteboard"),
+    ).toBe(true);
+
+    const dashboard = await getDashboardData(owner.id, test.db);
+    expect(dashboard.projects.map((item) => item.id)).toContain(project.id);
+    expect(dashboard.activity.some((item) => item.projectId === project.id)).toBe(
+      true,
+    );
+    expect(dashboard.totals.projects).toBeGreaterThanOrEqual(1);
+  });
+
   it("creates a whiteboard board with no columns and an empty scene", async () => {
     const project = await createProject({ name: "Canvas project" }, owner.id, test.db);
     const board = await createBoard(
@@ -260,18 +311,75 @@ describe("projects", () => {
     expect(result.find((board) => board.id === two.id)?.projectId).toBe(target.id);
   });
 
-  it("refuses to create or mutate boards in an archived project", async () => {
+  it("stores project descriptions", async () => {
+    const project = await createProject(
+      { name: "Website", description: "Marketing site" },
+      owner.id,
+      test.db,
+    );
+    expect(project.description).toBe("Marketing site");
+    const updated = await updateProject(
+      project.id,
+      { description: "Redesign and launch" },
+      owner.id,
+      test.db,
+    );
+    expect(updated.description).toBe("Redesign and launch");
+  });
+
+  it("refuses to create or mutate anything in an archived project", async () => {
     const project = await createProject({ name: "Frozen" }, owner.id, test.db);
     const board = await createBoard({ name: "Board", projectId: project.id }, owner.id, test.db);
+    const detail = await getBoardDetail(board.id, owner.id, test.db);
+    const column = detail.columns[0]!;
+    const task = await createTask(
+      board.id,
+      { columnId: column.id, title: "Frozen task" },
+      owner.id,
+      test.db,
+    );
+    const label = await createLabel(board.id, { name: "Frozen label" }, owner.id, test.db);
+    const subtask = await createSubtask(task.id, "Frozen subtask", owner.id, test.db);
+    const comment = await createComment(task.id, { body: "Frozen comment" }, owner.id, test.db);
     await archiveProject(project.id, owner.id, test.db);
 
-    await expect(
+    const failures = [
       createBoard({ name: "New", projectId: project.id }, owner.id, test.db),
+      updateBoard(board.id, { name: "Renamed" }, owner.id, test.db),
+      deleteBoard(board.id, owner.id, test.db),
+      moveBoard({ projectId: project.id, boardIds: [board.id] }, owner.id, test.db),
+      createColumn(board.id, { name: "New column" }, owner.id, test.db),
+      updateColumn(column.id, { name: "Renamed column" }, owner.id, test.db),
+      reorderColumns(board.id, [column.id], owner.id, test.db),
+      createTask(board.id, { columnId: column.id, title: "New task" }, owner.id, test.db),
+      updateTask(task.id, { title: "Renamed task" }, owner.id, test.db),
+      deleteTask(task.id, owner.id, test.db),
+      createLabel(board.id, { name: "New label" }, owner.id, test.db),
+      updateLabel(label.id, { name: "Renamed label" }, owner.id, test.db),
+      deleteLabel(label.id, owner.id, test.db),
+      createSubtask(task.id, "New subtask", owner.id, test.db),
+      updateSubtask(subtask.id, { title: "Renamed subtask" }, owner.id, test.db),
+      deleteSubtask(subtask.id, owner.id, test.db),
+      createComment(task.id, { body: "New comment" }, owner.id, test.db),
+      deleteComment(comment.id, owner.id, test.db),
+      updateProject(project.id, { name: "Renamed project" }, owner.id, test.db),
+    ];
+    for (const operation of failures) {
+      await expect(operation).rejects.toMatchObject({ status: 409 });
+    }
+  });
+
+  it("requires the archived project name before permanent deletion", async () => {
+    const project = await createProject({ name: "Doomed" }, owner.id, test.db);
+    await expect(
+      deleteProject(project.id, owner.id, project.name, test.db),
     ).rejects.toMatchObject({ status: 409 });
 
+    await archiveProject(project.id, owner.id, test.db);
     await expect(
-      moveBoard({ projectId: project.id, boardIds: [board.id] }, owner.id, test.db),
-    ).rejects.toMatchObject({ status: 409 });
+      deleteProject(project.id, owner.id, "wrong name", test.db),
+    ).rejects.toMatchObject({ status: 400 });
+    await deleteProject(project.id, owner.id, project.name, test.db);
   });
 
   it("permanently deletes a project and all its boards", async () => {
@@ -279,7 +387,8 @@ describe("projects", () => {
     await createBoard({ name: "Board A", projectId: project.id }, owner.id, test.db);
     await createBoard({ name: "Board B", projectId: project.id }, owner.id, test.db);
 
-    await deleteProject(project.id, owner.id, test.db);
+    await archiveProject(project.id, owner.id, test.db);
+    await deleteProject(project.id, owner.id, project.name, test.db);
 
     expect(await listProjects(owner.id, test.db)).toHaveLength(0);
     const remaining = await listBoards(owner.id, test.db);

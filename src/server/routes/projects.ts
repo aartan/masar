@@ -104,9 +104,13 @@ projectRoutes.get("/projects/:projectId/deletion-summary", async (c) => {
 projectRoutes.delete("/projects/:projectId", async (c) => {
   try {
     const user = await requireApiUser();
-    // Explicit confirmation phrase, checked server-side too.
-    await parseJsonBody(c.req.raw, deleteProjectSchema);
-    await deleteProject(c.req.param("projectId"), user.id);
+    // The archived project's exact name is required, checked server-side too.
+    const input = await parseJsonBody(c.req.raw, deleteProjectSchema);
+    await deleteProject(
+      c.req.param("projectId"),
+      user.id,
+      input.confirmation,
+    );
     return jsonOk({ ok: true });
   } catch (error) {
     return handleRouteError(error);

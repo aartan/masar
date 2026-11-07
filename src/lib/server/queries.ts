@@ -53,17 +53,28 @@ export function serializeBoard(
 
 export function serializeProject(
   row: ProjectRow,
-  counts: { boardCount: number },
+  counts: {
+    boardCount: number;
+    kanbanCount: number;
+    whiteboardCount: number;
+    taskCount: number;
+    doneCount: number;
+  },
 ): ProjectSummary {
   return {
     id: row.id,
     name: row.name,
+    description: row.description,
     position: row.position,
     archived: row.archived,
     archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     boardCount: counts.boardCount,
+    kanbanCount: counts.kanbanCount,
+    whiteboardCount: counts.whiteboardCount,
+    taskCount: counts.taskCount,
+    doneCount: counts.doneCount,
   };
 }
 
@@ -352,6 +363,50 @@ export function assertProjectWritable(project: ProjectRow): void {
   }
 }
 
+/** Reject content mutations when the board's project is archived. */
+export async function assertBoardWritable(
+  database: AppDatabase,
+  boardId: string,
+  ownerId: string,
+): Promise<BoardRow> {
+  const board = await requireBoard(database, boardId, ownerId);
+  if (board.projectId) {
+    const project = await requireProject(database, board.projectId, ownerId);
+    assertProjectWritable(project);
+  }
+  return board;
+}
+
+export async function assertTaskWritable(
+  database: AppDatabase,
+  taskId: string,
+  ownerId: string,
+): Promise<TaskRow> {
+  const task = await requireTask(database, taskId, ownerId);
+  await assertBoardWritable(database, task.boardId, ownerId);
+  return task;
+}
+
+export async function assertSubtaskWritable(
+  database: AppDatabase,
+  subtaskId: string,
+  ownerId: string,
+) {
+  const subtask = await requireSubtask(database, subtaskId, ownerId);
+  await assertTaskWritable(database, subtask.taskId, ownerId);
+  return subtask;
+}
+
+export async function assertCommentWritable(
+  database: AppDatabase,
+  commentId: string,
+  ownerId: string,
+) {
+  const comment = await requireComment(database, commentId, ownerId);
+  await assertTaskWritable(database, comment.taskId, ownerId);
+  return comment;
+}
+
 export async function fetchProjectSummaries(
   database: AppDatabase,
   ownerId: string,
@@ -363,17 +418,78 @@ export async function fetchProjectSummaries(
     .orderBy(asc(projects.position), asc(projects.createdAt));
   if (projectRows.length === 0) return [];
 
-  const boardCounts = await database
-    .select({ projectId: boards.projectId, value: count() })
+  const boardRows = await database
+    .select({
+      id: boards.id,
+      projectId: boards.projectId,
+      type: boards.type,
+    })
     .from(boards)
-    .where(eq(boards.ownerId, ownerId))
-    .groupBy(boards.projectId);
-  const countMap = new Map(
-    boardCounts.map((row) => [row.projectId, row.value]),
-  );
+    .where(eq(boards.ownerId, ownerId));
+
+  const projectCounts = new Map<
+    string,
+    {
+      boardCount: number;
+      kanbanCount: number;
+      whiteboardCount: number;
+      taskCount: number;
+      doneCount: number;
+    }
+  >();
+  for (const board of boardRows) {
+    if (!board.projectId) continue;
+    const current = projectCounts.get(board.projectId) ?? {
+      boardCount: 0,
+      kanbanCount: 0,
+      whiteboardCount: 0,
+      taskCount: 0,
+      doneCount: 0,
+    };
+    current.boardCount += 1;
+    if (board.type === "whiteboard") current.whiteboardCount += 1;
+    else current.kanbanCount += 1;
+    projectCounts.set(board.projectId, current);
+  }
+
+  if (boardRows.length > 0) {
+    const taskRows = await database
+      .select({
+        boardId: tasks.boardId,
+        total: count(),
+        done: sql<number>`sum(case when ${columns.isDone} = 1 then 1 else 0 end)`.mapWith(
+          Number,
+        ),
+      })
+      .from(tasks)
+      .innerJoin(columns, eq(tasks.columnId, columns.id))
+      .where(inArray(tasks.boardId, boardRows.map((board) => board.id)))
+      .groupBy(tasks.boardId);
+
+    const boardProject = new Map(
+      boardRows.map((board) => [board.id, board.projectId]),
+    );
+    for (const row of taskRows) {
+      const projectId = boardProject.get(row.boardId);
+      if (!projectId) continue;
+      const current = projectCounts.get(projectId);
+      if (!current) continue;
+      current.taskCount += Number(row.total);
+      current.doneCount += Number(row.done ?? 0);
+    }
+  }
 
   return projectRows.map((row) =>
-    serializeProject(row, { boardCount: countMap.get(row.id) ?? 0 }),
+    serializeProject(
+      row,
+      projectCounts.get(row.id) ?? {
+        boardCount: 0,
+        kanbanCount: 0,
+        whiteboardCount: 0,
+        taskCount: 0,
+        doneCount: 0,
+      },
+    ),
   );
 }
 

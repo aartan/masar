@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld("masarDesktop", {
   refreshBilling: () => invoke<PremiumStatus>("masar:refresh-billing"),
   syncNow: () => invoke<SyncStatus>("masar:sync-now"),
   getSyncStatus: () => invoke<SyncStatus>("masar:get-sync-status"),
+  resolveSyncConflict: (conflictId: string, choice: "cloud" | "local") =>
+    invoke<void>("masar:resolve-sync-conflict", { conflictId, choice }),
   importLocalWorkspace: () =>
     invoke<{ boards: number; tasks: number }>("masar:import-local"),
   notifyDataChanged: () => invoke<void>("masar:notify-data-change"),

@@ -6,7 +6,7 @@ Masar is a project management app for organising work across **projects and boar
 
 ![Masar projects](docs/assets/projects.png)
 
-Work is organised as **Workspace → Projects → Boards → Tasks**. The sidebar shows an expandable Projects section: each project holds any mix of Kanban and whiteboard boards, with a distinct icon per board type. Reorder projects, reorder boards within a project, and drag boards between projects. Each project has its own overview showing its boards and progress, while the workspace-level overview, calendar and search stay global. Projects can be archived (preserving their contents read-only) and restored, or permanently deleted with confirmation.
+Work is organised as **Workspace → Projects → Boards → Tasks**. The sidebar shows an expandable Projects section: each project holds any mix of Kanban and whiteboard boards, with a distinct icon per board type. Reorder projects, reorder boards within a project, and drag boards between projects. Each project has a description, its own board overview, upcoming work and recent activity, while the workspace-level overview shows project cards plus activity across the whole workspace. Projects can be archived (preserving their contents read-only) and restored. Permanent deletion is available only for archived projects and requires typing the project name.
 
 ## Overview dashboard
 
@@ -25,7 +25,7 @@ The overview brings the workspace together: open tasks, due dates, recent comple
 - **Calendar planning** — Plan scheduled work in month, week and day views. Drag tasks onto a date, or move them back to Unscheduled to clear the due date.
 - **Overview dashboard** — Review open tasks, due dates, recent completions, progress by board, workload by priority and recently added work.
 - **Local-first by default** — No account is needed. Projects, boards, tasks and whiteboards live in a local SQLite database and remain available offline.
-- **Optional cloud sync** — Sign in from Account settings to use a separate synced workspace. Projects, boards, tasks and whiteboards sync in the background while your subscription is active; local data is only uploaded when you choose to import it.
+- **Optional cloud sync** — Sign in from Account settings to use a separate synced workspace. Projects, boards, tasks and whiteboards sync in the background while your subscription is active; local data is only uploaded when you choose to import it. If two devices edit the same item before they catch up, the conflict inbox lets you keep either the cloud version or this device’s version.
 - **Desktop polish** — Light, dark and system themes, responsive layouts, mouse and keyboard drag-and-drop, and a clear offline indicator.
 - **Keyboard shortcuts** — Press `N` on a board to create a task, `?` for the shortcut guide, and `Cmd/Ctrl+K` for search.
 

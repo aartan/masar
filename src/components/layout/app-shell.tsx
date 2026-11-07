@@ -18,8 +18,17 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { projects, boards, user, loading, error, refresh, reorderProjects, moveBoards } =
-    useWorkspace();
+  const {
+    projects,
+    boards,
+    user,
+    conflictCount,
+    loading,
+    error,
+    refresh,
+    reorderProjects,
+    moveBoards,
+  } = useWorkspace();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
@@ -103,6 +112,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <SidebarContent
             projects={projects}
             boards={boards}
+            conflictCount={conflictCount}
             user={user}
             onOpenSearch={() => setSearchOpen(true)}
             onCreateBoard={openCreateBoard}
@@ -125,6 +135,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <SidebarContent
             projects={projects}
             boards={boards}
+            conflictCount={conflictCount}
             user={user}
             onOpenSearch={() => {
               setMobileOpen(false);

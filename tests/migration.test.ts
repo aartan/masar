@@ -263,10 +263,16 @@ describe("0001 auth and workspace ownership migration", () => {
     });
 
     const claimed = await fixture.db
-      .select({ ownerId: boards.ownerId })
+      .select({ ownerId: boards.ownerId, projectId: boards.projectId })
       .from(boards);
     expect(claimed).toHaveLength(3);
     expect(claimed.every((row) => row.ownerId === owner.id)).toBe(true);
+    expect(claimed.every((row) => Boolean(row.projectId))).toBe(true);
+
+    const claimedProjects = await fixture.db
+      .select({ ownerId: projects.ownerId })
+      .from(projects);
+    expect(claimedProjects.every((row) => row.ownerId === owner.id)).toBe(true);
 
     const [legacyUser] = await fixture.db
       .select({ id: users.id })

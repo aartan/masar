@@ -8,12 +8,17 @@ import type {
 export interface ProjectSummary {
   id: string;
   name: string;
+  description: string | null;
   position: number;
   archived: boolean;
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
   boardCount: number;
+  kanbanCount: number;
+  whiteboardCount: number;
+  taskCount: number;
+  doneCount: number;
 }
 
 export interface BoardSummary {
@@ -104,9 +109,60 @@ export interface WhiteboardScene {
   updatedAt: string;
 }
 
+export interface ActivityItem {
+  id: string;
+  kind: "task" | "whiteboard";
+  title: string;
+  detail: string | null;
+  boardId: string;
+  boardName: string;
+  boardType: BoardType;
+  projectId: string | null;
+  projectName: string | null;
+  timestamp: string;
+}
+
+export interface SyncConflictView {
+  id: string;
+  entityType:
+    | "project"
+    | "board"
+    | "column"
+    | "task"
+    | "label"
+    | "task_label"
+    | "subtask"
+    | "comment"
+    | "whiteboard";
+  entityId: string;
+  incomingDeleted: boolean;
+  incomingData: Record<string, unknown>;
+  incomingUpdatedAt: string;
+  winningDeleted: boolean;
+  winningData: Record<string, unknown>;
+  winningUpdatedAt: string;
+  revision: number;
+  createdAt: string;
+  projectId: string | null;
+  projectName: string | null;
+  boardId: string | null;
+  boardName: string | null;
+  entityLabel: string | null;
+}
+
 export interface ProjectDetail {
   project: ProjectSummary;
   boards: BoardSummary[];
+  totals: {
+    boards: number;
+    tasks: number;
+    done: number;
+    open: number;
+    overdue: number;
+    dueSoon: number;
+  };
+  upcoming: DashboardTask[];
+  activity: ActivityItem[];
 }
 
 export interface CalendarData {
@@ -137,6 +193,15 @@ export interface BoardStats {
   overdue: number;
 }
 
+export interface DashboardTask extends Task {
+  boardName: string;
+  boardColor: BoardColor;
+  columnName: string;
+  columnIsDone: boolean;
+  projectId: string | null;
+  projectName: string | null;
+}
+
 export interface DashboardData {
   totals: {
     tasks: number;
@@ -146,23 +211,13 @@ export interface DashboardData {
     completedLast7Days: number;
     boards: number;
     open: number;
+    projects: number;
+    whiteboards: number;
   };
   priorityCounts: Record<Priority, number>;
   boardStats: BoardStats[];
-  upcoming: Array<
-    Task & {
-      boardName: string;
-      boardColor: BoardColor;
-      columnName: string;
-      columnIsDone: boolean;
-    }
-  >;
-  recent: Array<
-    Task & {
-      boardName: string;
-      boardColor: BoardColor;
-      columnName: string;
-      columnIsDone: boolean;
-    }
-  >;
+  projects: ProjectSummary[];
+  activity: ActivityItem[];
+  upcoming: DashboardTask[];
+  recent: DashboardTask[];
 }

@@ -114,6 +114,7 @@ export const projects = sqliteTable(
       onDelete: "cascade",
     }),
     name: text("name").notNull(),
+    description: text("description"),
     position: integer("position").notNull().default(0),
     /**
      * Archiving preserves all contents and makes them read-only; it is a
@@ -149,7 +150,7 @@ export const boards = sqliteTable(
      * and the legacy claim backfills unscoped boards).
      */
     projectId: text("project_id").references(() => projects.id, {
-      onDelete: "cascade",
+      onDelete: "set null",
     }),
     /**
      * Board type, immutable after creation. 'kanban' is the default so every
@@ -360,6 +361,42 @@ export const syncEntityRevisions = sqliteTable(
 );
 
 /**
+ * A rejected push whose local and cloud snapshots are waiting for the user to
+ * choose which version to keep. The row lives locally so conflicts remain
+ * visible offline and pull can leave the entity untouched until resolution.
+ */
+export const syncConflicts = sqliteTable(
+  "sync_conflicts",
+  {
+    id: text("id").primaryKey(),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    localData: text("local_data").notNull().default("{}"),
+    localDeleted: integer("local_deleted", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    localUpdatedAt: integer("local_updated_at", { mode: "timestamp_ms" })
+      .notNull(),
+    cloudData: text("cloud_data").notNull().default("{}"),
+    cloudDeleted: integer("cloud_deleted", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    cloudUpdatedAt: integer("cloud_updated_at", { mode: "timestamp_ms" })
+      .notNull(),
+    winningRevision: integer("winning_revision").notNull(),
+    projectId: text("project_id"),
+    projectName: text("project_name"),
+    boardId: text("board_id"),
+    boardName: text("board_name"),
+    entityLabel: text("entity_label"),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("sync_conflicts_entity_idx").on(table.entityType, table.entityId),
+  ],
+);
+
+/**
  * Billing tables from the retired hosted application. They are retained in the
  * schema so existing SQLite files are untouched, but desktop code no longer
  * reads or writes them. Premium subscription state now lives only in the API.
@@ -469,3 +506,4 @@ export type StripeWebhookEventRow = typeof stripeWebhookEvents.$inferSelect;
 export type SyncStateRow = typeof syncState.$inferSelect;
 export type SyncChangeRow = typeof syncChanges.$inferSelect;
 export type SyncEntityRevisionRow = typeof syncEntityRevisions.$inferSelect;
+export type SyncConflictRow = typeof syncConflicts.$inferSelect;

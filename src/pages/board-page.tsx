@@ -2,6 +2,7 @@ import * as React from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { BoardView } from "@/components/board/board-view";
+import { useWorkspace } from "@/components/layout/workspace-provider";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/client-api";
@@ -17,6 +18,7 @@ const WhiteboardView = React.lazy(() =>
 
 export function BoardPage() {
   const { boardId = "" } = useParams();
+  const { projects } = useWorkspace();
   const [searchParams] = useSearchParams();
   const [data, setData] = React.useState<BoardDetail | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -81,6 +83,9 @@ export function BoardPage() {
     requestedTask && data.tasks.some((task) => task.id === requestedTask)
       ? requestedTask
       : undefined;
+  const readOnly =
+    projects.find((project) => project.id === data.board.projectId)?.archived ??
+    false;
 
   if (data.board.type === "whiteboard") {
     return (
@@ -107,6 +112,7 @@ export function BoardPage() {
       key={`${boardId}:${initialTaskId ?? ""}`}
       initialData={data}
       initialTaskId={initialTaskId}
+      readOnly={readOnly}
     />
   );
 }

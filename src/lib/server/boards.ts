@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 
 import { getDb, type AppDatabase } from "@/db";
-import { boards, columns, tasks, whiteboards } from "@/db/schema";
+import { boards, columns, projects, tasks, whiteboards } from "@/db/schema";
 import { ApiError } from "@/lib/api";
 import { DEFAULT_COLUMNS, type BoardColor, type BoardType } from "@/lib/constants";
 import type { BoardDetail, BoardSummary } from "@/lib/types";
@@ -13,6 +13,7 @@ import type {
   MoveBoardInput,
 } from "@/lib/validation";
 import {
+  assertBoardWritable,
   assertProjectWritable,
   fetchBoardSummaries,
   fetchBoardSummary,
@@ -53,6 +54,18 @@ export async function reorderBoards(
     throw new ApiError(
       "Board order must include every board in the workspace exactly once.",
       400,
+    );
+  }
+
+  const archived = await database
+    .select({ id: boards.id })
+    .from(boards)
+    .innerJoin(projects, eq(boards.projectId, projects.id))
+    .where(and(eq(boards.ownerId, ownerId), eq(projects.archived, true)));
+  if (archived.length > 0) {
+    throw new ApiError(
+      "Restore archived projects before reordering their boards.",
+      409,
     );
   }
 
@@ -163,6 +176,7 @@ export async function createBoard(
     projectId = project.id;
   } else {
     projectId = await ensureDefaultProject(ownerId, DEFAULT_PROJECT_NAME, database);
+    assertProjectWritable(await requireProject(database, projectId, ownerId));
   }
 
   const type: BoardType = input.type ?? "kanban";
@@ -217,7 +231,13 @@ export async function updateBoard(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<BoardSummary> {
-  await requireBoard(database, boardId, ownerId);
+  const existing = await assertBoardWritable(database, boardId, ownerId);
+  let position: number | undefined;
+  if (input.projectId && input.projectId !== existing.projectId) {
+    const target = await requireProject(database, input.projectId, ownerId);
+    assertProjectWritable(target);
+    position = await nextBoardPositionInProject(database, target.id);
+  }
   await database
     .update(boards)
     .set({
@@ -226,6 +246,8 @@ export async function updateBoard(
         ? { description: input.description?.trim() || null }
         : {}),
       ...(input.color !== undefined ? { color: input.color } : {}),
+      ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+      ...(position !== undefined ? { position } : {}),
       updatedAt: new Date(),
     })
     .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)));
@@ -240,7 +262,7 @@ export async function deleteBoard(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<void> {
-  await requireBoard(database, boardId, ownerId);
+  await assertBoardWritable(database, boardId, ownerId);
   await database
     .delete(boards)
     .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)));

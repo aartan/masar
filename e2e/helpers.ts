@@ -29,8 +29,11 @@ export interface ApiTask {
 export async function createProject(
   request: APIRequestContext,
   name: string,
+  description?: string,
 ): Promise<ApiProject> {
-  const response = await request.post("/api/projects", { data: { name } });
+  const response = await request.post("/api/projects", {
+    data: { name, ...(description ? { description } : {}) },
+  });
   expect(response.ok(), `Project creation failed with ${response.status()}`).toBeTruthy();
   const body = (await response.json()) as { project: ApiProject };
   return body.project;
@@ -40,9 +43,15 @@ export async function deleteProject(
   request: APIRequestContext,
   projectId: string,
 ): Promise<void> {
-  await request.delete(`/api/projects/${projectId}`, {
-    data: { confirmation: "DELETE" },
+  const archive = await request.post(`/api/projects/${projectId}/archive`);
+  expect(archive.ok(), `Project archive failed with ${archive.status()}`).toBeTruthy();
+  const detail = await request.get(`/api/projects/${projectId}`);
+  expect(detail.ok(), `Project fetch failed with ${detail.status()}`).toBeTruthy();
+  const body = (await detail.json()) as { project: { project: { name: string } } };
+  const remove = await request.delete(`/api/projects/${projectId}`, {
+    data: { confirmation: body.project.project.name },
   });
+  expect(remove.ok(), `Project deletion failed with ${remove.status()}`).toBeTruthy();
 }
 
 export async function createBoard(

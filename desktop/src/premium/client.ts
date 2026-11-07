@@ -56,6 +56,7 @@ export interface PushResponse {
   ignored: number;
   rejected: number;
   conflicts: Array<{
+    id: string;
     entityType: string;
     entityId: string;
     winningUpdatedAt: string;
@@ -73,14 +74,39 @@ export interface PullResponse {
   >;
 }
 
+export interface RemoteConflictView {
+  id: string;
+  entityType: string;
+  entityId: string;
+  clientId: string | null;
+  incomingUpdatedAt: string;
+  winningUpdatedAt: string;
+  incomingDeleted: boolean;
+  winningDeleted: boolean;
+  incomingData: Record<string, unknown>;
+  winningData: Record<string, unknown>;
+  revision: number;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolution: "cloud" | "local" | null;
+}
+
+export interface RemoteEntitySnapshot {
+  entityType: string;
+  entityId: string;
+  deleted: boolean;
+  data: Record<string, unknown>;
+  updatedAt: string;
+  revision: number;
+}
+
 export interface ConflictResponse {
-  conflicts: Array<{
-    entityType: string;
-    entityId: string;
-    incomingUpdatedAt: string;
-    winningUpdatedAt: string;
-    createdAt: string;
-  }>;
+  conflicts: RemoteConflictView[];
+}
+
+export interface ConflictDetailResponse {
+  conflict: RemoteConflictView;
+  current: RemoteEntitySnapshot | null;
 }
 
 interface ErrorBody {
@@ -233,7 +259,25 @@ export class PremiumApiClient {
     });
   }
 
-  conflicts(limit = 20): Promise<ConflictResponse> {
+  conflicts(limit = 100): Promise<ConflictResponse> {
     return this.request("GET", `/v1/sync/conflicts?limit=${limit}`);
+  }
+
+  conflict(conflictId: string): Promise<ConflictDetailResponse> {
+    return this.request(
+      "GET",
+      `/v1/sync/conflicts/${encodeURIComponent(conflictId)}`,
+    );
+  }
+
+  resolveConflict(
+    conflictId: string,
+    resolution: "cloud" | "local",
+  ): Promise<ConflictDetailResponse> {
+    return this.request(
+      "POST",
+      `/v1/sync/conflicts/${encodeURIComponent(conflictId)}/resolve`,
+      { body: { resolution } },
+    );
   }
 }

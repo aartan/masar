@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowRight, LayoutGrid, Loader2, Plus, PenLine } from "lucide-react";
 import { toast } from "sonner";
 
+import { useWorkspace } from "@/components/layout/workspace-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,6 +17,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api, errorMessage } from "@/lib/client-api";
 import { BOARD_COLORS, type BoardColor, type BoardType } from "@/lib/constants";
@@ -79,10 +87,21 @@ function CreateBoardForm({
   projectId: string | null;
 }) {
   const navigate = useNavigate();
+  const { projects } = useWorkspace();
+  const activeProjects = React.useMemo(
+    () =>
+      [...projects]
+        .filter((project) => !project.archived)
+        .sort((a, b) => a.position - b.position),
+    [projects],
+  );
   const [type, setType] = React.useState<BoardType>("kanban");
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [color, setColor] = React.useState<BoardColor>("sage");
+  const [selectedProjectId, setSelectedProjectId] = React.useState(
+    projectId ?? activeProjects[0]?.id ?? "",
+  );
   const [loading, setLoading] = React.useState(false);
 
   async function handleSubmit(event: React.FormEvent) {
@@ -97,7 +116,7 @@ function CreateBoardForm({
           description: description.trim() || null,
           color,
           type,
-          ...(projectId ? { projectId } : {}),
+          ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
         }),
       });
       onClose();
@@ -162,6 +181,31 @@ function CreateBoardForm({
           })}
         </div>
 
+        <div className="space-y-2">
+          <Label>Project</Label>
+          {activeProjects.length > 0 ? (
+            <Select
+              value={selectedProjectId}
+              onValueChange={setSelectedProjectId}
+              disabled={loading}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Choose a project" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeProjects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <p className="rounded-lg border border-dashed border-border/70 px-3 py-2 text-[11.5px] text-muted-foreground">
+              A General project will be created for this board.
+            </p>
+          )}
+        </div>
         <div className="space-y-2">
           <Label htmlFor="board-name">Name</Label>
           <Input

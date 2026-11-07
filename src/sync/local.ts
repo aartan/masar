@@ -45,6 +45,36 @@ export interface SyncStateView {
   lastSyncedAt: string | null;
   bootstrapped: boolean;
   pendingChanges: number;
+  conflictCount: number;
+}
+
+export interface RemoteConflict {
+  id: string;
+  entityType: SyncEntityType;
+  entityId: string;
+  incomingDeleted: boolean;
+  incomingData: Record<string, unknown>;
+  incomingUpdatedAt: string;
+  winningDeleted: boolean;
+  winningData: Record<string, unknown>;
+  winningUpdatedAt: string;
+  revision: number;
+  createdAt: string;
+}
+
+export interface LocalConflictView extends RemoteConflict {
+  projectId: string | null;
+  projectName: string | null;
+  boardId: string | null;
+  boardName: string | null;
+  entityLabel: string | null;
+}
+
+export interface RemoteEntitySnapshot {
+  deleted: boolean;
+  data: Record<string, unknown>;
+  updatedAt: string;
+  revision: number;
 }
 
 const ENTITY_TYPES = new Set<SyncEntityType>([
@@ -163,9 +193,8 @@ export async function prepareSync(
       // Upgrade reconciliation: an install that synced before per-entity
       // revision tracking existed has already pulled data (last_revision > 0)
       // but no revision rows. Replay the pull from zero once so every entity's
-      // server revision is recorded; the outbox is preserved, so unsynced work
-      // is not lost, and the retained-on-conflict push path covers edits made
-      // before the backfill completes.
+      // server revision is recorded; the outbox is preserved so the conflict
+      // inbox can surface anything that diverged before the backfill completes.
       if (!resetCursor) {
         const revisionCount = await tx.execute(
           "select count(*) as count from sync_entity_revisions",
@@ -197,8 +226,8 @@ async function bootstrapChanges(tx: Transaction): Promise<void> {
   const statements = [
     `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
      select 'project', id, 0,
-       json_object('id', id, 'owner_id', owner_id, 'name', name, 'position', position,
-                   'archived', archived, 'archived_at', archived_at,
+       json_object('id', id, 'owner_id', owner_id, 'name', name, 'description', description,
+                   'position', position, 'archived', archived, 'archived_at', archived_at,
                    'created_at', created_at, 'updated_at', updated_at),
        coalesce(updated_at, unixepoch() * 1000)
      from projects
@@ -267,7 +296,10 @@ export async function getSyncState(): Promise<SyncStateView> {
   const state = await client.execute(
     "select device_id, remote_user_id, last_revision, last_synced_at, bootstrapped from sync_state where id = 1",
   );
-  const pending = await client.execute("select count(*) as count from sync_changes");
+  const [pending, conflicts] = await Promise.all([
+    client.execute("select count(*) as count from sync_changes"),
+    client.execute("select count(*) as count from sync_conflicts"),
+  ]);
   const row = state.rows[0];
   return {
     deviceId: typeof row?.device_id === "string" ? row.device_id : "",
@@ -279,6 +311,7 @@ export async function getSyncState(): Promise<SyncStateView> {
         : null,
     bootstrapped: Number(row?.bootstrapped ?? 0) === 1,
     pendingChanges: Number(pending.rows[0]?.count ?? 0),
+    conflictCount: Number(conflicts.rows[0]?.count ?? 0),
   };
 }
 
@@ -321,45 +354,18 @@ export async function listPendingChanges(
   });
 }
 
-export interface RejectedChangeKey {
-  entityType: string;
-  entityId: string;
-}
-
 /**
- * Delete acked outbox rows up to `throughId`, except rows for entities the
- * server rejected as conflicts — those must be retained so they are re-pushed
- * with a correct base revision after the next pull records the server's
- * winning revision. Deleting a rejected row would silently drop the user's
- * edit (the original data-loss bug).
+ * Delete acknowledged outbox rows. Conflict snapshots have already been
+ * copied into sync_conflicts by this point, so nothing user-visible is lost.
  */
-export async function acknowledgeChanges(
-  throughId: number,
-  rejected: RejectedChangeKey[] = [],
-): Promise<number> {
+export async function acknowledgeChanges(throughId: number): Promise<number> {
   if (!Number.isInteger(throughId) || throughId < 0) {
     throw new Error("throughId must be a non-negative integer");
   }
   const client = getClient();
-  if (rejected.length === 0) {
-    const result = await client.execute({
-      sql: "delete from sync_changes where id <= ?",
-      args: [throughId],
-    });
-    return Number(result.rowsAffected ?? 0);
-  }
-
-  // Retain every outbox row for a rejected (entity_type, entity_id) pair.
-  const conditions = rejected
-    .map(() => "(entity_type = ? and entity_id = ?)")
-    .join(" or ");
-  const args: Array<number | string> = [throughId];
-  for (const key of rejected) {
-    args.push(key.entityType, key.entityId);
-  }
   const result = await client.execute({
-    sql: `delete from sync_changes where id <= ? and not (${conditions})`,
-    args,
+    sql: "delete from sync_changes where id <= ?",
+    args: [throughId],
   });
   return Number(result.rowsAffected ?? 0);
 }
@@ -393,8 +399,18 @@ export async function applyRemoteChanges(
       .sort((a, b) => dependencyRank(a.entityType) - dependencyRank(b.entityType));
 
     for (const change of deletions) {
-      await recordEntityRevision(tx, change);
+      if (await hasUnresolvedConflict(tx, change.entityType, change.entityId)) {
+        skipped.push({
+          entityType: change.entityType,
+          entityId: change.entityId,
+          reason: "Conflict awaiting resolution",
+        });
+        continue;
+      }
       if (await keepLocalIfNewer(tx, change)) {
+        // The local row wins for now; keep the tombstone revision so the
+        // queued edit can causally supersede it on the next push.
+        await storeEntityRevision(tx, change);
         skipped.push({
           entityType: change.entityType,
           entityId: change.entityId,
@@ -403,11 +419,20 @@ export async function applyRemoteChanges(
         continue;
       }
       await deleteEntity(tx, change);
+      await deleteEntityRevision(tx, change);
       applied += 1;
     }
 
     for (const change of upserts) {
-      await recordEntityRevision(tx, change);
+      if (await hasUnresolvedConflict(tx, change.entityType, change.entityId)) {
+        skipped.push({
+          entityType: change.entityType,
+          entityId: change.entityId,
+          reason: "Conflict awaiting resolution",
+        });
+        continue;
+      }
+      await storeEntityRevision(tx, change);
       if (await keepLocalIfNewer(tx, change)) {
         skipped.push({
           entityType: change.entityType,
@@ -435,25 +460,365 @@ export async function applyRemoteChanges(
   }
 }
 
+function parseJsonObject(value: unknown): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(String(value ?? "{}"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function stringifyJson(value: unknown): string {
+  try {
+    return JSON.stringify(value ?? {});
+  } catch {
+    return "{}";
+  }
+}
+
+export async function listSyncConflicts(): Promise<LocalConflictView[]> {
+  const client = getClient();
+  const result = await client.execute(
+    `select * from sync_conflicts order by created_at desc, id desc`,
+  );
+  return result.rows.map((row) => ({
+    id: String(row.id),
+    entityType: assertEntityType(String(row.entity_type)),
+    entityId: String(row.entity_id),
+    incomingDeleted: Number(row.local_deleted) === 1,
+    incomingData: parseJsonObject(row.local_data),
+    incomingUpdatedAt: new Date(Number(row.local_updated_at)).toISOString(),
+    winningDeleted: Number(row.cloud_deleted) === 1,
+    winningData: parseJsonObject(row.cloud_data),
+    winningUpdatedAt: new Date(Number(row.cloud_updated_at)).toISOString(),
+    revision: Number(row.winning_revision),
+    createdAt: new Date(Number(row.created_at)).toISOString(),
+    projectId: typeof row.project_id === "string" ? row.project_id : null,
+    projectName: typeof row.project_name === "string" ? row.project_name : null,
+    boardId: typeof row.board_id === "string" ? row.board_id : null,
+    boardName: typeof row.board_name === "string" ? row.board_name : null,
+    entityLabel:
+      typeof row.entity_label === "string" ? row.entity_label : null,
+  }));
+}
+
+interface ConflictContext {
+  projectId: string | null;
+  projectName: string | null;
+  boardId: string | null;
+  boardName: string | null;
+  entityLabel: string | null;
+}
+
+async function conflictContext(
+  tx: Transaction,
+  entityType: SyncEntityType,
+  entityId: string,
+  data: Record<string, unknown>,
+): Promise<ConflictContext> {
+  const empty: ConflictContext = {
+    projectId: null,
+    projectName: null,
+    boardId: null,
+    boardName: null,
+    entityLabel: null,
+  };
+  const boardContext = async (boardId: string): Promise<ConflictContext> => {
+    const result = await tx.execute({
+      sql: `select b.id as board_id, b.name as board_name,
+                   p.id as project_id, p.name as project_name
+            from boards b left join projects p on p.id = b.project_id
+            where b.id = ? limit 1`,
+      args: [boardId],
+    });
+    const row = result.rows[0];
+    return {
+      ...empty,
+      boardId: typeof row?.board_id === "string" ? row.board_id : boardId,
+      boardName: typeof row?.board_name === "string" ? row.board_name : null,
+      projectId: typeof row?.project_id === "string" ? row.project_id : null,
+      projectName:
+        typeof row?.project_name === "string" ? row.project_name : null,
+    };
+  };
+  const taskContext = async (taskId: string): Promise<ConflictContext> => {
+    const result = await tx.execute({
+      sql: `select t.board_id from tasks t where t.id = ? limit 1`,
+      args: [taskId],
+    });
+    const boardId = result.rows[0]?.board_id;
+    return typeof boardId === "string"
+      ? boardContext(boardId)
+      : empty;
+  };
+
+  switch (entityType) {
+    case "project": {
+      const result = await tx.execute({
+        sql: "select name from projects where id = ? limit 1",
+        args: [entityId],
+      });
+      const name =
+        typeof result.rows[0]?.name === "string"
+          ? result.rows[0].name
+          : asNullableString(data.name);
+      return {
+        ...empty,
+        projectId: entityId,
+        projectName: name,
+        entityLabel: name,
+      };
+    }
+    case "board": {
+      const context = await boardContext(entityId);
+      return {
+        ...context,
+        entityLabel: context.boardName ?? asNullableString(data.name),
+      };
+    }
+    case "whiteboard": {
+      const context = await boardContext(
+        asString(data.board_id, entityId),
+      );
+      return {
+        ...context,
+        entityLabel: context.boardName ?? "Whiteboard",
+      };
+    }
+    case "column": {
+      const context = await boardContext(asString(data.board_id));
+      return { ...context, entityLabel: asNullableString(data.name) };
+    }
+    case "label": {
+      const context = await boardContext(asString(data.board_id));
+      return { ...context, entityLabel: asNullableString(data.name) };
+    }
+    case "task": {
+      const context = await taskContext(entityId);
+      return { ...context, entityLabel: asNullableString(data.title) };
+    }
+    case "task_label": {
+      const context = await taskContext(asString(data.task_id));
+      return { ...context, entityLabel: "Task label" };
+    }
+    case "subtask": {
+      const context = await taskContext(asString(data.task_id));
+      return { ...context, entityLabel: asNullableString(data.title) };
+    }
+    case "comment": {
+      const context = await taskContext(asString(data.task_id));
+      return { ...context, entityLabel: asNullableString(data.body) };
+    }
+  }
+}
+
 /**
- * Record the server revision a pulled change was observed at. A later local
- * edit to the same entity pushes this as its `baseRevision`, letting the
- * server prove the edit is sequential. A remote deletion drops the row: the
- * entity is gone, and any future local recreation must push as a creation
- * (null base). Changes without a revision (legacy payloads) are ignored.
+ * Persist the server's conflict snapshots locally. The outbox row is removed
+ * by the normal ack after this succeeds; pull then leaves the entity alone
+ * until the user chooses a version.
  */
-async function recordEntityRevision(
+export async function recordSyncConflicts(
+  conflicts: RemoteConflict[],
+): Promise<number> {
+  if (conflicts.length === 0) return 0;
+  const client = getClient();
+  const tx = await client.transaction("write");
+  try {
+    let recorded = 0;
+    for (const conflict of conflicts) {
+      const entityType = assertEntityType(conflict.entityType);
+      const context = await conflictContext(
+        tx,
+        entityType,
+        conflict.entityId,
+        conflict.incomingData,
+      );
+      await tx.execute({
+        sql: `insert into sync_conflicts
+              (id, entity_type, entity_id, local_data, local_deleted, local_updated_at,
+               cloud_data, cloud_deleted, cloud_updated_at, winning_revision,
+               project_id, project_name, board_id, board_name, entity_label, created_at)
+              values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              on conflict(id) do update set
+                local_data = excluded.local_data, local_deleted = excluded.local_deleted,
+                local_updated_at = excluded.local_updated_at,
+                cloud_data = excluded.cloud_data, cloud_deleted = excluded.cloud_deleted,
+                cloud_updated_at = excluded.cloud_updated_at,
+                winning_revision = excluded.winning_revision,
+                project_id = excluded.project_id, project_name = excluded.project_name,
+                board_id = excluded.board_id, board_name = excluded.board_name,
+                entity_label = excluded.entity_label`,
+        args: [
+          conflict.id,
+          entityType,
+          conflict.entityId,
+          stringifyJson(conflict.incomingData),
+          conflict.incomingDeleted ? 1 : 0,
+          toMs(conflict.incomingUpdatedAt, nowMs()),
+          stringifyJson(conflict.winningData),
+          conflict.winningDeleted ? 1 : 0,
+          toMs(conflict.winningUpdatedAt, nowMs()),
+          Math.trunc(conflict.revision),
+          context.projectId,
+          context.projectName,
+          context.boardId,
+          context.boardName,
+          context.entityLabel,
+          toMs(conflict.createdAt, nowMs()),
+        ],
+      });
+      recorded += 1;
+    }
+    await tx.commit();
+    return recorded;
+  } catch (error) {
+    await tx.rollback();
+    throw error;
+  } finally {
+    tx.close();
+  }
+}
+
+/** Apply the latest cloud snapshot and discard the local conflicting edit. */
+export async function applyCloudConflict(
+  conflictId: string,
+  latest?: RemoteEntitySnapshot,
+): Promise<void> {
+  const client = getClient();
+  const tx = await client.transaction("write");
+  try {
+    const result = await tx.execute({
+      sql: "select * from sync_conflicts where id = ? limit 1",
+      args: [conflictId],
+    });
+    const row = result.rows[0];
+    if (!row) throw new Error("Conflict not found.");
+    const entityType = assertEntityType(String(row.entity_type));
+    const entityId = String(row.entity_id);
+    const deleted = latest?.deleted ?? Number(row.cloud_deleted) === 1;
+    const data = latest?.data ?? parseJsonObject(row.cloud_data);
+    const revision =
+      latest?.revision ?? Number(row.winning_revision);
+    const updatedAt = latest?.updatedAt ??
+      new Date(Number(row.cloud_updated_at)).toISOString();
+
+    await tx.execute("update sync_state set applying = 1 where id = 1");
+    await tx.execute({
+      sql: "delete from sync_changes where entity_type = ? and entity_id = ?",
+      args: [entityType, entityId],
+    });
+
+    if (deleted) {
+      await deleteEntity(tx, {
+        entityType,
+        entityId,
+        deleted: true,
+        data,
+        updatedAt,
+        revision,
+      });
+      await tx.execute({
+        sql: "delete from sync_entity_revisions where entity_type = ? and entity_id = ?",
+        args: [entityType, entityId],
+      });
+    } else {
+      const reason = await applyUpsert(tx, {
+        entityType,
+        entityId,
+        deleted: false,
+        data,
+        updatedAt,
+        revision,
+      });
+      if (reason) throw new Error(reason);
+      await tx.execute({
+        sql: `insert into sync_entity_revisions (entity_type, entity_id, revision)
+              values (?, ?, ?)
+              on conflict(entity_type, entity_id) do update set revision = excluded.revision`,
+        args: [entityType, entityId, Math.trunc(revision)],
+      });
+    }
+
+    await tx.execute({
+      sql: "delete from sync_conflicts where id = ?",
+      args: [conflictId],
+    });
+    await tx.execute("update sync_state set applying = 0 where id = 1");
+    await tx.commit();
+  } catch (error) {
+    await tx.rollback();
+    throw error;
+  } finally {
+    tx.close();
+  }
+}
+
+/** Requeue the local conflicting snapshot against the latest cloud revision. */
+export async function keepLocalConflict(
+  conflictId: string,
+  latestRevision: number,
+): Promise<void> {
+  if (!Number.isInteger(latestRevision) || latestRevision < 0) {
+    throw new Error("latestRevision must be a non-negative integer.");
+  }
+  const client = getClient();
+  const tx = await client.transaction("write");
+  try {
+    const result = await tx.execute({
+      sql: "select * from sync_conflicts where id = ? limit 1",
+      args: [conflictId],
+    });
+    const row = result.rows[0];
+    if (!row) throw new Error("Conflict not found.");
+    const entityType = assertEntityType(String(row.entity_type));
+    const entityId = String(row.entity_id);
+    const localDeleted = Number(row.local_deleted) === 1;
+    const localData = parseJsonObject(row.local_data);
+    const localUpdatedAt = Number(row.local_updated_at);
+
+    await tx.execute({
+      sql: "delete from sync_changes where entity_type = ? and entity_id = ?",
+      args: [entityType, entityId],
+    });
+    await tx.execute({
+      sql: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+            values (?, ?, ?, ?, ?)`,
+      args: [
+        entityType,
+        entityId,
+        localDeleted ? 1 : 0,
+        stringifyJson(localData),
+        localUpdatedAt,
+      ],
+    });
+    await tx.execute({
+      sql: `insert into sync_entity_revisions (entity_type, entity_id, revision)
+            values (?, ?, ?)
+            on conflict(entity_type, entity_id) do update set revision = excluded.revision`,
+      args: [entityType, entityId, latestRevision],
+    });
+    await tx.execute({
+      sql: "delete from sync_conflicts where id = ?",
+      args: [conflictId],
+    });
+    await tx.commit();
+  } catch (error) {
+    await tx.rollback();
+    throw error;
+  } finally {
+    tx.close();
+  }
+}
+
+/** Store the revision a pulled change was observed at. */
+async function storeEntityRevision(
   tx: Transaction,
   change: RemoteSyncChange,
 ): Promise<void> {
   if (typeof change.revision !== "number" || !Number.isFinite(change.revision)) {
-    return;
-  }
-  if (change.deleted) {
-    await tx.execute({
-      sql: "delete from sync_entity_revisions where entity_type = ? and entity_id = ?",
-      args: [change.entityType, change.entityId],
-    });
     return;
   }
   await tx.execute({
@@ -462,6 +827,29 @@ async function recordEntityRevision(
           on conflict(entity_type, entity_id) do update set revision = excluded.revision`,
     args: [change.entityType, change.entityId, Math.trunc(change.revision)],
   });
+}
+
+/** The entity no longer exists on the server, so a recreation is a creation. */
+async function deleteEntityRevision(
+  tx: Transaction,
+  change: RemoteSyncChange,
+): Promise<void> {
+  await tx.execute({
+    sql: "delete from sync_entity_revisions where entity_type = ? and entity_id = ?",
+    args: [change.entityType, change.entityId],
+  });
+}
+
+async function hasUnresolvedConflict(
+  tx: Transaction,
+  entityType: SyncEntityType,
+  entityId: string,
+): Promise<boolean> {
+  const result = await tx.execute({
+    sql: "select 1 as found from sync_conflicts where entity_type = ? and entity_id = ? limit 1",
+    args: [entityType, entityId],
+  });
+  return result.rows.length > 0;
 }
 
 function dependencyRank(type: SyncEntityType): number {
@@ -556,8 +944,8 @@ async function queueCurrentEntity(
   const statements: Record<Exclude<SyncEntityType, "task_label">, string> = {
     project: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
       select 'project', id, 0,
-        json_object('id', id, 'owner_id', owner_id, 'name', name, 'position', position,
-                    'archived', archived, 'archived_at', archived_at,
+        json_object('id', id, 'owner_id', owner_id, 'name', name, 'description', description,
+                    'position', position, 'archived', archived, 'archived_at', archived_at,
                     'created_at', created_at, 'updated_at', updated_at),
         coalesce(updated_at, unixepoch() * 1000)
       from projects where id = ?`,
@@ -617,11 +1005,66 @@ async function exists(tx: Transaction, table: string, id: string): Promise<boole
   return result.rows.length > 0;
 }
 
+/**
+ * Return a project for a board that arrived without one. A fresh mirror can
+ * pull legacy cloud boards before any project entity exists; those boards must
+ * still appear in the sidebar. The deterministic id makes every device
+ * converge on the same default project.
+ */
+async function defaultProjectForTx(tx: Transaction): Promise<string> {
+  const existing = await tx.execute(
+    `select id from projects
+     where owner_id = 'local-user' and archived = 0
+     order by position, created_at limit 1`,
+  );
+  const activeId = existing.rows[0]?.id;
+  if (typeof activeId === "string") return activeId;
+
+  const deterministicId = "default-project-local-user";
+  if (await exists(tx, "projects", deterministicId)) return deterministicId;
+
+  const now = nowMs();
+  const positionResult = await tx.execute(
+    "select coalesce(max(position), -1) + 1 as position from projects",
+  );
+  const position = Number(positionResult.rows[0]?.position ?? 0);
+  await tx.execute({
+    sql: `insert into projects
+          (id, owner_id, name, description, position, archived, archived_at, created_at, updated_at)
+          values (?, 'local-user', 'General', null, ?, 0, null, ?, ?)`,
+    args: [deterministicId, position, now, now],
+  });
+  // Remote apply suppresses table triggers. Queue the new project explicitly
+  // so it exists in the cloud workspace as well.
+  await tx.execute({
+    sql: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+          select 'project', id, 0,
+            json_object('id', id, 'owner_id', owner_id, 'name', name, 'description', description,
+                        'position', position, 'archived', archived, 'archived_at', archived_at,
+                        'created_at', created_at, 'updated_at', updated_at),
+            updated_at
+          from projects where id = ?`,
+    args: [deterministicId],
+  });
+  return deterministicId;
+}
+
 async function deleteEntity(tx: Transaction, change: RemoteSyncChange): Promise<void> {
   switch (change.entityType) {
-    case "project":
+    case "project": {
       await tx.execute({ sql: "delete from projects where id = ?", args: [change.entityId] });
+      const orphaned = await tx.execute(
+        "select 1 as found from boards where owner_id = 'local-user' and project_id is null limit 1",
+      );
+      if (orphaned.rows.length > 0) {
+        const projectId = await defaultProjectForTx(tx);
+        await tx.execute({
+          sql: "update boards set project_id = ? where owner_id = 'local-user' and project_id is null",
+          args: [projectId],
+        });
+      }
       break;
+    }
     case "board":
       await tx.execute({ sql: "delete from boards where id = ?", args: [change.entityId] });
       break;
@@ -669,15 +1112,17 @@ async function applyUpsert(
   switch (change.entityType) {
     case "project": {
       await tx.execute({
-        sql: `insert into projects (id, owner_id, name, position, archived, archived_at, created_at, updated_at)
-              values (?, 'local-user', ?, ?, ?, ?, ?, ?)
+        sql: `insert into projects (id, owner_id, name, description, position, archived, archived_at, created_at, updated_at)
+              values (?, 'local-user', ?, ?, ?, ?, ?, ?, ?)
               on conflict(id) do update set
-                owner_id = 'local-user', name = excluded.name, position = excluded.position,
+                owner_id = 'local-user', name = excluded.name, description = excluded.description,
+                position = excluded.position,
                 archived = excluded.archived, archived_at = excluded.archived_at,
                 updated_at = excluded.updated_at`,
         args: [
           change.entityId,
           asString(data.name, "Untitled project"),
+          asNullableString(data.description),
           asNumber(data.position),
           asBoolean(data.archived) ? 1 : 0,
           data.archived_at === null || data.archived_at === undefined
@@ -690,13 +1135,14 @@ async function applyUpsert(
       return null;
     }
     case "board": {
-      // A board may reference a project that has not been applied yet (older
-      // payloads, or an out-of-order pull). Keep the FK satisfiable by storing
-      // null until the project arrives; the board re-syncs with the project id
-      // once both are present.
+      // Legacy cloud rows have no project, and an out-of-order parent can be
+      // missing. Assign the board to the default project instead of leaving it
+      // invisible in the hierarchy.
       const projectId = asNullableString(data.project_id);
       const resolvedProjectId =
-        projectId && (await exists(tx, "projects", projectId)) ? projectId : null;
+        projectId && (await exists(tx, "projects", projectId))
+          ? projectId
+          : await defaultProjectForTx(tx);
       await tx.execute({
         sql: `insert into boards (id, owner_id, project_id, type, name, description, color, position, created_at, updated_at)
               values (?, 'local-user', ?, ?, ?, ?, ?, ?, ?, ?)

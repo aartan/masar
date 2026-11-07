@@ -12,6 +12,7 @@ interface WorkspaceContextValue {
   projects: ProjectSummary[];
   boards: BoardSummary[];
   user: WorkspaceUser;
+  conflictCount: number;
   loading: boolean;
   error: string | null;
   refresh(): Promise<void>;
@@ -36,6 +37,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = React.useState<ProjectSummary[]>([]);
   const [boards, setBoards] = React.useState<BoardSummary[]>([]);
   const [user, setUser] = React.useState<WorkspaceUser>(FALLBACK_USER);
+  const [conflictCount, setConflictCount] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const requestRef = React.useRef(0);
@@ -43,13 +45,17 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const refresh = React.useCallback(async () => {
     const request = ++requestRef.current;
     try {
-      const [projectData, boardData] = await Promise.all([
+      const [projectData, boardData, syncData] = await Promise.all([
         api<{ projects: ProjectSummary[] }>("/api/projects"),
         api<{ boards: BoardSummary[] }>("/api/boards"),
+        api<{ state: { conflictCount: number } }>("/api/sync/state").catch(
+          () => ({ state: { conflictCount: 0 } }),
+        ),
       ]);
       if (request !== requestRef.current) return;
       setProjects(projectData.projects);
       setBoards(boardData.boards);
+      setConflictCount(syncData.state.conflictCount ?? 0);
       setError(null);
     } catch (caught) {
       if (request !== requestRef.current) return;
@@ -123,15 +129,19 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     let active = true;
     void (async () => {
       try {
-        const [me, projectData, boardData] = await Promise.all([
+        const [me, projectData, boardData, syncData] = await Promise.all([
           api<{ user: WorkspaceUser }>("/api/me"),
           api<{ projects: ProjectSummary[] }>("/api/projects"),
           api<{ boards: BoardSummary[] }>("/api/boards"),
+          api<{ state: { conflictCount: number } }>("/api/sync/state").catch(
+            () => ({ state: { conflictCount: 0 } }),
+          ),
         ]);
         if (!active) return;
         setUser({ name: me.user.name, email: me.user.email });
         setProjects(projectData.projects);
         setBoards(boardData.boards);
+        setConflictCount(syncData.state.conflictCount ?? 0);
         setError(null);
       } catch (caught) {
         if (!active) return;
@@ -168,6 +178,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       projects,
       boards,
       user,
+      conflictCount,
       loading,
       error,
       refresh,
@@ -175,7 +186,18 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       reorderProjects,
       moveBoards,
     }),
-    [projects, boards, user, loading, error, refresh, refreshBoards, reorderProjects, moveBoards],
+    [
+      projects,
+      boards,
+      user,
+      conflictCount,
+      loading,
+      error,
+      refresh,
+      refreshBoards,
+      reorderProjects,
+      moveBoards,
+    ],
   );
 
   return (

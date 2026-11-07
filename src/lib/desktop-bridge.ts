@@ -30,6 +30,10 @@ export interface MasarDesktopBridge {
   refreshBilling(): Promise<PremiumStatus>;
   syncNow(): Promise<SyncStatus>;
   getSyncStatus(): Promise<SyncStatus>;
+  resolveSyncConflict(
+    conflictId: string,
+    choice: "cloud" | "local",
+  ): Promise<void>;
   /** Explicit one-way copy of the local workspace into the premium account. */
   importLocalWorkspace(): Promise<{ boards: number; tasks: number }>;
   notifyDataChanged(): Promise<void>;

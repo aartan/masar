@@ -8,9 +8,9 @@ import { ApiError } from "@/lib/api";
 import type { BoardColumn } from "@/lib/types";
 import type { ColumnCreateInput, ColumnUpdateInput } from "@/lib/validation";
 import {
+  assertBoardWritable,
   isUniqueConstraintError,
   nextColumnPosition,
-  requireBoard,
   requireColumn,
   serializeColumn,
 } from "./queries";
@@ -36,7 +36,7 @@ export async function createColumn(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<BoardColumn> {
-  await requireBoard(database, boardId, ownerId);
+  await assertBoardWritable(database, boardId, ownerId);
   const position = await nextColumnPosition(database, boardId);
   const id = randomUUID();
   const now = new Date();
@@ -82,6 +82,7 @@ export async function updateColumn(
   database: AppDatabase = getDb(),
 ): Promise<BoardColumn> {
   const existing = await requireColumn(database, columnId, ownerId);
+  await assertBoardWritable(database, existing.boardId, ownerId);
 
   try {
     await database.transaction(async (tx) => {
@@ -117,6 +118,7 @@ export async function deleteColumn(
   database: AppDatabase = getDb(),
 ): Promise<{ movedTasks: number; targetColumnId: string }> {
   const column = await requireColumn(database, columnId, ownerId);
+  await assertBoardWritable(database, column.boardId, ownerId);
   const boardColumns = await database
     .select()
     .from(columns)
@@ -181,7 +183,7 @@ export async function reorderColumns(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<BoardColumn[]> {
-  await requireBoard(database, boardId, ownerId);
+  await assertBoardWritable(database, boardId, ownerId);
   const boardColumns = await database
     .select()
     .from(columns)

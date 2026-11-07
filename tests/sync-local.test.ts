@@ -6,15 +6,21 @@ import { boards } from "@/db/schema";
 import { getClient, getDb } from "@/db";
 import { getLocalUser, LOCAL_USER_ID } from "@/lib/server/desktop";
 import { createBoard, getBoardDetail } from "@/lib/server/boards";
+import { saveWhiteboardScene } from "@/lib/server/whiteboards";
 import { createTask } from "@/lib/server/tasks";
 import { updateBoard } from "@/lib/server/boards";
 import {
   acknowledgeChanges,
+  applyCloudConflict,
   applyRemoteChanges,
   getSyncState,
+  keepLocalConflict,
   listPendingChanges,
+  listSyncConflicts,
   prepareSync,
+  recordSyncConflicts,
 } from "@/sync/local";
+import type { BoardSummary } from "@/lib/types";
 import { createTestDatabase, type TestDatabase } from "./helpers/test-db";
 
 let test: TestDatabase;
@@ -37,6 +43,7 @@ beforeEach(async () => {
   await client.execute("delete from projects");
   await client.execute("delete from sync_changes");
   await client.execute("delete from sync_entity_revisions");
+  await client.execute("delete from sync_conflicts");
   await client.execute(
     "update sync_state set remote_user_id = null, last_revision = 0, last_synced_at = null, bootstrapped = 0, applying = 0 where id = 1",
   );
@@ -46,6 +53,21 @@ async function makeBoard(name = "Sync board") {
   const board = await createBoard({ name }, LOCAL_USER_ID, test.db);
   const detail = await getBoardDetail(board.id, LOCAL_USER_ID, test.db);
   return { board, detail };
+}
+
+function boardData(board: BoardSummary, name: string, updatedAt: number) {
+  return {
+    id: board.id,
+    owner_id: LOCAL_USER_ID,
+    project_id: board.projectId,
+    type: board.type,
+    name,
+    description: board.description,
+    color: board.color,
+    position: board.position,
+    created_at: Date.parse(board.createdAt),
+    updated_at: updatedAt,
+  };
 }
 
 describe("local sync outbox", () => {
@@ -112,7 +134,12 @@ describe("local sync outbox", () => {
       .where(eq(boards.id, "remote-board-1"));
     expect(row?.name).toBe("Remote board");
     expect(row?.ownerId).toBe(LOCAL_USER_ID);
-    expect(await listPendingChanges(0, 500)).toHaveLength(0);
+    expect(row?.projectId).toBeTruthy();
+    // The board has no project in the legacy payload, so a default project is
+    // synthesized and queued for creation. The board itself must not echo.
+    const pending = await listPendingChanges(0, 500);
+    expect(pending.filter((change) => change.entityType === "board")).toHaveLength(0);
+    expect(pending.filter((change) => change.entityType === "project")).toHaveLength(1);
     const state = await getSyncState();
     expect(state.lastRevision).toBe(1);
   });
@@ -277,6 +304,35 @@ describe("local sync outbox", () => {
   });
 
 
+  it("coalesces repeated whiteboard snapshots in the outbox", async () => {
+    await prepareSync("remote-user-a");
+    const board = await createBoard(
+      { name: "Canvas", type: "whiteboard" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+
+    await saveWhiteboardScene(
+      board.id,
+      '{"elements":[{"id":"one"}]}',
+      LOCAL_USER_ID,
+      test.db,
+    );
+    await saveWhiteboardScene(
+      board.id,
+      '{"elements":[{"id":"two"}]}',
+      LOCAL_USER_ID,
+      test.db,
+    );
+
+    const pending = await listPendingChanges(0, 500);
+    const whiteboardChanges = pending.filter(
+      (change) => change.entityType === "whiteboard",
+    );
+    expect(whiteboardChanges).toHaveLength(1);
+    expect(String(whiteboardChanges[0]?.data.scene)).toContain('"id":"two"');
+  });
+
   it("does not let an older remote update resurrect a locally deleted entity", async () => {
     await prepareSync("remote-user-a");
     const { board } = await makeBoard("Delete locally");
@@ -309,6 +365,131 @@ describe("local sync outbox", () => {
     expect(
       pending.some((change) => change.entityId === board.id && change.deleted),
     ).toBe(true);
+  });
+
+  it("keeps the tombstone revision when a newer local edit survives a remote delete", async () => {
+    await prepareSync("remote-user-a");
+    const { board } = await makeBoard("Keep me");
+    const now = Date.now();
+
+    await applyRemoteChanges(1, [
+      {
+        entityType: "board",
+        entityId: board.id,
+        deleted: false,
+        data: boardData(board, "Remote original", now - 5_000),
+        updatedAt: new Date(now - 5_000).toISOString(),
+        revision: 1,
+      },
+    ]);
+    await updateBoard(board.id, { name: "Local newer" }, LOCAL_USER_ID, test.db);
+
+    const result = await applyRemoteChanges(2, [
+      {
+        entityType: "board",
+        entityId: board.id,
+        deleted: true,
+        data: {},
+        updatedAt: new Date(now - 60_000).toISOString(),
+        revision: 2,
+      },
+    ]);
+
+    expect(result.skipped.some((item) => item.entityId === board.id)).toBe(true);
+    const revisions = await getClient().execute(
+      "select revision from sync_entity_revisions where entity_type = 'board' and entity_id = ?",
+      [board.id],
+    );
+    expect(Number(revisions.rows[0]?.revision)).toBe(2);
+    const pending = await listPendingChanges(0, 50);
+    const boardChange = pending.find((change) => change.entityId === board.id);
+    expect(boardChange?.baseRevision).toBe(2);
+  });
+
+  it("records conflicts, skips pull for them, and applies the cloud choice", async () => {
+    await prepareSync("remote-user-a");
+    const { board } = await makeBoard("Conflict board");
+    const now = Date.now();
+    await recordSyncConflicts([
+      {
+        id: "conflict-1",
+        entityType: "board",
+        entityId: board.id,
+        incomingDeleted: false,
+        incomingData: boardData(board, "Mine", now),
+        incomingUpdatedAt: new Date(now).toISOString(),
+        winningDeleted: false,
+        winningData: boardData(board, "Cloud", now + 1_000),
+        winningUpdatedAt: new Date(now + 1_000).toISOString(),
+        revision: 3,
+        createdAt: new Date(now + 1_000).toISOString(),
+      },
+    ]);
+
+    const conflicts = await listSyncConflicts();
+    expect(conflicts).toHaveLength(1);
+    expect((await getSyncState()).conflictCount).toBe(1);
+
+    const skipped = await applyRemoteChanges(4, [
+      {
+        entityType: "board",
+        entityId: board.id,
+        deleted: false,
+        data: boardData(board, "New cloud", now + 2_000),
+        updatedAt: new Date(now + 2_000).toISOString(),
+        revision: 4,
+      },
+    ]);
+    expect(
+      skipped.skipped.some((item) => item.reason === "Conflict awaiting resolution"),
+    ).toBe(true);
+
+    await applyCloudConflict("conflict-1", {
+      deleted: false,
+      data: boardData(board, "Cloud resolved", now + 3_000),
+      updatedAt: new Date(now + 3_000).toISOString(),
+      revision: 5,
+    });
+
+    const [resolved] = await test.db
+      .select()
+      .from(boards)
+      .where(eq(boards.id, board.id));
+    expect(resolved?.name).toBe("Cloud resolved");
+    expect(await listSyncConflicts()).toHaveLength(0);
+    const revision = await getClient().execute(
+      "select revision from sync_entity_revisions where entity_type = 'board' and entity_id = ?",
+      [board.id],
+    );
+    expect(Number(revision.rows[0]?.revision)).toBe(5);
+  });
+
+  it("requeues the local conflict snapshot against the latest revision", async () => {
+    await prepareSync("remote-user-a");
+    const { board } = await makeBoard("Keep mine");
+    const now = Date.now();
+    await recordSyncConflicts([
+      {
+        id: "conflict-2",
+        entityType: "board",
+        entityId: board.id,
+        incomingDeleted: false,
+        incomingData: boardData(board, "My version", now),
+        incomingUpdatedAt: new Date(now).toISOString(),
+        winningDeleted: false,
+        winningData: boardData(board, "Cloud version", now + 1_000),
+        winningUpdatedAt: new Date(now + 1_000).toISOString(),
+        revision: 6,
+        createdAt: new Date(now + 1_000).toISOString(),
+      },
+    ]);
+
+    await keepLocalConflict("conflict-2", 7);
+    expect(await listSyncConflicts()).toHaveLength(0);
+    const pending = await listPendingChanges(0, 50);
+    const change = pending.find((item) => item.entityId === board.id);
+    expect(change?.data.name).toBe("My version");
+    expect(change?.baseRevision).toBe(7);
   });
 
   it("refuses to reuse a sync database for a different premium account", async () => {

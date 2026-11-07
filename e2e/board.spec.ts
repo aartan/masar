@@ -521,7 +521,7 @@ test.describe("board workflows", () => {
       const main = page.getByRole("main");
       await expect(main.getByText("Active boards")).toBeVisible();
       await expect(main.getByText(boardName, { exact: true }).first()).toBeVisible();
-      await expect(main.getByText("1/2", { exact: true })).toBeVisible();
+      await expect(main.getByText("1/2", { exact: true }).first()).toBeVisible();
       await expect(main.getByText("E2E due soon").first()).toBeVisible();
       await expect(main.getByText("E2E completed").first()).toBeVisible();
       await expect(main.getByText("50%", { exact: true })).toBeVisible();

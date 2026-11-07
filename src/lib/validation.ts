@@ -48,6 +48,7 @@ export const boardUpdateSchema = z
     name: nameSchema(80, "Board name").optional(),
     description: z.string().trim().max(400).nullable().optional(),
     color: z.enum(BOARD_COLORS).optional(),
+    projectId: idSchema.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "Nothing to update",
@@ -55,11 +56,13 @@ export const boardUpdateSchema = z
 
 export const projectCreateSchema = z.object({
   name: nameSchema(80, "Project name"),
+  description: z.string().trim().max(400).nullish(),
 });
 
 export const projectUpdateSchema = z
   .object({
     name: nameSchema(80, "Project name").optional(),
+    description: z.string().trim().max(400).nullable().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "Nothing to update",
@@ -76,9 +79,11 @@ export const moveBoardSchema = z.object({
 });
 
 export const deleteProjectSchema = z.object({
-  confirmation: z.literal("DELETE", {
-    message: 'Type "DELETE" exactly to confirm.',
-  }),
+  confirmation: z
+    .string()
+    .trim()
+    .min(1, "Type the project name exactly to confirm.")
+    .max(80),
 });
 
 export const whiteboardSceneSchema = z.object({

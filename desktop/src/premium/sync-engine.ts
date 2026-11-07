@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { SyncStatus } from "../../../src/lib/premium-types";
 import type { LocalSyncChange, SyncStateView } from "../../../src/sync/local";
 import {
@@ -127,11 +129,10 @@ export class SyncEngine {
 
       const firstPush = await this.pushAll(client, localState.deviceId);
       const pull = await this.pullAll(client, me.user.id, localState.lastRevision);
-      // Re-push when the pull applied remote state that our outbox still needs
-      // to react to: either it kept a newer local row (skipped) or the first
-      // push hit conflicts whose winning revision the pull has now recorded, so
-      // the retained rows can re-push with a correct base and converge.
-      const secondPush = pull.skipped > 0 || firstPush.conflicts > 0
+      // Conflicts are now surfaced to the user and must not be retried
+      // automatically. A pull can still skip a locally newer row, which is a
+      // normal local-wins reconciliation and should be pushed again.
+      const secondPush = pull.skipped > 0
         ? await this.pushAll(client, localState.deviceId)
         : { conflicts: 0, pushed: 0 };
       const state = await this.localRequest<{ state: SyncStateView }>(
@@ -143,12 +144,12 @@ export class SyncEngine {
         phase: "idle",
         pendingChanges: state.state.pendingChanges,
         lastSyncedAt: state.state.lastSyncedAt ?? new Date().toISOString(),
-        lastConflictCount: firstPush.conflicts + secondPush.conflicts,
+        lastConflictCount: state.state.conflictCount,
         skippedChanges: pull.skipped,
         lastError: null,
       });
       this.options.log(
-        `[sync] completed: pushed=${firstPush.pushed + secondPush.pushed} pulled=${pull.applied} conflicts=${firstPush.conflicts + secondPush.conflicts} skipped=${pull.skipped}`,
+        `[sync] completed: pushed=${firstPush.pushed + secondPush.pushed} pulled=${pull.applied} conflicts=${state.state.conflictCount} skipped=${pull.skipped}`,
       );
       return this.status;
     } catch (error) {
@@ -209,30 +210,46 @@ export class SyncEngine {
       const first = data.changes[0]!;
       const last = data.changes[data.changes.length - 1]!;
 
+      const pushChanges = data.changes.map<PushChange>((change) => ({
+        entityType: change.entityType,
+        entityId: change.entityId,
+        deleted: change.deleted,
+        data: change.data,
+        updatedAt: change.updatedAt,
+        baseRevision: change.baseRevision,
+      }));
+      // Retrying the exact same request must reuse the key; retrying the same
+      // outbox row after a conflict resolution is a different request and must
+      // not collide with the previous response.
+      const bodyHash = createHash("sha256")
+        .update(JSON.stringify(pushChanges))
+        .digest("hex")
+        .slice(0, 20);
       const response = await client.pushChanges(
-        data.changes.map<PushChange>((change) => ({
-          entityType: change.entityType,
-          entityId: change.entityId,
-          deleted: change.deleted,
-          data: change.data,
-          updatedAt: change.updatedAt,
-          baseRevision: change.baseRevision,
-        })),
-        `${deviceId}:${first.id}:${last.id}`,
+        pushChanges,
+        `${deviceId}:${first.id}:${last.id}:${bodyHash}`,
         deviceId,
       );
 
       pushed += response.accepted;
-      conflicts += response.rejected;
-      // Retain outbox rows the server rejected as conflicts so they are not
-      // silently dropped: the next pull records the server's winning revision
-      // and the following push re-sends them with a correct base.
+      conflicts += response.conflicts.length;
+
+      if (response.conflicts.length > 0) {
+        // Fetch the full snapshots before acknowledging so the local conflict
+        // inbox can show both versions even while offline later.
+        const details = await Promise.all(
+          response.conflicts.map((conflict) => client.conflict(conflict.id)),
+        );
+        await this.localRequest("POST", "/api/sync/conflicts/record", {
+          conflicts: details.map((detail) => detail.conflict),
+        });
+      }
+
+      // Conflict rows are safe in sync_conflicts now; the outbox rows can be
+      // removed rather than retried. Pull will skip these entities until the
+      // user resolves them.
       await this.localRequest("POST", "/api/sync/ack", {
         throughId: last.id,
-        rejected: response.conflicts.map((conflict) => ({
-          entityType: conflict.entityType,
-          entityId: conflict.entityId,
-        })),
       });
       lastId = last.id;
     }

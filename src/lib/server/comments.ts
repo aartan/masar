@@ -5,7 +5,11 @@ import { asc, eq } from "drizzle-orm";
 import { getDb, type AppDatabase } from "@/db";
 import { comments } from "@/db/schema";
 import type { Comment } from "@/lib/types";
-import { requireComment, requireTask } from "./queries";
+import {
+  assertCommentWritable,
+  assertTaskWritable,
+  requireTask,
+} from "./queries";
 import { serializeComment } from "./tasks";
 
 export async function createComment(
@@ -14,7 +18,7 @@ export async function createComment(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<Comment> {
-  await requireTask(database, taskId, ownerId);
+  await assertTaskWritable(database, taskId, ownerId);
   const id = randomUUID();
   const now = new Date();
   const author = input.author?.trim() || "You";
@@ -54,6 +58,6 @@ export async function deleteComment(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<void> {
-  await requireComment(database, commentId, ownerId);
+  await assertCommentWritable(database, commentId, ownerId);
   await database.delete(comments).where(eq(comments.id, commentId));
 }

@@ -18,12 +18,13 @@ import type {
   TaskUpdateInput,
 } from "@/lib/validation";
 import {
+  assertBoardWritable,
   assertLabelsBelongToBoard,
+  assertTaskWritable,
   fetchTasks,
   nextTaskPosition,
   requireBoard,
   requireColumn,
-  requireTask,
 } from "./queries";
 
 export function serializeSubtask(row: {
@@ -94,7 +95,7 @@ export async function createTask(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<TaskDetail> {
-  await requireBoard(database, boardId, ownerId);
+  await assertBoardWritable(database, boardId, ownerId);
   const column = await requireColumn(database, input.columnId, ownerId);
   if (column.boardId !== boardId) {
     throw new ApiError("That column does not belong to this board.", 400);
@@ -140,7 +141,7 @@ export async function updateTask(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<TaskDetail> {
-  const existing = await requireTask(database, taskId, ownerId);
+  const existing = await assertTaskWritable(database, taskId, ownerId);
   let nextColumnId = existing.columnId;
   let nextPosition = existing.position;
   let completedAt = existing.completedAt;
@@ -203,7 +204,7 @@ export async function deleteTask(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<void> {
-  await requireTask(database, taskId, ownerId);
+  await assertTaskWritable(database, taskId, ownerId);
   await database.delete(tasks).where(eq(tasks.id, taskId));
 }
 
@@ -212,7 +213,7 @@ export async function duplicateTask(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<TaskDetail> {
-  const source = await requireTask(database, taskId, ownerId);
+  const source = await assertTaskWritable(database, taskId, ownerId);
   const position = await nextTaskPosition(database, source.columnId);
   const newId = randomUUID();
   const now = new Date();
@@ -277,7 +278,7 @@ export async function reorderTasks(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<Task[]> {
-  await requireBoard(database, boardId, ownerId);
+  await assertBoardWritable(database, boardId, ownerId);
   const [boardColumns, boardTasks] = await Promise.all([
     database
       .select()

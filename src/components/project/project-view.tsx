@@ -3,17 +3,22 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   Archive,
   ArchiveRestore,
+  CalendarDays,
+  CheckCircle2,
   LayoutGrid,
+  Pencil,
   PenLine,
   Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { CreateBoardDialog } from "@/components/board/create-board-dialog";
+import { RenameProjectDialog } from "@/components/project/project-dialogs";
 import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api, errorMessage } from "@/lib/client-api";
+import { formatDateTime } from "@/lib/dates";
 import type { ProjectDetail } from "@/lib/types";
 
 const TYPE_ICON = { kanban: LayoutGrid, whiteboard: PenLine } as const;
@@ -27,14 +32,12 @@ export function ProjectView({
 }) {
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
   const project = initialData.project;
   const boards = initialData.boards;
-
-  const totals = React.useMemo(() => {
-    const tasks = boards.reduce((sum, board) => sum + board.taskCount, 0);
-    const done = boards.reduce((sum, board) => sum + board.doneCount, 0);
-    return { tasks, done, pct: tasks > 0 ? Math.round((done / tasks) * 100) : 0 };
-  }, [boards]);
+  const totals = initialData.totals;
+  const completion =
+    totals.tasks > 0 ? Math.round((totals.done / totals.tasks) * 100) : 0;
 
   async function handleArchiveToggle() {
     try {
@@ -67,6 +70,16 @@ export function ProjectView({
               )}
             </div>
             <div className="flex items-center gap-2">
+              {!project.archived && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  <Pencil className="size-4" />
+                  Project settings
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={handleArchiveToggle}>
                 {project.archived ? (
                   <>
@@ -88,10 +101,28 @@ export function ProjectView({
               )}
             </div>
           </div>
-          <p className="mt-2 text-[13px] text-muted-foreground">
-            {boards.length} board{boards.length === 1 ? "" : "s"} ·{" "}
-            {totals.tasks} task{totals.tasks === 1 ? "" : "s"} · {totals.pct}% complete
+          <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted-foreground">
+            {project.description || "No description yet."}
           </p>
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <LayoutGrid className="size-3.5" />
+              {project.kanbanCount} Kanban
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <PenLine className="size-3.5" />
+              {project.whiteboardCount} Whiteboard
+            </span>
+            <span>
+              {totals.tasks} task{totals.tasks === 1 ? "" : "s"}
+            </span>
+            <span>{completion}% complete</span>
+            {totals.overdue > 0 && (
+              <span className="text-rose-600 dark:text-rose-400">
+                {totals.overdue} overdue
+              </span>
+            )}
+          </div>
         </header>
 
         <section className="mt-7">
@@ -161,6 +192,102 @@ export function ProjectView({
             </div>
           )}
         </section>
+
+        <div className="mt-5 grid gap-5 lg:grid-cols-2">
+          <Card className="animate-rise">
+            <div className="flex items-center gap-2 border-b border-border/60 px-5 py-4">
+              <CalendarDays className="size-4 text-muted-foreground" />
+              <div>
+                <p className="text-[13px] font-semibold">Upcoming</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Open tasks with due dates in this project.
+                </p>
+              </div>
+            </div>
+            <div className="p-4">
+              {initialData.upcoming.length === 0 ? (
+                <p className="py-8 text-center text-[12px] text-muted-foreground">
+                  Nothing due soon.
+                </p>
+              ) : (
+                <ul className="divide-y divide-border/60">
+                  {initialData.upcoming.map((task) => (
+                    <li key={task.id}>
+                      <Link
+                        to={`/boards/${task.boardId}?task=${task.id}`}
+                        className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-accent/50"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[12.5px] font-medium">
+                            {task.title}
+                          </span>
+                          <span className="block truncate text-[10.5px] text-muted-foreground">
+                            {task.boardName} / {task.columnName}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-[10.5px] text-muted-foreground">
+                          {task.dueDate}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </Card>
+
+          <Card className="animate-rise">
+            <div className="flex items-center gap-2 border-b border-border/60 px-5 py-4">
+              <CheckCircle2 className="size-4 text-muted-foreground" />
+              <div>
+                <p className="text-[13px] font-semibold">Recent activity</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Task and whiteboard updates in this project.
+                </p>
+              </div>
+            </div>
+            <div className="p-4">
+              {initialData.activity.length === 0 ? (
+                <p className="py-8 text-center text-[12px] text-muted-foreground">
+                  No activity yet.
+                </p>
+              ) : (
+                <ul className="divide-y divide-border/60">
+                  {initialData.activity.slice(0, 6).map((item) => (
+                    <li key={item.id}>
+                      <Link
+                        to={
+                          item.kind === "task"
+                            ? `/boards/${item.boardId}?task=${item.id.slice("task:".length)}`
+                            : `/boards/${item.boardId}`
+                        }
+                        className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-accent/50"
+                      >
+                        {item.boardType === "whiteboard" ? (
+                          <PenLine className="size-3.5 shrink-0 text-muted-foreground/60" />
+                        ) : (
+                          <LayoutGrid className="size-3.5 shrink-0 text-muted-foreground/60" />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[12.5px]">
+                            {item.title}
+                          </span>
+                          <span className="block truncate text-[10.5px] text-muted-foreground">
+                            {item.boardName}
+                            {item.detail ? ` · ${item.detail}` : ""}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground/70">
+                          {formatDateTime(item.timestamp)}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </Card>
+        </div>
       </div>
 
       <CreateBoardDialog
@@ -168,6 +295,12 @@ export function ProjectView({
         projectId={project.id}
         onOpenChange={setCreateOpen}
         onCreated={() => onChanged?.()}
+      />
+      <RenameProjectDialog
+        project={project}
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onDone={() => onChanged?.()}
       />
       <ProjectBackLink />
     </div>

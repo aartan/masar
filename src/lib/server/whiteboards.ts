@@ -7,9 +7,10 @@ import type { WhiteboardScene } from "@/lib/types";
 import { assertProjectWritable } from "./queries";
 
 /**
- * Maximum serialized scene size. Matches the cloud sync entity ceiling
- * (MAX_ENTITY_BYTES = 2 MiB) so a scene that saves locally can always sync; the
- * renderer compresses embedded images and warns before exceeding it.
+ * Interim maximum serialized scene size. The cloud entity budget is larger
+ * (4 MiB) to leave room for JSON escaping and the sync envelope, so a scene
+ * that saves locally can fit when synced. R2 will later remove embedded images
+ * from this payload.
  */
 export const MAX_SCENE_BYTES = 2 * 1024 * 1024;
 

@@ -70,7 +70,7 @@ function readStoredView(): CalendarViewMode {
 }
 
 export function CalendarView({ initialData }: { initialData: CalendarData }) {
-  const { refreshBoards } = useWorkspace();
+  const { refreshBoards, projects } = useWorkspace();
   const [tasks, setTasks] = React.useState<Task[]>(initialData.tasks);
   const [labels, setLabels] = React.useState<Label[]>(initialData.labels);
   const [cursor, setCursor] = React.useState<Date>(() => new Date());
@@ -305,6 +305,11 @@ export function CalendarView({ initialData }: { initialData: CalendarData }) {
   const selectedBoardLabels = selectedTask
     ? labels.filter((label) => label.boardId === selectedTask.boardId)
     : [];
+  const selectedTaskReadOnly = selectedTask
+    ? (projects.find(
+        (project) => project.id === boardMap.get(selectedTask.boardId)?.projectId,
+      )?.archived ?? false)
+    : false;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-canvas">
@@ -498,6 +503,7 @@ export function CalendarView({ initialData }: { initialData: CalendarData }) {
         columns={selectedBoardColumns}
         labels={selectedBoardLabels}
         open={Boolean(selectedTask)}
+        readOnly={selectedTaskReadOnly}
         onOpenChange={handleSheetOpenChange}
         onTaskUpdated={handleTaskUpdated}
         onTaskDeleted={handleTaskDeleted}

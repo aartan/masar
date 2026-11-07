@@ -37,6 +37,7 @@ beforeEach(async () => {
   delete process.env.MASAR_LOCAL_DB_URL;
   await test.db.delete(boards);
   await test.client.execute("delete from sync_changes");
+  await test.client.execute("delete from sync_conflicts");
   await test.client.execute(
     "update sync_state set remote_user_id = null, last_revision = 0, last_synced_at = null, bootstrapped = 0, applying = 0 where id = 1",
   );
@@ -148,6 +149,101 @@ describe("sync route workspace scoping", () => {
       .from(boards)
       .where(eq(boards.id, "remote-board-1"));
     expect(row?.name).toBe("Remote board");
+  });
+
+  it("records, lists, and resolves local sync conflicts", async () => {
+    process.env.MASAR_SYNC_SCOPE = "remote-user-a";
+    await request("/api/sync/prepare", {
+      method: "POST",
+      body: JSON.stringify({ remoteUserId: "remote-user-a" }),
+    });
+    const now = Date.now();
+    await request("/api/sync/apply", {
+      method: "POST",
+      body: JSON.stringify({
+        nextRevision: 1,
+        changes: [
+          {
+            entityType: "board",
+            entityId: "conflict-board",
+            deleted: false,
+            data: {
+              id: "conflict-board",
+              name: "Cloud original",
+              description: null,
+              color: "sage",
+              position: 0,
+              created_at: now,
+              updated_at: now,
+            },
+            updatedAt: new Date(now).toISOString(),
+            revision: 1,
+          },
+        ],
+      }),
+    });
+
+    const record = await request("/api/sync/conflicts/record", {
+      method: "POST",
+      body: JSON.stringify({
+        conflicts: [
+          {
+            id: "conflict-1",
+            entityType: "board",
+            entityId: "conflict-board",
+            incomingDeleted: false,
+            incomingData: { id: "conflict-board", name: "Local version" },
+            incomingUpdatedAt: new Date(now).toISOString(),
+            winningDeleted: false,
+            winningData: { id: "conflict-board", name: "Cloud original" },
+            winningUpdatedAt: new Date(now + 1_000).toISOString(),
+            revision: 1,
+            createdAt: new Date(now + 1_000).toISOString(),
+          },
+        ],
+      }),
+    });
+    expect(record.status).toBe(200);
+
+    const list = await request("/api/sync/conflicts");
+    const listed = await json<{ conflicts: Array<{ id: string; entityLabel: string | null }> }>(
+      list,
+    );
+    expect(listed.conflicts).toHaveLength(1);
+    expect(listed.conflicts[0]).toMatchObject({ id: "conflict-1" });
+
+    const resolved = await request(
+      "/api/sync/conflicts/conflict-1/apply-cloud",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          current: {
+            deleted: false,
+            data: {
+              id: "conflict-board",
+              name: "Cloud resolved",
+              description: null,
+              color: "sage",
+              position: 0,
+              created_at: now,
+              updated_at: now + 2_000,
+            },
+            updatedAt: new Date(now + 2_000).toISOString(),
+            revision: 2,
+          },
+        }),
+      },
+    );
+    expect(resolved.status).toBe(200);
+
+    const [row] = await test.db
+      .select()
+      .from(boards)
+      .where(eq(boards.id, "conflict-board"));
+    expect(row?.name).toBe("Cloud resolved");
+    expect(await json<{ conflicts: unknown[] }>(await request("/api/sync/conflicts"))).toEqual({
+      conflicts: [],
+    });
   });
 
   it("reports the premium account through /api/me in sync mode", async () => {

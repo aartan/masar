@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { api } from "@/lib/client-api";
-import type { BoardSummary } from "@/lib/types";
+import type { BoardSummary, ProjectSummary } from "@/lib/types";
 
 interface WorkspaceUser {
   name: string;
@@ -9,12 +9,20 @@ interface WorkspaceUser {
 }
 
 interface WorkspaceContextValue {
+  projects: ProjectSummary[];
   boards: BoardSummary[];
   user: WorkspaceUser;
   loading: boolean;
   error: string | null;
+  refresh(): Promise<void>;
   refreshBoards(): Promise<void>;
-  reorderBoards(boardIds: string[]): Promise<void>;
+  reorderProjects(projectIds: string[]): Promise<void>;
+  /**
+   * Set the exact ordering of a project's boards, moving any board dragged in
+   * from another project. Powers both reorder-within-project and cross-project
+   * drag.
+   */
+  moveBoards(projectId: string, boardIds: string[]): Promise<void>;
 }
 
 const FALLBACK_USER: WorkspaceUser = {
@@ -25,18 +33,23 @@ const FALLBACK_USER: WorkspaceUser = {
 const WorkspaceContext = React.createContext<WorkspaceContextValue | null>(null);
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
+  const [projects, setProjects] = React.useState<ProjectSummary[]>([]);
   const [boards, setBoards] = React.useState<BoardSummary[]>([]);
   const [user, setUser] = React.useState<WorkspaceUser>(FALLBACK_USER);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const requestRef = React.useRef(0);
 
-  const refreshBoards = React.useCallback(async () => {
+  const refresh = React.useCallback(async () => {
     const request = ++requestRef.current;
     try {
-      const data = await api<{ boards: BoardSummary[] }>("/api/boards");
+      const [projectData, boardData] = await Promise.all([
+        api<{ projects: ProjectSummary[] }>("/api/projects"),
+        api<{ boards: BoardSummary[] }>("/api/boards"),
+      ]);
       if (request !== requestRef.current) return;
-      setBoards(data.boards);
+      setProjects(projectData.projects);
+      setBoards(boardData.boards);
       setError(null);
     } catch (caught) {
       if (request !== requestRef.current) return;
@@ -46,32 +59,55 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const reorderBoards = React.useCallback(
-    async (boardIds: string[]) => {
-      const byId = new Map(boards.map((board) => [board.id, board]));
-      if (
-        boardIds.length !== boards.length ||
-        new Set(boardIds).size !== boardIds.length
-      ) {
-        throw new Error("Could not reorder boards.");
-      }
-      const next = boardIds.map((id) => {
-        const board = byId.get(id);
-        if (!board) throw new Error("Could not reorder boards.");
-        return board;
+  // Kept for callers that only need the board list refreshed after a mutation.
+  const refreshBoards = refresh;
+
+  const reorderProjects = React.useCallback(
+    async (projectIds: string[]) => {
+      const byId = new Map(projects.map((project) => [project.id, project]));
+      const next = projectIds.map((id) => {
+        const project = byId.get(id);
+        if (!project) throw new Error("Could not reorder projects.");
+        return project;
       });
 
       const request = ++requestRef.current;
-      const previous = boards;
-      setBoards(next.map((board, index) => ({ ...board, position: index })));
+      const previous = projects;
+      setProjects(next.map((project, index) => ({ ...project, position: index })));
       try {
-        const data = await api<{ boards: BoardSummary[] }>(
-          "/api/boards/reorder",
-          {
-            method: "POST",
-            body: JSON.stringify({ boardIds }),
-          },
+        const data = await api<{ projects: ProjectSummary[] }>(
+          "/api/projects/reorder",
+          { method: "POST", body: JSON.stringify({ projectIds }) },
         );
+        if (request !== requestRef.current) return;
+        setProjects(data.projects);
+        setError(null);
+      } catch (caught) {
+        if (request === requestRef.current) setProjects(previous);
+        throw caught;
+      }
+    },
+    [projects],
+  );
+
+  const moveBoards = React.useCallback(
+    async (projectId: string, boardIds: string[]) => {
+      const request = ++requestRef.current;
+      const previous = boards;
+      // Optimistically re-home and re-order the affected boards.
+      const order = new Map(boardIds.map((id, index) => [id, index]));
+      setBoards((current) =>
+        current.map((board) =>
+          order.has(board.id)
+            ? { ...board, projectId, position: order.get(board.id)! }
+            : board,
+        ),
+      );
+      try {
+        const data = await api<{ boards: BoardSummary[] }>("/api/boards/move", {
+          method: "POST",
+          body: JSON.stringify({ projectId, boardIds }),
+        });
         if (request !== requestRef.current) return;
         setBoards(data.boards);
         setError(null);
@@ -87,12 +123,14 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     let active = true;
     void (async () => {
       try {
-        const [me, boardData] = await Promise.all([
+        const [me, projectData, boardData] = await Promise.all([
           api<{ user: WorkspaceUser }>("/api/me"),
+          api<{ projects: ProjectSummary[] }>("/api/projects"),
           api<{ boards: BoardSummary[] }>("/api/boards"),
         ]);
         if (!active) return;
         setUser({ name: me.user.name, email: me.user.email });
+        setProjects(projectData.projects);
         setBoards(boardData.boards);
         setError(null);
       } catch (caught) {
@@ -112,8 +150,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // When a background sync cycle completes, the local database may contain
-  // changes from another device (or a workspace import). Refresh the board
-  // list so the UI reflects them without a manual reload.
+  // changes from another device (or a workspace import). Refresh the hierarchy
+  // so the UI reflects them without a manual reload.
   React.useEffect(() => {
     const bridge = window.masarDesktop;
     if (!bridge) return;
@@ -121,13 +159,23 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     return bridge.onSyncStatus((status) => {
       const completed = previousPhase === "syncing" && status.phase === "idle";
       previousPhase = status.phase;
-      if (completed) void refreshBoards();
+      if (completed) void refresh();
     });
-  }, [refreshBoards]);
+  }, [refresh]);
 
   const value = React.useMemo(
-    () => ({ boards, user, loading, error, refreshBoards, reorderBoards }),
-    [boards, user, loading, error, refreshBoards, reorderBoards],
+    () => ({
+      projects,
+      boards,
+      user,
+      loading,
+      error,
+      refresh,
+      refreshBoards,
+      reorderProjects,
+      moveBoards,
+    }),
+    [projects, boards, user, loading, error, refresh, refreshBoards, reorderProjects, moveBoards],
   );
 
   return (

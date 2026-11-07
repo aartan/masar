@@ -18,12 +18,15 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { boards, user, loading, error, refreshBoards, reorderBoards } =
+  const { projects, boards, user, loading, error, refresh, reorderProjects, moveBoards } =
     useWorkspace();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
-  const [createBoardOpen, setCreateBoardOpen] = React.useState(false);
+  const [createBoard, setCreateBoard] = React.useState<{
+    open: boolean;
+    projectId: string | null;
+  }>({ open: false, projectId: null });
 
   React.useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -50,9 +53,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  function openCreateBoard() {
+  function openCreateBoard(projectId: string | null = null) {
     setMobileOpen(false);
-    setCreateBoardOpen(true);
+    setCreateBoard({ open: true, projectId });
   }
 
   if (loading) {
@@ -85,7 +88,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
             {error}
           </p>
-          <Button className="mt-5" onClick={() => void refreshBoards()}>
+          <Button className="mt-5" onClick={() => void refresh()}>
             Try again
           </Button>
         </div>
@@ -98,12 +101,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="hidden w-[264px] shrink-0 border-r border-sidebar-border lg:flex">
         <div className="w-full">
           <SidebarContent
+            projects={projects}
             boards={boards}
             user={user}
             onOpenSearch={() => setSearchOpen(true)}
             onCreateBoard={openCreateBoard}
             onOpenShortcuts={() => setShortcutsOpen(true)}
-            onReorderBoards={reorderBoards}
+            onReorderProjects={reorderProjects}
+            onMoveBoards={moveBoards}
+            onRefresh={refresh}
           />
         </div>
       </aside>
@@ -117,6 +123,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </SheetDescription>
           </SheetHeader>
           <SidebarContent
+            projects={projects}
             boards={boards}
             user={user}
             onOpenSearch={() => {
@@ -131,7 +138,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             onNavigate={() => setMobileOpen(false)}
             showClose
             onClose={() => setMobileOpen(false)}
-            onReorderBoards={reorderBoards}
+            onReorderProjects={reorderProjects}
+            onMoveBoards={moveBoards}
+            onRefresh={refresh}
           />
         </SheetContent>
       </Sheet>
@@ -169,9 +178,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       />
       <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <CreateBoardDialog
-        open={createBoardOpen}
-        onOpenChange={setCreateBoardOpen}
-        onCreated={() => void refreshBoards()}
+        open={createBoard.open}
+        projectId={createBoard.projectId}
+        onOpenChange={(open) =>
+          setCreateBoard((state) => ({ ...state, open }))
+        }
+        onCreated={() => void refresh()}
       />
     </div>
   );

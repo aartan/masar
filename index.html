@@ -10,6 +10,12 @@
     />
     <title>Masar — Kanban project management</title>
     <script>
+      // Load Excalidraw's fonts from the bundled, self-hosted copy instead of
+      // its default CDN so whiteboards work offline in packaged Electron. Must
+      // be set before the Excalidraw module loads. The trailing slash matters.
+      window.EXCALIDRAW_ASSET_PATH = "/excalidraw-assets/";
+    </script>
+    <script>
       (function () {
         try {
           var bridgeTheme =

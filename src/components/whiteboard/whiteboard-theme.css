@@ -1,0 +1,51 @@
+/*
+ * Retheme Excalidraw's indigo accent to a neutral slate that matches Masar's
+ * UI greys. A quiet accent keeps the canvas content-first: the shapes and
+ * colours a user draws stand out instead of competing with a vivid brand
+ * accent. Values follow Masar's low-chroma neutrals (--foreground, --muted,
+ * --secondary, --accent) from globals.css.
+ *
+ * Scoped to .masar-whiteboard and split by Excalidraw's light / .theme--dark
+ * classes so nothing else is affected. Imported after Excalidraw's own
+ * stylesheet so these win.
+ */
+
+/* Light theme — confident dark slate accent on quiet light-slate surfaces. */
+.masar-whiteboard .excalidraw {
+  --color-primary: oklch(0.42 0.012 145);
+  --color-primary-darker: oklch(0.36 0.012 145);
+  --color-primary-darkest: oklch(0.3 0.012 145);
+  --color-primary-hover: oklch(0.36 0.012 145);
+  --color-primary-light: oklch(0.93 0.007 95);
+  --color-primary-light-darker: oklch(0.9 0.007 95);
+  --color-brand-hover: oklch(0.36 0.012 145);
+  --color-brand-active: oklch(0.3 0.012 145);
+  --color-selection: oklch(0.42 0.012 145);
+  --focus-highlight-color: oklch(0.93 0.007 95);
+  --button-color: oklch(0.42 0.012 145);
+  --button-color-darker: oklch(0.36 0.012 145);
+  --button-color-darkest: oklch(0.3 0.012 145);
+  /* Selected-tool surface (active toolbar button) + its icon/text. */
+  --color-surface-primary-container: oklch(0.93 0.007 95);
+  --color-on-primary-container: oklch(0.3 0.012 145);
+}
+
+/* Dark theme — light slate accent on quiet dark-slate surfaces. */
+.masar-whiteboard .excalidraw.theme--dark {
+  --color-primary: oklch(0.8 0.01 110);
+  --color-primary-darker: oklch(0.85 0.01 110);
+  --color-primary-darkest: oklch(0.9 0.01 110);
+  --color-primary-hover: oklch(0.85 0.01 110);
+  --color-primary-light: oklch(0.3 0.012 150);
+  --color-primary-light-darker: oklch(0.26 0.01 150);
+  --color-brand-hover: oklch(0.85 0.01 110);
+  --color-brand-active: oklch(0.9 0.01 110);
+  --color-selection: oklch(0.8 0.01 110);
+  --focus-highlight-color: oklch(0.3 0.012 150);
+  --button-color: oklch(0.8 0.01 110);
+  --button-color-darker: oklch(0.85 0.01 110);
+  --button-color-darkest: oklch(0.9 0.01 110);
+  /* Selected-tool surface + its icon/text, tuned for the dark canvas. */
+  --color-surface-primary-container: oklch(0.32 0.012 150);
+  --color-on-primary-container: oklch(0.9 0.012 110);
+}

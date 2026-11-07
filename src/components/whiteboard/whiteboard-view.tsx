@@ -16,6 +16,7 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { OrderedExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import "@excalidraw/excalidraw/index.css";
+import "./whiteboard-theme.css";
 
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { useTheme } from "@/components/theme-provider";
@@ -205,7 +206,7 @@ export function WhiteboardView({ board }: { board: BoardSummary }) {
           <SaveIndicator status={status} onRetry={retry} />
         </div>
       </div>
-      <div className="min-h-0 flex-1">
+      <div className="masar-whiteboard min-h-0 flex-1">
         {initialData === null ? (
           <div className="grid h-full place-items-center text-muted-foreground">
             <Loader2 className="size-5 animate-spin" />

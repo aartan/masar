@@ -57,3 +57,14 @@
   --color-surface-primary-container: oklch(0.32 0.012 150);
   --color-on-primary-container: oklch(0.9 0.012 110);
 }
+
+/*
+ * Hide chrome Masar doesn't want: the main menu (hamburger, top-left) and the
+ * help button (?, bottom-right). Excalidraw offers no prop to disable these,
+ * so hide them by their stable class names. Scoped to the whiteboard so the
+ * canvas stays clean and keyboard-first.
+ */
+.masar-whiteboard .excalidraw .dropdown-menu-button,
+.masar-whiteboard .excalidraw .help-icon {
+  display: none !important;
+}

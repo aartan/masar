@@ -206,7 +206,17 @@ export function WhiteboardView({ board }: { board: BoardSummary }) {
           <SaveIndicator status={status} onRetry={retry} />
         </div>
       </div>
-      <div className="masar-whiteboard min-h-0 flex-1">
+      <div
+        className="masar-whiteboard min-h-0 flex-1"
+        onKeyDownCapture={(event) => {
+          // The help button is hidden; also swallow its "?" shortcut so the
+          // help dialog can't be opened from the whiteboard.
+          if (event.key === "?") {
+            event.stopPropagation();
+            event.preventDefault();
+          }
+        }}
+      >
         {initialData === null ? (
           <div className="grid h-full place-items-center text-muted-foreground">
             <Loader2 className="size-5 animate-spin" />

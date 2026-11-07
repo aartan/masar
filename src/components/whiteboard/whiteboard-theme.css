@@ -5,13 +5,19 @@
  * accent. Values follow Masar's low-chroma neutrals (--foreground, --muted,
  * --secondary, --accent) from globals.css.
  *
- * Scoped to .masar-whiteboard and split by Excalidraw's light / .theme--dark
- * classes so nothing else is affected. Imported after Excalidraw's own
- * stylesheet so these win.
+ * The in-canvas UI lives under .masar-whiteboard, but Excalidraw renders
+ * modals (Help, command palette, dialogs), context menus and the eye-dropper
+ * into body-level portals (.excalidraw-modal-container /
+ * .excalidraw-eye-dropper-container) that also carry the .excalidraw class.
+ * Those portals are NOT inside .masar-whiteboard, so the accent is applied to
+ * them directly as well. Imported after Excalidraw's own stylesheet so these
+ * overrides win.
  */
 
 /* Light theme — confident dark slate accent on quiet light-slate surfaces. */
-.masar-whiteboard .excalidraw {
+.masar-whiteboard .excalidraw,
+.excalidraw.excalidraw-modal-container,
+.excalidraw.excalidraw-eye-dropper-container {
   --color-primary: oklch(0.42 0.012 145);
   --color-primary-darker: oklch(0.36 0.012 145);
   --color-primary-darkest: oklch(0.3 0.012 145);
@@ -31,7 +37,9 @@
 }
 
 /* Dark theme — light slate accent on quiet dark-slate surfaces. */
-.masar-whiteboard .excalidraw.theme--dark {
+.masar-whiteboard .excalidraw.theme--dark,
+.excalidraw.excalidraw-modal-container.theme--dark,
+.excalidraw.excalidraw-eye-dropper-container.theme--dark {
   --color-primary: oklch(0.8 0.01 110);
   --color-primary-darker: oklch(0.85 0.01 110);
   --color-primary-darkest: oklch(0.9 0.01 110);

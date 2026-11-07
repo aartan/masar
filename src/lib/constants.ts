@@ -22,6 +22,13 @@ export const BOARD_COLORS = [
 ] as const;
 export type BoardColor = (typeof BOARD_COLORS)[number];
 
+export const BOARD_TYPES = ["kanban", "whiteboard"] as const;
+export type BoardType = (typeof BOARD_TYPES)[number];
+
+/** Name given to the project created for existing boards during migration and
+ * to the first project of a brand-new workspace. Fully editable afterwards. */
+export const DEFAULT_PROJECT_NAME = "General";
+
 export const LABEL_COLORS = [
   "sage",
   "sky",

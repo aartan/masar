@@ -101,6 +101,35 @@ export const verifications = sqliteTable(
   (table) => [index("verifications_identifier_idx").on(table.identifier)],
 );
 
+export const projects = sqliteTable(
+  "projects",
+  {
+    id: text("id").primaryKey(),
+    /**
+     * Nullable for migration-first deployments, mirroring boards.ownerId: a
+     * rolling upgrade may create projects before the new code is everywhere,
+     * and the legacy claim command assigns unscoped rows to their owner.
+     */
+    ownerId: text("owner_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    name: text("name").notNull(),
+    position: integer("position").notNull().default(0),
+    /**
+     * Archiving preserves all contents and makes them read-only; it is a
+     * workspace-level flag, not a sync exclusion, so archived projects still
+     * synchronise and never diverge between devices.
+     */
+    archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+    archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("projects_owner_position_idx").on(table.ownerId, table.position),
+  ],
+);
+
 export const boards = sqliteTable(
   "boards",
   {
@@ -114,6 +143,20 @@ export const boards = sqliteTable(
     ownerId: text("owner_id").references(() => users.id, {
       onDelete: "cascade",
     }),
+    /**
+     * The project this board belongs to. Nullable for migration safety (the
+     * migration assigns every existing board to the owner's default project,
+     * and the legacy claim backfills unscoped boards).
+     */
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "cascade",
+    }),
+    /**
+     * Board type, immutable after creation. 'kanban' is the default so every
+     * existing board keeps its behaviour; 'whiteboard' renders an Excalidraw
+     * canvas and has no columns.
+     */
+    type: text("type").notNull().default("kanban"),
     name: text("name").notNull(),
     description: text("description"),
     color: text("color").notNull().default("sage"),
@@ -124,6 +167,7 @@ export const boards = sqliteTable(
   (table) => [
     index("boards_position_idx").on(table.position),
     index("boards_owner_position_idx").on(table.ownerId, table.position),
+    index("boards_project_position_idx").on(table.projectId, table.position),
   ],
 );
 
@@ -245,6 +289,22 @@ export const comments = sqliteTable(
   },
   (table) => [index("comments_task_idx").on(table.taskId, table.createdAt)],
 );
+
+/**
+ * Excalidraw scene for a whiteboard board, keyed one-to-one by board id. The
+ * scene JSON (elements, appState, embedded files) is kept out of the boards
+ * table so board-list reads stay small and the size budget is isolated. A
+ * single `whiteboard` sync entity carries this row.
+ */
+export const whiteboards = sqliteTable("whiteboards", {
+  boardId: text("board_id")
+    .primaryKey()
+    .references(() => boards.id, { onDelete: "cascade" }),
+  scene: text("scene").notNull().default("{}"),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch() * 1000)`),
+});
 
 /**
  * Local-only synchronisation bookkeeping. The remote API never reads these
@@ -394,12 +454,14 @@ export const stripeWebhookEvents = sqliteTable("stripe_webhook_events", {
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type AccountRow = typeof accounts.$inferSelect;
+export type ProjectRow = typeof projects.$inferSelect;
 export type BoardRow = typeof boards.$inferSelect;
 export type ColumnRow = typeof columns.$inferSelect;
 export type TaskRow = typeof tasks.$inferSelect;
 export type LabelRow = typeof labels.$inferSelect;
 export type SubtaskRow = typeof subtasks.$inferSelect;
 export type CommentRow = typeof comments.$inferSelect;
+export type WhiteboardRow = typeof whiteboards.$inferSelect;
 export type BillingCustomerRow = typeof billingCustomers.$inferSelect;
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
 export type PendingSignupRow = typeof pendingSignups.$inferSelect;

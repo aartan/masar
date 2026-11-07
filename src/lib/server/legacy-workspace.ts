@@ -1,7 +1,7 @@
 import { count, eq, isNull, or } from "drizzle-orm";
 
 import type { AppDatabase } from "@/db";
-import { boards, users } from "@/db/schema";
+import { boards, projects, users } from "@/db/schema";
 
 export const LEGACY_WORKSPACE_ID = "legacy-workspace";
 
@@ -52,6 +52,15 @@ export async function claimLegacyWorkspace(
   }
 
   await database.transaction(async (tx) => {
+    // Reassign projects first so the boards' project_id FK still resolves after
+    // the legacy user row (and its cascade) is removed. Both legacy and
+    // NULL-owned rows move to the explicit account.
+    await tx
+      .update(projects)
+      .set({ ownerId: owner.id })
+      .where(
+        or(eq(projects.ownerId, LEGACY_WORKSPACE_ID), isNull(projects.ownerId)),
+      );
     await tx
       .update(boards)
       .set({ ownerId: owner.id })

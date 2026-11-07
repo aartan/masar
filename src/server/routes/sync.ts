@@ -65,7 +65,7 @@ const remoteConflictSchema = z.object({
 });
 
 const recordConflictsSchema = z.object({
-  conflicts: z.array(remoteConflictSchema).max(100),
+  conflicts: z.array(remoteConflictSchema).max(2_000),
 });
 
 const latestEntitySchema = z.object({

@@ -602,7 +602,21 @@ async function conflictContext(
     }
     case "task_label": {
       const context = await taskContext(asString(data.task_id));
-      return { ...context, entityLabel: "Task label" };
+      const labelId = asString(
+        data.label_id,
+        entityId.split(":", 2)[1] ?? "",
+      );
+      const label = labelId
+        ? await tx.execute({
+            sql: "select name from labels where id = ? limit 1",
+            args: [labelId],
+          })
+        : null;
+      const name =
+        typeof label?.rows[0]?.name === "string"
+          ? label.rows[0].name
+          : "Task label";
+      return { ...context, entityLabel: name };
     }
     case "subtask": {
       const context = await taskContext(asString(data.task_id));

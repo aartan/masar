@@ -6,6 +6,7 @@ import {
   PremiumApiError,
   type PremiumApiClient,
   type PushChange,
+  type RemoteConflictView,
 } from "./client";
 
 interface LocalApplyResponse {
@@ -235,14 +236,22 @@ export class SyncEngine {
       conflicts += response.conflicts.length;
 
       if (response.conflicts.length > 0) {
-        // Fetch the full snapshots before acknowledging so the local conflict
-        // inbox can show both versions even while offline later.
-        const details = await Promise.all(
-          response.conflicts.map((conflict) => client.conflict(conflict.id)),
-        );
-        await this.localRequest("POST", "/api/sync/conflicts/record", {
-          conflicts: details.map((detail) => detail.conflict),
-        });
+        // Fetch and record conflict snapshots in bounded chunks. A board
+        // reorder can produce up to a full batch of conflicts, and sending
+        // hundreds in one request would exceed the local route limit.
+        const conflicts: RemoteConflictView[] = [];
+        for (let offset = 0; offset < response.conflicts.length; offset += 20) {
+          const chunk = response.conflicts.slice(offset, offset + 20);
+          const details = await Promise.all(
+            chunk.map((conflict) => client.conflict(conflict.id)),
+          );
+          conflicts.push(...details.map((detail) => detail.conflict));
+        }
+        for (let offset = 0; offset < conflicts.length; offset += 50) {
+          await this.localRequest("POST", "/api/sync/conflicts/record", {
+            conflicts: conflicts.slice(offset, offset + 50),
+          });
+        }
       }
 
       // Conflict rows are safe in sync_conflicts now; the outbox rows can be

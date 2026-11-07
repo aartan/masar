@@ -335,11 +335,19 @@ export async function reorderTasks(
         const existing = taskMap.get(taskId);
         if (!existing) continue;
 
-        let completedAt = existing.completedAt;
-        if (targetColumn.isDone) {
-          completedAt = existing.completedAt ?? now;
-        } else {
-          completedAt = null;
+        const completedAt = targetColumn.isDone
+          ? existing.completedAt ?? now
+          : null;
+        // A task drag rewrites the whole order payload, but only the moved
+        // task and tasks whose positions genuinely shifted need a local write
+        // (and therefore a sync change).
+        if (
+          existing.columnId === targetColumn.id &&
+          existing.position === index &&
+          (existing.completedAt?.getTime() ?? null) ===
+            (completedAt?.getTime() ?? null)
+        ) {
+          continue;
         }
 
         await tx

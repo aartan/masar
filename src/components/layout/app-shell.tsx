@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Menu, Search } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Menu, Search, TriangleAlert } from "lucide-react";
 
 import { Logo } from "@/components/brand/logo";
 import { SidebarContent } from "@/components/layout/sidebar";
@@ -178,6 +179,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Button>
           </div>
         </header>
+
+        {conflictCount > 0 && (
+          <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-amber-500/25 bg-amber-500/[0.08] px-4 py-2 text-[12px]">
+            <span className="inline-flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-200">
+              <TriangleAlert className="size-3.5" />
+              {conflictCount} sync conflict{conflictCount === 1 ? "" : "s"} need
+              your review
+            </span>
+            <span className="text-muted-foreground">
+              Changes made on different devices are waiting for you to choose a
+              version.
+            </span>
+            <Link
+              to="/conflicts"
+              className="ml-auto font-medium text-primary hover:underline"
+            >
+              Review conflicts
+            </Link>
+          </div>
+        )}
 
         <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
       </div>

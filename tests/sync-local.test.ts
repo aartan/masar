@@ -7,7 +7,7 @@ import { getClient, getDb } from "@/db";
 import { getLocalUser, LOCAL_USER_ID } from "@/lib/server/desktop";
 import { createBoard, getBoardDetail } from "@/lib/server/boards";
 import { saveWhiteboardScene } from "@/lib/server/whiteboards";
-import { createTask } from "@/lib/server/tasks";
+import { createTask, reorderTasks } from "@/lib/server/tasks";
 import { updateBoard } from "@/lib/server/boards";
 import {
   acknowledgeChanges,
@@ -102,6 +102,57 @@ describe("local sync outbox", () => {
     await acknowledgeChanges(last.id);
     pending = await listPendingChanges(0, 500);
     expect(pending).toHaveLength(0);
+  });
+
+  it("queues only the tasks affected by a reorder", async () => {
+    await prepareSync("remote-user-a");
+    const { board, detail } = await makeBoard("Reorder board");
+    const [firstColumn, secondColumn, thirdColumn] = detail.columns;
+    const first = await createTask(
+      board.id,
+      { columnId: firstColumn!.id, title: "First" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+    const second = await createTask(
+      board.id,
+      { columnId: secondColumn!.id, title: "Second" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+    const third = await createTask(
+      board.id,
+      { columnId: thirdColumn!.id, title: "Third" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+
+    const allDetail = await getBoardDetail(board.id, LOCAL_USER_ID, test.db);
+    await getClient().execute("delete from sync_changes");
+
+    await reorderTasks(
+      board.id,
+      {
+        columns: allDetail.columns.map((column) => ({
+          columnId: column.id,
+          taskIds:
+            column.id === firstColumn!.id
+              ? []
+              : column.id === secondColumn!.id
+                ? [second.id, first.id]
+                : column.id === thirdColumn!.id
+                  ? [third.id]
+                  : [],
+        })),
+      },
+      LOCAL_USER_ID,
+      test.db,
+    );
+
+    const pending = await listPendingChanges(0, 500);
+    const taskChanges = pending.filter((change) => change.entityType === "task");
+    expect(taskChanges).toHaveLength(1);
+    expect(taskChanges[0]?.entityId).toBe(first.id);
   });
 
   it("applies remote changes without echoing them back", async () => {

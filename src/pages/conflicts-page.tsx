@@ -1,5 +1,13 @@
 import * as React from "react";
-import { AlertTriangle, Check, Cloud, Laptop, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Cloud,
+  Laptop,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { useWorkspace } from "@/components/layout/workspace-provider";
@@ -7,9 +15,15 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { api, errorMessage } from "@/lib/client-api";
+import {
+  buildConflictDiff,
+  diffText,
+  type ConflictDiffRow,
+  type ConflictLookup,
+} from "@/lib/conflict-diff";
 import { formatDateTime } from "@/lib/dates";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
-import type { SyncConflictView } from "@/lib/types";
+import type { BoardDetail, SyncConflictView } from "@/lib/types";
 
 type Choice = "cloud" | "local";
 
@@ -26,12 +40,16 @@ const TYPE_LABEL: Record<SyncConflictView["entityType"], string> = {
 };
 
 export function ConflictsPage() {
-  const { refresh } = useWorkspace();
+  const { refresh, projects } = useWorkspace();
   const bridge = window.masarDesktop;
   const [conflicts, setConflicts] = React.useState<SyncConflictView[]>([]);
+  const [boardLookups, setBoardLookups] = React.useState<
+    Record<string, { columns: Map<string, string>; labels: Map<string, string> }>
+  >({});
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = React.useState<Choice | null>(null);
 
   const load = React.useCallback(async (silent = false) => {
     if (!silent) {
@@ -62,6 +80,107 @@ export function ConflictsPage() {
   useOnSyncComplete(() => {
     void load(true);
   });
+
+  const boardIds = React.useMemo(
+    () =>
+      Array.from(
+        new Set(
+          conflicts
+            .map((conflict) => conflict.boardId)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ).sort(),
+    [conflicts],
+  );
+  React.useEffect(() => {
+    let active = true;
+    if (boardIds.length === 0) {
+      setBoardLookups({});
+      return;
+    }
+    void Promise.all(
+      boardIds.map(async (boardId) => {
+        try {
+          const data = await api<{ board: BoardDetail }>(
+            `/api/boards/${boardId}`,
+          );
+          return [
+            boardId,
+            {
+              columns: new Map(
+                data.board.columns.map((column) => [column.id, column.name]),
+              ),
+              labels: new Map(
+                data.board.labels.map((label) => [label.id, label.name]),
+              ),
+            },
+          ] as const;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((entries) => {
+      if (!active) return;
+      setBoardLookups(
+        Object.fromEntries(
+          entries.filter(
+            (entry): entry is NonNullable<typeof entry> => entry !== null,
+          ),
+        ),
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, [boardIds]);
+
+  const projectMap = React.useMemo(
+    () => new Map(projects.map((project) => [project.id, project.name])),
+    [projects],
+  );
+
+  function lookupFor(conflict: SyncConflictView): ConflictLookup {
+    const board = conflict.boardId
+      ? boardLookups[conflict.boardId]
+      : undefined;
+    return {
+      columns: board?.columns ?? new Map(),
+      labels: board?.labels ?? new Map(),
+      projects: projectMap,
+    };
+  }
+
+  async function resolveAll(choice: Choice) {
+    if (!bridge || bulkBusy) return;
+    setBulkBusy(choice);
+    let completed = 0;
+    let failed = 0;
+    try {
+      for (const conflict of conflicts) {
+        try {
+          await bridge.resolveSyncConflict(conflict.id, choice);
+          completed += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      if (failed === 0) {
+        toast.success(
+          choice === "cloud"
+            ? "All conflicts kept the cloud version"
+            : "All conflicts kept this device’s version",
+          { description: `${completed} resolved.` },
+        );
+      } else {
+        toast.warning("Some conflicts could not be resolved", {
+          description: `${completed} resolved, ${failed} still need attention.`,
+        });
+      }
+      await Promise.all([load(true), refresh()]);
+    } finally {
+      setBulkBusy(null);
+    }
+  }
 
   async function resolve(conflict: SyncConflictView, choice: Choice) {
     if (!bridge) {
@@ -101,6 +220,45 @@ export function ConflictsPage() {
           </p>
         </header>
 
+        {!loading && conflicts.length > 1 && (
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3">
+            <p className="text-[12px] text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {conflicts.length} conflicts
+              </span>{" "}
+              need a decision. You can resolve each one or apply the same choice
+              to all.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={bulkBusy !== null}
+                onClick={() => void resolveAll("local")}
+              >
+                {bulkBusy === "local" ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Laptop className="size-3.5" />
+                )}
+                Keep this device for all
+              </Button>
+              <Button
+                size="sm"
+                disabled={bulkBusy !== null}
+                onClick={() => void resolveAll("cloud")}
+              >
+                {bulkBusy === "cloud" ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Cloud className="size-3.5" />
+                )}
+                Keep cloud for all
+              </Button>
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="mt-8 grid place-items-center rounded-xl border border-border/70 bg-card py-20 text-muted-foreground">
             <Loader2 className="size-5 animate-spin" />
@@ -129,6 +287,7 @@ export function ConflictsPage() {
               <ConflictCard
                 key={conflict.id}
                 conflict={conflict}
+                lookup={lookupFor(conflict)}
                 busy={busy}
                 onResolve={resolve}
               />
@@ -142,16 +301,19 @@ export function ConflictsPage() {
 
 function ConflictCard({
   conflict,
+  lookup,
   busy,
   onResolve,
 }: {
   conflict: SyncConflictView;
+  lookup: ConflictLookup;
   busy: string | null;
   onResolve: (conflict: SyncConflictView, choice: Choice) => void;
 }) {
   const context = [conflict.projectName, conflict.boardName]
     .filter(Boolean)
     .join(" / ");
+  const diff = buildConflictDiff(conflict, lookup);
   const cloudBusy = busy === `${conflict.id}:cloud`;
   const localBusy = busy === `${conflict.id}:local`;
   const anyBusy = cloudBusy || localBusy;
@@ -174,146 +336,230 @@ function ConflictCard({
             {conflict.entityLabel ?? "Untitled item"}
           </h2>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Detected {formatDateTime(conflict.createdAt)}
+            Detected {formatDateTime(conflict.createdAt)} · {diff.summary}
           </p>
         </div>
         <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
       </div>
 
-      <div className="grid gap-3 p-4 sm:grid-cols-2">
-        <ConflictVersion
+      <div className="p-4 sm:p-5">
+        <h3 className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/60 uppercase">
+          What changed
+        </h3>
+        {diff.whiteboard && <WhiteboardDiffView stats={diff.whiteboard} />}
+        {diff.changed.length > 0 && <ConflictDiffTable rows={diff.changed} />}
+        {!diff.whiteboard && diff.changed.length === 0 && (
+          <p className="mt-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-[12px] text-muted-foreground">
+            No field-level difference is available. The item was changed on
+            both devices, but the stored fields match.
+          </p>
+        )}
+        {diff.unchanged.length > 0 && (
+          <details className="group mt-3">
+            <summary className="flex cursor-pointer list-none items-center gap-1 text-[11px] font-medium text-muted-foreground/70 hover:text-foreground">
+              <ChevronRight className="size-3 transition-transform group-open:rotate-90" />
+              Show {diff.unchanged.length} unchanged field
+              {diff.unchanged.length === 1 ? "" : "s"}
+            </summary>
+            <ConflictDiffTable rows={diff.unchanged} muted />
+          </details>
+        )}
+      </div>
+
+      <div className="grid border-t border-border/60 bg-background/35 sm:grid-cols-2">
+        <ResolutionAction
           icon={Laptop}
           label="This device"
-          deleted={conflict.incomingDeleted}
-          data={conflict.incomingData}
-          entityType={conflict.entityType}
-          updatedAt={conflict.incomingUpdatedAt}
-          action={
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onResolve(conflict, "local")}
-              disabled={anyBusy}
-            >
-              {localBusy ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Laptop className="size-3.5" />
-              )}
-              Keep this device’s version
-            </Button>
-          }
+          timestamp={conflict.incomingUpdatedAt}
+          busy={localBusy}
+          disabled={anyBusy}
+          onClick={() => onResolve(conflict, "local")}
+          buttonLabel="Keep this device’s version"
+          variant="outline"
         />
-        <ConflictVersion
+        <ResolutionAction
           icon={Cloud}
           label="Cloud"
-          deleted={conflict.winningDeleted}
-          data={conflict.winningData}
-          entityType={conflict.entityType}
-          updatedAt={conflict.winningUpdatedAt}
-          action={
-            <Button
-              size="sm"
-              onClick={() => onResolve(conflict, "cloud")}
-              disabled={anyBusy}
-            >
-              {cloudBusy ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Cloud className="size-3.5" />
-              )}
-              Keep cloud version
-            </Button>
-          }
+          timestamp={conflict.winningUpdatedAt}
+          busy={cloudBusy}
+          disabled={anyBusy}
+          onClick={() => onResolve(conflict, "cloud")}
+          buttonLabel="Keep cloud version"
         />
       </div>
     </Card>
   );
 }
 
-function ConflictVersion({
-  icon: Icon,
-  label,
-  data,
-  entityType,
-  deleted,
-  updatedAt,
-  action,
+function ConflictDiffTable({
+  rows,
+  muted = false,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  data: Record<string, unknown>;
-  entityType: SyncConflictView["entityType"];
-  deleted: boolean;
-  updatedAt: string;
-  action: React.ReactNode;
+  rows: ConflictDiffRow[];
+  muted?: boolean;
 }) {
-  const details = describeVersion(entityType, data);
   return (
-    <div className="flex min-h-44 flex-col rounded-xl border border-border/60 bg-background/45 p-3.5">
-      <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-        <Icon className="size-3.5" />
-        {label}
+    <div className="mt-2 overflow-hidden rounded-lg border border-border/60">
+      <div className="grid grid-cols-[minmax(96px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/60 bg-muted/35 px-3 py-2 text-[9.5px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">
+        <span>Field</span>
+        <span>This device</span>
+        <span>Cloud</span>
       </div>
-      <p className="mt-1 text-[10.5px] text-muted-foreground/70">
-        {formatDateTime(updatedAt)}
-      </p>
-      {deleted ? (
-        <p className="mt-3 text-[12.5px] font-medium text-destructive">
-          Deleted
-        </p>
-      ) : details.length === 0 ? (
-        <p className="mt-3 text-[12px] text-muted-foreground">
-          No preview available.
-        </p>
-      ) : (
-        <ul className="mt-3 space-y-1.5 text-[12px] leading-relaxed text-foreground/85">
-          {details.map((line, index) => (
-            <li key={index} className={index === 0 ? "font-medium" : "text-muted-foreground"}>
-              {line}
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="mt-auto pt-4">{action}</div>
+      {rows.map((row) => (
+        <DiffRow key={row.key} row={row} muted={muted} />
+      ))}
     </div>
   );
 }
 
-function describeVersion(
-  entityType: SyncConflictView["entityType"],
-  data: Record<string, unknown>,
-): string[] {
-  const text = (value: unknown) =>
-    typeof value === "string" && value.trim() ? value.trim() : null;
-  const lines: string[] = [];
+function DiffRow({ row, muted }: { row: ConflictDiffRow; muted: boolean }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const longText = Boolean(row.longText);
+  return (
+    <>
+      <div
+        className={
+          muted
+            ? "grid grid-cols-[minmax(96px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/40 px-3 py-2 text-[11.5px]"
+            : "grid grid-cols-[minmax(96px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/40 bg-amber-500/[0.025] px-3 py-2 text-[11.5px]"
+        }
+      >
+        <span className="font-medium text-muted-foreground">{row.label}</span>
+        <div className="min-w-0">
+          <p className="line-clamp-3 whitespace-pre-wrap break-words text-foreground/85">
+            {row.local}
+          </p>
+          {longText && row.local !== row.cloud && (
+            <button
+              type="button"
+              onClick={() => setExpanded((value) => !value)}
+              className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-primary hover:underline"
+            >
+              <ChevronDown
+                className={`size-3 transition-transform ${expanded ? "rotate-180" : ""}`}
+              />
+              {expanded ? "Hide line diff" : "View line diff"}
+            </button>
+          )}
+        </div>
+        <div className="min-w-0">
+          <p className="line-clamp-3 whitespace-pre-wrap break-words text-foreground/85">
+            {row.cloud}
+          </p>
+        </div>
+      </div>
+      {expanded && row.longText && (
+        <div className="border-b border-border/40 px-3 pb-2">
+          <TextDiffView cloud={row.longText.cloud} local={row.longText.local} />
+        </div>
+      )}
+    </>
+  );
+}
 
-  if (entityType === "whiteboard") {
-    const scene = text(data.scene);
-    let elements = 0;
-    if (scene) {
-      try {
-        const parsed = JSON.parse(scene) as { elements?: unknown };
-        elements = Array.isArray(parsed.elements) ? parsed.elements.length : 0;
-      } catch {
-        /* show the size fallback below */
-      }
-    }
-    lines.push(`Whiteboard canvas · ${elements} element${elements === 1 ? "" : "s"}`);
-    return lines;
-  }
+function TextDiffView({ cloud, local }: { cloud: string; local: string }) {
+  const lines = diffText(cloud, local);
+  return (
+    <div className="mt-2 max-h-64 overflow-y-auto rounded-md border border-border/60 bg-background/70 px-2 py-1.5 font-mono text-[10.5px] leading-relaxed">
+      <p className="mb-1 font-sans text-[9px] font-semibold tracking-[0.08em] text-muted-foreground/60 uppercase">
+        Cloud → This device
+      </p>
+      {lines.map((line, index) => (
+        <div
+          key={index}
+          className={
+            line.kind === "added"
+              ? "whitespace-pre-wrap break-words bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+              : line.kind === "removed"
+                ? "whitespace-pre-wrap break-words bg-rose-500/10 text-rose-800 line-through dark:text-rose-300"
+                : "whitespace-pre-wrap break-words text-muted-foreground"
+          }
+        >
+          {line.kind === "added" ? "+ " : line.kind === "removed" ? "- " : "  "}
+          {line.text || " "}
+        </div>
+      ))}
+    </div>
+  );
+}
 
-  const title =
-    text(data.name) ??
-    text(data.title) ??
-    text(data.body) ??
-    text(data.label) ??
-    null;
-  if (title) lines.push(title);
-  const description = text(data.description);
-  if (description) lines.push(description);
-  if (entityType === "task_label") {
-    lines.push(`${text(data.task_id) ?? "Task"} / ${text(data.label_id) ?? "Label"}`);
-  }
-  return lines;
+function WhiteboardDiffView({
+  stats,
+}: {
+  stats: NonNullable<ReturnType<typeof buildConflictDiff>["whiteboard"]>;
+}) {
+  return (
+    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+      <div className="rounded-lg border border-border/60 bg-background/45 px-3 py-2.5">
+        <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+          Cloud elements
+        </p>
+        <p className="mt-1 text-[18px] font-semibold tabular-nums">
+          {stats.cloudElements}
+        </p>
+      </div>
+      <div className="rounded-lg border border-border/60 bg-background/45 px-3 py-2.5">
+        <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+          This device
+        </p>
+        <p className="mt-1 text-[18px] font-semibold tabular-nums">
+          {stats.localElements}
+        </p>
+      </div>
+      <div className="rounded-lg border border-border/60 bg-background/45 px-3 py-2.5">
+        <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+          Changes
+        </p>
+        <p className="mt-1 text-[12px] text-foreground/85">
+          {stats.added} added · {stats.removed} removed · {stats.modified} modified
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ResolutionAction({
+  icon: Icon,
+  label,
+  timestamp,
+  busy,
+  disabled,
+  onClick,
+  buttonLabel,
+  variant = "default",
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  timestamp: string;
+  busy: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  buttonLabel: string;
+  variant?: "default" | "outline";
+}) {
+  return (
+    <div className="flex flex-col gap-3 border-b border-border/60 p-4 last:border-b-0 sm:border-r sm:border-b-0 sm:last:border-r-0">
+      <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+        <Icon className="size-3.5" />
+        {label}
+      </div>
+      <p className="text-[10.5px] text-muted-foreground/70">
+        {formatDateTime(timestamp)}
+      </p>
+      <Button
+        variant={variant}
+        size="sm"
+        className="mt-auto w-fit"
+        onClick={onClick}
+        disabled={disabled}
+      >
+        {busy ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : (
+          <Icon className="size-3.5" />
+        )}
+        {buttonLabel}
+      </Button>
+    </div>
+  );
 }

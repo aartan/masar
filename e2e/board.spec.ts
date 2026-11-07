@@ -24,7 +24,15 @@ test.describe("board workflows", () => {
       await page.goto("/");
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
-      await page.getByRole("button", { name: "New board", exact: true }).first().click();
+      // The overview's create-board button adapts to whether the workspace is
+      // empty ("Create your first board") or already has boards ("Create
+      // another board" / "New board"). Match any of them.
+      await page
+        .getByRole("button", {
+          name: /Create your first board|Create another board|New board/,
+        })
+        .first()
+        .click();
       await page.getByLabel("Name").fill(boardName);
       await page.getByRole("button", { name: /Create board/ }).click();
       await expect(page).toHaveURL(/\/boards\/[0-9a-f-]+$/);

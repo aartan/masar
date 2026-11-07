@@ -5,6 +5,13 @@ export const E2E_ORIGIN = "http://127.0.0.1:3100";
 export interface ApiBoard {
   id: string;
   name: string;
+  projectId: string | null;
+  type: "kanban" | "whiteboard";
+}
+
+export interface ApiProject {
+  id: string;
+  name: string;
 }
 
 export interface ApiColumn {
@@ -19,11 +26,33 @@ export interface ApiTask {
   columnId: string;
 }
 
+export async function createProject(
+  request: APIRequestContext,
+  name: string,
+): Promise<ApiProject> {
+  const response = await request.post("/api/projects", { data: { name } });
+  expect(response.ok(), `Project creation failed with ${response.status()}`).toBeTruthy();
+  const body = (await response.json()) as { project: ApiProject };
+  return body.project;
+}
+
+export async function deleteProject(
+  request: APIRequestContext,
+  projectId: string,
+): Promise<void> {
+  await request.delete(`/api/projects/${projectId}`, {
+    data: { confirmation: "DELETE" },
+  });
+}
+
 export async function createBoard(
   request: APIRequestContext,
   name: string,
+  options: { projectId?: string; type?: "kanban" | "whiteboard" } = {},
 ): Promise<ApiBoard> {
-  const response = await request.post("/api/boards", { data: { name } });
+  const response = await request.post("/api/boards", {
+    data: { name, ...options },
+  });
   expect(response.ok(), `Board creation failed with ${response.status()}`).toBeTruthy();
   const body = (await response.json()) as { board: ApiBoard };
   return body.board;

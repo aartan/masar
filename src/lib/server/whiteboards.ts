@@ -96,11 +96,11 @@ export async function saveWhiteboardScene(
       set: { scene, updatedAt: now },
     });
 
-  // Touch the board so its updatedAt reflects the edit (activity, sync order).
-  await database
-    .update(boards)
-    .set({ updatedAt: now })
-    .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)));
+  // Do not touch the board row here. It used to refresh boards.updated_at for
+  // activity, but activity already reads whiteboards.updated_at and the extra
+  // board write queued a board sync change on every scene autosave. Two open
+  // devices then raced meaningless board revisions and produced conflicts for
+  // changes whose actual fields were identical.
 
   return { boardId, scene, updatedAt: now.toISOString() };
 }

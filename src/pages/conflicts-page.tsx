@@ -401,7 +401,7 @@ function ConflictDiffTable({
   return (
     <div className="mt-2 overflow-hidden rounded-lg border border-border/60">
       <div className="grid grid-cols-[minmax(96px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/60 bg-muted/35 px-3 py-2 text-[9.5px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">
-        <span>Field</span>
+        <span>Data</span>
         <span>This device</span>
         <span>Cloud</span>
       </div>

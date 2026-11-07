@@ -34,6 +34,22 @@ interface RemoteRow {
   revision: number;
 }
 
+/**
+ * Deterministic JSON for the identical-retry check, mirroring the real
+ * server's `stableStringify` in masar-api/src/sync/changes.ts.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+    .join(",")}}`;
+}
+
 /** Minimal per-user replica of the Premium Sync API sync semantics. */
 class FakeSyncApi {
   readonly workspaces = new Map<string, Map<string, RemoteRow>>();
@@ -56,27 +72,69 @@ class FakeSyncApi {
       deleted: boolean;
       data: Record<string, unknown>;
       updatedAt: string;
+      baseRevision?: number | null;
     }>,
   ) {
     const rows = this.rowsFor(userId);
     let revision = this.revisions.get(userId) ?? 0;
     let accepted = 0;
+    let ignored = 0;
     let rejected = 0;
-    const conflicts: Array<{ entityType: string; entityId: string }> = [];
+    const conflicts: Array<{
+      entityType: string;
+      entityId: string;
+      winningUpdatedAt: string;
+    }> = [];
     for (const change of changes) {
       const key = `${change.entityType}:${change.entityId}`;
       const existing = rows.get(key);
-      if (existing && existing.updatedAt >= change.updatedAt) {
+
+      // Faithful reproduction of masar-api decideChange: causality is proven
+      // only by baseRevision, never by comparing timestamps. Omitting
+      // baseRevision on an existing entity is a conflict — this is what makes
+      // the e2e suite actually catch the revision bug.
+      let decision: "apply" | "ignore" | "conflict";
+      if (!existing) {
+        decision = "apply";
+      } else if (
+        existing.deleted === change.deleted &&
+        stableStringify(existing.data ?? {}) === stableStringify(change.data ?? {})
+      ) {
+        decision = "ignore";
+      } else {
+        const base = change.baseRevision;
+        if (base === null || base === undefined) decision = "conflict";
+        else if (base === -1) decision = "apply";
+        else if (base === existing.revision) decision = "apply";
+        else decision = "conflict";
+      }
+
+      if (decision === "ignore") {
+        ignored += 1;
+        continue;
+      }
+      if (decision === "conflict") {
         rejected += 1;
-        conflicts.push({ entityType: change.entityType, entityId: change.entityId });
+        conflicts.push({
+          entityType: change.entityType,
+          entityId: change.entityId,
+          winningUpdatedAt: (existing?.updatedAt ?? change.updatedAt),
+        });
         continue;
       }
       revision += 1;
-      rows.set(key, { ...change, revision });
+      rows.set(key, {
+        entityType: change.entityType,
+        entityId: change.entityId,
+        deleted: change.deleted,
+        data: change.data,
+        updatedAt: change.updatedAt,
+        revision,
+      });
       accepted += 1;
     }
     this.revisions.set(userId, revision);
-    return { revision, accepted, ignored: 0, rejected, conflicts };
+    return { revision, accepted, ignored, rejected, conflicts };
   }
 
   async pull(userId: string, since: number, limit = 500) {
@@ -126,6 +184,7 @@ function clientFor(user: typeof USER_A) {
         deleted: boolean;
         data: Record<string, unknown>;
         updatedAt: string;
+        baseRevision?: number | null;
       }>,
     ) {
       return remote.push(user.id, changes);
@@ -340,8 +399,59 @@ describe("cross-device premium sync lifecycle", () => {
     );
   });
 
-  it("reports sync status that ends in idle without pending changes", async () => {
-    await activateDatabase(mirrorA.url);
+  it("re-syncs repeated edits to the same entity without dropping any (revision regression)", async () => {
+    const userId = "user-rev";
+    const user = { id: userId, name: "Rev", email: "rev@example.test" };
+    const mirror = await createTestDatabase();
+    await mirror.client.execute(LOCAL_USER_STUB);
+    await activateDatabase(mirror.url);
+
+    const fakeClient = clientFor(user);
+    const makeRevEngine = (origin: string) =>
+      new SyncEngine({
+        getClient: () => fakeClient as unknown as PremiumApiClient,
+        getLocalOrigin: () => origin,
+        isOnline: () => true,
+        log: () => undefined,
+        onStatus: () => undefined,
+        onUnauthorized: () => undefined,
+      });
+
+    const api = await startLocalApi(userId);
+    try {
+      const engine = makeRevEngine(api.url);
+      await engine.syncNow("startup");
+
+      // Create and sync a board, so the server now holds an existing entity.
+      await createBoard({ name: "Rev 0" }, "local-user", getDb());
+      await engine.syncNow("local-change");
+
+      const [board] = await getDb().select().from(boards);
+      const id = board!.id;
+
+      // Three sequential edits, each followed by a full sync cycle. Before the
+      // fix every one of these was rejected (baseRevision omitted) and the
+      // outbox row was dropped, so the server kept "Rev 0" forever.
+      for (let i = 1; i <= 3; i += 1) {
+        await updateBoard(id, { name: `Rev ${i}` }, "local-user", getDb());
+        await engine.syncNow("local-change");
+      }
+
+      const remoteName = [...remote.workspaces.get(userId)!.values()].find(
+        (row) => row.entityType === "board" && row.entityId === id && !row.deleted,
+      )?.data.name;
+      expect(remoteName).toBe("Rev 3");
+
+      // No conflicts were archived and nothing is left pending.
+      const state = await fetch(`${api.url}/api/sync/state`).then((r) => r.json());
+      expect(state.state.pendingChanges).toBe(0);
+    } finally {
+      api.close();
+      await mirror.close();
+    }
+  });
+
+  it("reports sync status that ends in idle without pending changes", async () => {    await activateDatabase(mirrorA.url);
     const apiA = await startLocalApi(USER_A.id);
     const statuses: SyncStatus[] = [];
     const fakeClient = clientFor(USER_A);

@@ -19,6 +19,12 @@ export interface LocalSyncChange {
   deleted: boolean;
   data: Record<string, unknown>;
   updatedAt: string;
+  /**
+   * The server revision this entity was last seen at, or null when the entity
+   * has never round-tripped through the cloud (a brand-new local creation).
+   * The push sends this so the server can resolve the edit causally.
+   */
+  baseRevision: number | null;
 }
 
 export interface RemoteSyncChange {
@@ -149,6 +155,28 @@ export async function prepareSync(
            select max(id) from sync_changes group by entity_type, entity_id
          )`,
       );
+
+      // Upgrade reconciliation: an install that synced before per-entity
+      // revision tracking existed has already pulled data (last_revision > 0)
+      // but no revision rows. Replay the pull from zero once so every entity's
+      // server revision is recorded; the outbox is preserved, so unsynced work
+      // is not lost, and the retained-on-conflict push path covers edits made
+      // before the backfill completes.
+      if (!resetCursor) {
+        const revisionCount = await tx.execute(
+          "select count(*) as count from sync_entity_revisions",
+        );
+        const state = await tx.execute(
+          "select last_revision from sync_state where id = 1",
+        );
+        const hasRevisions = Number(revisionCount.rows[0]?.count ?? 0) > 0;
+        const lastRevision = Number(state.rows[0]?.last_revision ?? 0);
+        if (!hasRevisions && lastRevision > 0) {
+          await tx.execute(
+            "update sync_state set last_revision = 0, last_synced_at = null where id = 1",
+          );
+        }
+      }
     }
 
     await tx.commit();
@@ -242,8 +270,12 @@ export async function listPendingChanges(
 ): Promise<LocalSyncChange[]> {
   const client = getClient();
   const result = await client.execute({
-    sql: `select id, entity_type, entity_id, deleted, data, updated_at
-          from sync_changes where id > ? order by id asc limit ?`,
+    sql: `select c.id, c.entity_type, c.entity_id, c.deleted, c.data, c.updated_at,
+                 r.revision as base_revision
+          from sync_changes c
+          left join sync_entity_revisions r
+            on r.entity_type = c.entity_type and r.entity_id = c.entity_id
+          where c.id > ? order by c.id asc limit ?`,
     args: [afterId, limit],
   });
   return result.rows.map((row) => {
@@ -263,18 +295,53 @@ export async function listPendingChanges(
       deleted: Number(row.deleted) === 1,
       data,
       updatedAt: new Date(Number(row.updated_at)).toISOString(),
+      baseRevision:
+        row.base_revision === null || row.base_revision === undefined
+          ? null
+          : Number(row.base_revision),
     };
   });
 }
 
-export async function acknowledgeChanges(throughId: number): Promise<number> {
+export interface RejectedChangeKey {
+  entityType: string;
+  entityId: string;
+}
+
+/**
+ * Delete acked outbox rows up to `throughId`, except rows for entities the
+ * server rejected as conflicts — those must be retained so they are re-pushed
+ * with a correct base revision after the next pull records the server's
+ * winning revision. Deleting a rejected row would silently drop the user's
+ * edit (the original data-loss bug).
+ */
+export async function acknowledgeChanges(
+  throughId: number,
+  rejected: RejectedChangeKey[] = [],
+): Promise<number> {
   if (!Number.isInteger(throughId) || throughId < 0) {
     throw new Error("throughId must be a non-negative integer");
   }
   const client = getClient();
+  if (rejected.length === 0) {
+    const result = await client.execute({
+      sql: "delete from sync_changes where id <= ?",
+      args: [throughId],
+    });
+    return Number(result.rowsAffected ?? 0);
+  }
+
+  // Retain every outbox row for a rejected (entity_type, entity_id) pair.
+  const conditions = rejected
+    .map(() => "(entity_type = ? and entity_id = ?)")
+    .join(" or ");
+  const args: Array<number | string> = [throughId];
+  for (const key of rejected) {
+    args.push(key.entityType, key.entityId);
+  }
   const result = await client.execute({
-    sql: "delete from sync_changes where id <= ?",
-    args: [throughId],
+    sql: `delete from sync_changes where id <= ? and not (${conditions})`,
+    args,
   });
   return Number(result.rowsAffected ?? 0);
 }
@@ -308,6 +375,7 @@ export async function applyRemoteChanges(
       .sort((a, b) => dependencyRank(a.entityType) - dependencyRank(b.entityType));
 
     for (const change of deletions) {
+      await recordEntityRevision(tx, change);
       if (await keepLocalIfNewer(tx, change)) {
         skipped.push({
           entityType: change.entityType,
@@ -321,6 +389,7 @@ export async function applyRemoteChanges(
     }
 
     for (const change of upserts) {
+      await recordEntityRevision(tx, change);
       if (await keepLocalIfNewer(tx, change)) {
         skipped.push({
           entityType: change.entityType,
@@ -348,8 +417,36 @@ export async function applyRemoteChanges(
   }
 }
 
-function dependencyRank(type: SyncEntityType): number {
-  switch (type) {
+/**
+ * Record the server revision a pulled change was observed at. A later local
+ * edit to the same entity pushes this as its `baseRevision`, letting the
+ * server prove the edit is sequential. A remote deletion drops the row: the
+ * entity is gone, and any future local recreation must push as a creation
+ * (null base). Changes without a revision (legacy payloads) are ignored.
+ */
+async function recordEntityRevision(
+  tx: Transaction,
+  change: RemoteSyncChange,
+): Promise<void> {
+  if (typeof change.revision !== "number" || !Number.isFinite(change.revision)) {
+    return;
+  }
+  if (change.deleted) {
+    await tx.execute({
+      sql: "delete from sync_entity_revisions where entity_type = ? and entity_id = ?",
+      args: [change.entityType, change.entityId],
+    });
+    return;
+  }
+  await tx.execute({
+    sql: `insert into sync_entity_revisions (entity_type, entity_id, revision)
+          values (?, ?, ?)
+          on conflict(entity_type, entity_id) do update set revision = excluded.revision`,
+    args: [change.entityType, change.entityId, Math.trunc(change.revision)],
+  });
+}
+
+function dependencyRank(type: SyncEntityType): number {  switch (type) {
     case "board":
       return 0;
     case "column":

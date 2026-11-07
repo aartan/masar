@@ -42,6 +42,12 @@ export interface PushChange {
   deleted: boolean;
   data: Record<string, unknown>;
   updatedAt: string;
+  /**
+   * Server revision this change was based on. `null` for an entity the server
+   * has never seen (a creation); a number proves a sequential edit. Omitting
+   * it caused every edit to an existing entity to be rejected as a conflict.
+   */
+  baseRevision: number | null;
 }
 
 export interface PushResponse {

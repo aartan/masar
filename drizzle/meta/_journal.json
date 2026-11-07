@@ -29,6 +29,13 @@
       "when": 1793477964493,
       "tag": "0003_stormy_robin_chapel",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794015616360,
+      "tag": "0004_third_zodiak",
+      "breakpoints": true
     }
   ]
 }

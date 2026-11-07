@@ -281,6 +281,25 @@ export const syncChanges = sqliteTable(
 );
 
 /**
+ * The server revision of the last state each entity was seen at — recorded
+ * when a pulled change is applied. A push states this as its `baseRevision` so
+ * the server can prove the edit was sequential (`base === existing.revision`)
+ * rather than concurrent, without ever comparing client clocks. Rows only
+ * exist for entities that have round-tripped through the cloud; a brand-new
+ * local entity has no row and pushes with a null base (which the server treats
+ * as a creation). Local-only workspaces never populate this table.
+ */
+export const syncEntityRevisions = sqliteTable(
+  "sync_entity_revisions",
+  {
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    revision: integer("revision").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.entityType, table.entityId] })],
+);
+
+/**
  * Billing tables from the retired hosted application. They are retained in the
  * schema so existing SQLite files are untouched, but desktop code no longer
  * reads or writes them. Premium subscription state now lives only in the API.
@@ -387,3 +406,4 @@ export type PendingSignupRow = typeof pendingSignups.$inferSelect;
 export type StripeWebhookEventRow = typeof stripeWebhookEvents.$inferSelect;
 export type SyncStateRow = typeof syncState.$inferSelect;
 export type SyncChangeRow = typeof syncChanges.$inferSelect;
+export type SyncEntityRevisionRow = typeof syncEntityRevisions.$inferSelect;

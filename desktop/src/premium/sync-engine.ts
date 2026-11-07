@@ -127,7 +127,11 @@ export class SyncEngine {
 
       const firstPush = await this.pushAll(client, localState.deviceId);
       const pull = await this.pullAll(client, me.user.id, localState.lastRevision);
-      const secondPush = pull.skipped > 0
+      // Re-push when the pull applied remote state that our outbox still needs
+      // to react to: either it kept a newer local row (skipped) or the first
+      // push hit conflicts whose winning revision the pull has now recorded, so
+      // the retained rows can re-push with a correct base and converge.
+      const secondPush = pull.skipped > 0 || firstPush.conflicts > 0
         ? await this.pushAll(client, localState.deviceId)
         : { conflicts: 0, pushed: 0 };
       const state = await this.localRequest<{ state: SyncStateView }>(
@@ -212,6 +216,7 @@ export class SyncEngine {
           deleted: change.deleted,
           data: change.data,
           updatedAt: change.updatedAt,
+          baseRevision: change.baseRevision,
         })),
         `${deviceId}:${first.id}:${last.id}`,
         deviceId,
@@ -219,7 +224,16 @@ export class SyncEngine {
 
       pushed += response.accepted;
       conflicts += response.rejected;
-      await this.localRequest("POST", "/api/sync/ack", { throughId: last.id });
+      // Retain outbox rows the server rejected as conflicts so they are not
+      // silently dropped: the next pull records the server's winning revision
+      // and the following push re-sends them with a correct base.
+      await this.localRequest("POST", "/api/sync/ack", {
+        throughId: last.id,
+        rejected: response.conflicts.map((conflict) => ({
+          entityType: conflict.entityType,
+          entityId: conflict.entityId,
+        })),
+      });
       lastId = last.id;
     }
 

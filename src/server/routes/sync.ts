@@ -37,6 +37,16 @@ const prepareSchema = z.object({
 
 const ackSchema = z.object({
   throughId: z.number().int().nonnegative(),
+  rejected: z
+    .array(
+      z.object({
+        entityType: z.string().min(1).max(40),
+        entityId: z.string().min(1).max(120),
+      }),
+    )
+    .max(2000)
+    .optional()
+    .default([]),
 });
 
 /**
@@ -102,7 +112,9 @@ syncRoutes.post("/sync/ack", async (c) => {
   try {
     requireSyncScope();
     const input = await parseJsonBody(c.req.raw, ackSchema);
-    return jsonOk({ deleted: await acknowledgeChanges(input.throughId) });
+    return jsonOk({
+      deleted: await acknowledgeChanges(input.throughId, input.rejected),
+    });
   } catch (error) {
     return handleRouteError(error);
   }

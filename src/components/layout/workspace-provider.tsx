@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { api } from "@/lib/client-api";
+import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardSummary, ProjectSummary } from "@/lib/types";
 
 interface WorkspaceUser {
@@ -162,16 +163,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // When a background sync cycle completes, the local database may contain
   // changes from another device (or a workspace import). Refresh the hierarchy
   // so the UI reflects them without a manual reload.
-  React.useEffect(() => {
-    const bridge = window.masarDesktop;
-    if (!bridge) return;
-    let previousPhase = "";
-    return bridge.onSyncStatus((status) => {
-      const completed = previousPhase === "syncing" && status.phase === "idle";
-      previousPhase = status.phase;
-      if (completed) void refresh();
-    });
-  }, [refresh]);
+  useOnSyncComplete(() => {
+    void refresh();
+  });
 
   const value = React.useMemo(
     () => ({

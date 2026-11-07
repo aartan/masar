@@ -12,6 +12,7 @@ import {
 import { Excalidraw } from "@excalidraw/excalidraw";
 import type {
   AppState,
+  BinaryFileData,
   BinaryFiles,
   ExcalidrawImperativeAPI,
   ExcalidrawInitialDataState,
@@ -26,6 +27,7 @@ import { useTheme } from "@/components/theme-provider";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { api, errorMessage } from "@/lib/client-api";
+import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardSummary, WhiteboardScene } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -91,10 +93,15 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
 
+  React.useEffect(() => {
+    setBoard(initialBoard);
+  }, [initialBoard]);
+
   const apiRef = React.useRef<ExcalidrawImperativeAPI | null>(null);
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedRef = React.useRef<string>("");
   const pendingRef = React.useRef<string | null>(null);
+  const applyingRemoteRef = React.useRef(false);
 
   // Load the persisted scene once.
   React.useEffect(() => {
@@ -143,13 +150,53 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
     [board.id],
   );
 
+  const refreshFromSync = React.useCallback(async () => {
+    // Never replace a canvas with pending or in-flight local edits.
+    const excalidraw = apiRef.current;
+    if (
+      initialData === null ||
+      pendingRef.current !== null ||
+      !excalidraw
+    ) {
+      return;
+    }
+    try {
+      const result = await api<{ scene: WhiteboardScene }>(
+        `/api/boards/${board.id}/scene`,
+      );
+      const remote = result.scene.scene || "{}";
+      if (remote === lastSavedRef.current) return;
+      const parsed = parseScene(remote);
+      if (!parsed) return;
+
+      lastSavedRef.current = remote;
+      applyingRemoteRef.current = true;
+      window.setTimeout(() => {
+        applyingRemoteRef.current = false;
+      }, 1_000);
+      excalidraw.updateScene({
+        elements: parsed.elements,
+        appState: parsed.appState as AppState,
+      });
+      const files = Object.values(parsed.files ?? {}) as BinaryFileData[];
+      if (files.length > 0) excalidraw.addFiles(files);
+      setStatus({ phase: "saved", at: Date.now() });
+    } catch {
+      /* Keep the current canvas if a background refresh fails. */
+    }
+  }, [board.id, initialData]);
+
+  useOnSyncComplete(() => {
+    void refreshFromSync();
+  });
+
   const handleChange = React.useCallback(
     (
       elements: readonly OrderedExcalidrawElement[],
       appState: AppState,
       files: BinaryFiles,
     ) => {
-      if (readOnly) return;
+      if (readOnly || applyingRemoteRef.current) return;
       const serialized = serializeScene({
         elements,
         appState: appState as unknown as Record<string, unknown>,

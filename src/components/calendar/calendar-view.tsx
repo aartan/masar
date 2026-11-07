@@ -83,6 +83,22 @@ export function CalendarView({ initialData }: { initialData: CalendarData }) {
     React.useState(false);
   const [mobilePanelOpen, setMobilePanelOpen] = React.useState(false);
   const dueDateVersionRef = React.useRef(new Map<string, number>());
+  const lastAppliedInitialDataRef = React.useRef<CalendarData | null>(null);
+
+  // A completed sync can replace tasks, labels, boards or columns. Reconcile
+  // the local calendar state without remounting the page.
+  React.useEffect(() => {
+    if (lastAppliedInitialDataRef.current === initialData) return;
+    lastAppliedInitialDataRef.current = initialData;
+    if (activeTaskId) return;
+    setTasks(initialData.tasks);
+    setLabels(initialData.labels);
+    setSelectedTaskId((current) =>
+      current && !initialData.tasks.some((task) => task.id === current)
+        ? null
+        : current,
+    );
+  }, [initialData, activeTaskId]);
 
   const boardMap = React.useMemo(
     () => new Map(initialData.boards.map((board) => [board.id, board])),

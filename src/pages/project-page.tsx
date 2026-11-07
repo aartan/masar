@@ -7,6 +7,7 @@ import { useWorkspace } from "@/components/layout/workspace-provider";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/client-api";
+import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { ProjectDetail } from "@/lib/types";
 
 export function ProjectPage() {
@@ -44,6 +45,17 @@ export function ProjectPage() {
     setAttempt((value) => value + 1);
     void refreshWorkspace();
   }, [refreshWorkspace]);
+
+  useOnSyncComplete(() => {
+    void api<{ project: ProjectDetail }>(`/api/projects/${projectId}`)
+      .then((result) => {
+        setData(result.project);
+        setError(null);
+      })
+      .catch(() => {
+        /* Keep the current view if a background refresh fails. */
+      });
+  });
 
   if (loading) {
     return (

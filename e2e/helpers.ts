@@ -108,6 +108,65 @@ export function uniqueName(prefix: string): string {
   return `${prefix} ${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
+/**
+ * Browser-only E2E shim for the Electron bridge. It lets tests emit the same
+ * sync status transitions that the desktop sync engine sends.
+ */
+export async function installSyncBridgeMock(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const listeners = new Set<(status: unknown) => void>();
+    (window as unknown as { __masarEmitSync?: (phase: string) => void }).__masarEmitSync =
+      (phase: string) => {
+        for (const listener of listeners) {
+          listener({
+            phase,
+            lastSyncedAt: null,
+            pendingChanges: 0,
+            lastError: null,
+            lastConflictCount: 0,
+            skippedChanges: 0,
+          });
+        }
+      };
+    (window as unknown as { masarDesktop?: unknown }).masarDesktop = {
+      initialTheme: "system",
+      setTheme: async (theme: string) => theme,
+      getState: async () => ({
+        isDesktop: true,
+        mode: "local",
+        version: "e2e",
+      }),
+      getSyncStatus: async () => ({
+        phase: "idle",
+        lastSyncedAt: null,
+        pendingChanges: 0,
+        lastError: null,
+        lastConflictCount: 0,
+        skippedChanges: 0,
+      }),
+      onSyncStatus: (listener: (status: unknown) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      onNavigate: () => () => undefined,
+      syncNow: async () => undefined,
+      notifyDataChanged: async () => undefined,
+    };
+  });
+}
+
+export async function emitSyncStatus(
+  page: Page,
+  phase: "syncing" | "idle",
+): Promise<void> {
+  await page.evaluate((value) => {
+    const emit = (
+      window as unknown as { __masarEmitSync?: (phase: string) => void }
+    ).__masarEmitSync;
+    emit?.(value);
+  }, phase);
+}
+
 export function collectPageErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));

@@ -114,10 +114,12 @@ export function BoardView({
   initialData,
   initialTaskId,
   readOnly = false,
+  refreshToken = 0,
 }: {
   initialData: BoardDetail;
   initialTaskId?: string;
   readOnly?: boolean;
+  refreshToken?: number;
 }) {
   const navigate = useNavigate();
   const { refreshBoards } = useWorkspace();
@@ -161,6 +163,42 @@ export function BoardView({
     tasks: Task[];
     columns: BoardColumnType[];
   } | null>(null);
+  const lastAppliedRefreshRef = React.useRef(0);
+
+  // A background sync can change tasks, columns, labels or the board itself.
+  // Apply the refreshed snapshot without remounting the page (which would lose
+  // filters and scroll position). Skip while a drag is in flight and retry when
+  // it settles.
+  React.useEffect(() => {
+    if (
+      refreshToken === 0 ||
+      refreshToken === lastAppliedRefreshRef.current
+    ) {
+      return;
+    }
+    // Consume this refresh even if a drag is active. The next sync cycle will
+    // deliver a fresh snapshot; applying the stale in-flight snapshot after
+    // the drag settles would revert the user's move.
+    lastAppliedRefreshRef.current = refreshToken;
+    if (activeTaskId || activeColumnId || isReordering) return;
+    setBoard(initialData.board);
+    setColumns(initialData.columns);
+    setTasks(initialData.tasks);
+    setLabels(initialData.labels);
+    if (
+      selectedTaskId &&
+      !initialData.tasks.some((task) => task.id === selectedTaskId)
+    ) {
+      setSelectedTaskId(null);
+    }
+  }, [
+    refreshToken,
+    initialData,
+    activeTaskId,
+    activeColumnId,
+    isReordering,
+    selectedTaskId,
+  ]);
 
   React.useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {

@@ -14,6 +14,7 @@ import {
   getBoardDetail,
   updateBoard,
 } from "@/lib/server/boards";
+import { listSyncConflicts } from "@/sync/local";
 import { createTestDatabase, type TestDatabase } from "./helpers/test-db";
 
 /**
@@ -34,10 +35,45 @@ interface RemoteRow {
   revision: number;
 }
 
+/**
+ * Deterministic JSON for the identical-retry check, mirroring the real
+ * server's `stableStringify` in masar-api/src/sync/changes.ts.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+    .join(",")}}`;
+}
+
+interface FakeConflict {
+  id: string;
+  entityType: string;
+  entityId: string;
+  clientId: string | null;
+  incomingUpdatedAt: string;
+  winningUpdatedAt: string;
+  incomingDeleted: boolean;
+  winningDeleted: boolean;
+  incomingData: Record<string, unknown>;
+  winningData: Record<string, unknown>;
+  revision: number;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolution: "cloud" | "local" | null;
+}
+
 /** Minimal per-user replica of the Premium Sync API sync semantics. */
 class FakeSyncApi {
   readonly workspaces = new Map<string, Map<string, RemoteRow>>();
   private revisions = new Map<string, number>();
+  private conflictRows = new Map<string, Map<string, FakeConflict>>();
+  private conflictSeq = 0;
 
   private rowsFor(userId: string): Map<string, RemoteRow> {
     let rows = this.workspaces.get(userId);
@@ -48,6 +84,63 @@ class FakeSyncApi {
     return rows;
   }
 
+  private conflictsFor(userId: string): Map<string, FakeConflict> {
+    let rows = this.conflictRows.get(userId);
+    if (!rows) {
+      rows = new Map();
+      this.conflictRows.set(userId, rows);
+    }
+    return rows;
+  }
+
+  async getConflict(userId: string, id: string) {
+    const conflict = this.conflictsFor(userId).get(id);
+    if (!conflict) throw new Error("Conflict not found.");
+    const current = this.rowsFor(userId).get(
+      `${conflict.entityType}:${conflict.entityId}`,
+    );
+    return {
+      conflict,
+      current: current ?? null,
+    };
+  }
+
+  async resolveConflict(
+    userId: string,
+    id: string,
+    resolution: "cloud" | "local",
+  ) {
+    const conflict = this.conflictsFor(userId).get(id);
+    if (!conflict) throw new Error("Conflict not found.");
+    conflict.resolvedAt = new Date().toISOString();
+    conflict.resolution = resolution;
+    const current = this.rowsFor(userId).get(
+      `${conflict.entityType}:${conflict.entityId}`,
+    );
+    return { conflict, current: current ?? null };
+  }
+
+  /** Simulate a change pushed by another device. */
+  simulateRemoteEdit(
+    userId: string,
+    entityType: string,
+    entityId: string,
+    data: Record<string, unknown>,
+  ): RemoteRow {
+    const revision = (this.revisions.get(userId) ?? 0) + 1;
+    this.revisions.set(userId, revision);
+    const row: RemoteRow = {
+      entityType,
+      entityId,
+      deleted: false,
+      data,
+      updatedAt: new Date().toISOString(),
+      revision,
+    };
+    this.rowsFor(userId).set(`${entityType}:${entityId}`, row);
+    return row;
+  }
+
   async push(
     userId: string,
     changes: Array<{
@@ -56,27 +149,101 @@ class FakeSyncApi {
       deleted: boolean;
       data: Record<string, unknown>;
       updatedAt: string;
+      baseRevision?: number | null;
     }>,
   ) {
     const rows = this.rowsFor(userId);
     let revision = this.revisions.get(userId) ?? 0;
     let accepted = 0;
+    let ignored = 0;
     let rejected = 0;
-    const conflicts: Array<{ entityType: string; entityId: string }> = [];
+    const conflicts: Array<{
+      id: string;
+      entityType: string;
+      entityId: string;
+      winningUpdatedAt: string;
+    }> = [];
     for (const change of changes) {
       const key = `${change.entityType}:${change.entityId}`;
       const existing = rows.get(key);
-      if (existing && existing.updatedAt >= change.updatedAt) {
+
+      // Faithful reproduction of masar-api decideChange: causality is proven
+      // only by baseRevision, never by comparing timestamps. Omitting
+      // baseRevision on an existing entity is a conflict — this is what makes
+      // the e2e suite actually catch the revision bug.
+      let decision: "apply" | "ignore" | "conflict";
+      if (!existing) {
+        decision = "apply";
+      } else if (
+        existing.deleted === change.deleted &&
+        stableStringify(existing.data ?? {}) === stableStringify(change.data ?? {})
+      ) {
+        decision = "ignore";
+      } else {
+        const base = change.baseRevision;
+        if (base === null || base === undefined) decision = "conflict";
+        else if (base === -1) decision = "apply";
+        else if (base === existing.revision) decision = "apply";
+        else decision = "conflict";
+      }
+
+      if (decision === "ignore") {
+        ignored += 1;
+        continue;
+      }
+      if (decision === "conflict") {
         rejected += 1;
-        conflicts.push({ entityType: change.entityType, entityId: change.entityId });
+        const conflictKey = `${change.entityType}:${change.entityId}`;
+        const existingConflict = [...this.conflictsFor(userId).values()].find(
+          (row) =>
+            !row.resolvedAt &&
+            `${row.entityType}:${row.entityId}` === conflictKey,
+        );
+        const conflict: FakeConflict = existingConflict ?? {
+          id: `conflict-${++this.conflictSeq}`,
+          entityType: change.entityType,
+          entityId: change.entityId,
+          clientId: null,
+          incomingUpdatedAt: change.updatedAt,
+          winningUpdatedAt: existing?.updatedAt ?? change.updatedAt,
+          incomingDeleted: change.deleted,
+          winningDeleted: existing?.deleted ?? false,
+          incomingData: change.data ?? {},
+          winningData: existing?.data ?? {},
+          revision: existing?.revision ?? 0,
+          createdAt: new Date().toISOString(),
+          resolvedAt: null,
+          resolution: null,
+        };
+        conflict.incomingUpdatedAt = change.updatedAt;
+        conflict.incomingDeleted = change.deleted;
+        conflict.incomingData = change.data ?? {};
+        conflict.winningUpdatedAt = existing?.updatedAt ?? change.updatedAt;
+        conflict.winningDeleted = existing?.deleted ?? false;
+        conflict.winningData = existing?.data ?? {};
+        conflict.revision = existing?.revision ?? 0;
+        this.conflictsFor(userId).set(conflict.id, conflict);
+        conflicts.push({
+          id: conflict.id,
+          entityType: change.entityType,
+          entityId: change.entityId,
+          winningUpdatedAt: conflict.winningUpdatedAt,
+        });
         continue;
       }
       revision += 1;
-      rows.set(key, { ...change, revision });
+      rows.set(key, {
+        entityType: change.entityType,
+        entityId: change.entityId,
+        deleted: change.deleted,
+        data: change.data,
+        updatedAt: change.updatedAt,
+        revision,
+      });
       accepted += 1;
     }
     this.revisions.set(userId, revision);
-    return { revision, accepted, ignored: 0, rejected, conflicts };
+    return { revision, accepted, ignored, rejected, conflicts };
   }
 
   async pull(userId: string, since: number, limit = 500) {
@@ -126,12 +293,19 @@ function clientFor(user: typeof USER_A) {
         deleted: boolean;
         data: Record<string, unknown>;
         updatedAt: string;
+        baseRevision?: number | null;
       }>,
     ) {
       return remote.push(user.id, changes);
     },
     async pullChanges(since: number, limit?: number) {
       return remote.pull(user.id, since, limit ?? 500);
+    },
+    async conflict(id: string) {
+      return remote.getConflict(user.id, id);
+    },
+    async resolveConflict(id: string, resolution: "cloud" | "local") {
+      return remote.resolveConflict(user.id, id, resolution);
     },
   };
 }
@@ -340,8 +514,126 @@ describe("cross-device premium sync lifecycle", () => {
     );
   });
 
-  it("reports sync status that ends in idle without pending changes", async () => {
-    await activateDatabase(mirrorA.url);
+  it("re-syncs repeated edits to the same entity without dropping any (revision regression)", async () => {
+    const userId = "user-rev";
+    const user = { id: userId, name: "Rev", email: "rev@example.test" };
+    const mirror = await createTestDatabase();
+    await mirror.client.execute(LOCAL_USER_STUB);
+    await activateDatabase(mirror.url);
+
+    const fakeClient = clientFor(user);
+    const makeRevEngine = (origin: string) =>
+      new SyncEngine({
+        getClient: () => fakeClient as unknown as PremiumApiClient,
+        getLocalOrigin: () => origin,
+        isOnline: () => true,
+        log: () => undefined,
+        onStatus: () => undefined,
+        onUnauthorized: () => undefined,
+      });
+
+    const api = await startLocalApi(userId);
+    try {
+      const engine = makeRevEngine(api.url);
+      await engine.syncNow("startup");
+
+      // Create and sync a board, so the server now holds an existing entity.
+      await createBoard({ name: "Rev 0" }, "local-user", getDb());
+      await engine.syncNow("local-change");
+
+      const [board] = await getDb().select().from(boards);
+      const id = board!.id;
+
+      // Three sequential edits, each followed by a full sync cycle. Before the
+      // fix every one of these was rejected (baseRevision omitted) and the
+      // outbox row was dropped, so the server kept "Rev 0" forever.
+      for (let i = 1; i <= 3; i += 1) {
+        await updateBoard(id, { name: `Rev ${i}` }, "local-user", getDb());
+        await engine.syncNow("local-change");
+      }
+
+      const remoteName = [...remote.workspaces.get(userId)!.values()].find(
+        (row) => row.entityType === "board" && row.entityId === id && !row.deleted,
+      )?.data.name;
+      expect(remoteName).toBe("Rev 3");
+
+      // No conflicts were archived and nothing is left pending.
+      const state = await fetch(`${api.url}/api/sync/state`).then((r) => r.json());
+      expect(state.state.pendingChanges).toBe(0);
+    } finally {
+      api.close();
+      await mirror.close();
+    }
+  });
+
+  it("surfaces a conflict for user resolution instead of retrying it", async () => {
+    const userId = "user-conflict";
+    const user = { id: userId, name: "Conflict", email: "conflict@example.test" };
+    const mirror = await createTestDatabase();
+    await mirror.client.execute(LOCAL_USER_STUB);
+    await activateDatabase(mirror.url);
+
+    const fakeClient = clientFor(user);
+    const api = await startLocalApi(userId);
+    const engine = new SyncEngine({
+      getClient: () => fakeClient as unknown as PremiumApiClient,
+      getLocalOrigin: () => api.url,
+      isOnline: () => true,
+      log: () => undefined,
+      onStatus: () => undefined,
+      onUnauthorized: () => undefined,
+    });
+    try {
+      await engine.syncNow("startup");
+      await createBoard({ name: "Original" }, "local-user", getDb());
+      await engine.syncNow("local-change");
+
+      const [board] = await getDb().select().from(boards);
+      expect(board).toBeDefined();
+      remote.simulateRemoteEdit(userId, "board", board!.id, {
+        id: board!.id,
+        owner_id: "local-user",
+        project_id: board!.projectId,
+        type: board!.type,
+        name: "Cloud edit",
+        description: null,
+        color: board!.color,
+        position: board!.position,
+        created_at: board!.createdAt.getTime(),
+        updated_at: Date.now(),
+      });
+      await updateBoard(board!.id, { name: "Local edit" }, "local-user", getDb());
+
+      await engine.syncNow("conflict");
+
+      const conflicts = await listSyncConflicts();
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]).toMatchObject({
+        entityType: "board",
+        entityId: board!.id,
+        incomingData: expect.objectContaining({ name: "Local edit" }),
+        winningData: expect.objectContaining({ name: "Cloud edit" }),
+      });
+
+      const [localBoard] = await getDb()
+        .select()
+        .from(boards)
+        .where(eq(boards.id, board!.id));
+      expect(localBoard?.name).toBe("Local edit");
+      const remoteBoard = [...remote.workspaces.get(userId)!.values()].find(
+        (row) => row.entityType === "board" && row.entityId === board!.id,
+      );
+      expect(remoteBoard?.data.name).toBe("Cloud edit");
+      const state = await fetch(`${api.url}/api/sync/state`).then((r) => r.json());
+      expect(state.state.conflictCount).toBe(1);
+      expect(state.state.pendingChanges).toBe(0);
+    } finally {
+      api.close();
+      await mirror.close();
+    }
+  });
+
+  it("reports sync status that ends in idle without pending changes", async () => {    await activateDatabase(mirrorA.url);
     const apiA = await startLocalApi(USER_A.id);
     const statuses: SyncStatus[] = [];
     const fakeClient = clientFor(USER_A);

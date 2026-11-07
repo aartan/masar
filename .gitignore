@@ -39,3 +39,6 @@ yarn-error.log*
 /desktop/runtime
 /desktop/vendor
 /dist-desktop
+
+# Self-hosted Excalidraw fonts (regenerated from node_modules on dev/build)
+/public/excalidraw-assets

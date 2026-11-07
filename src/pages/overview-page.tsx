@@ -2,12 +2,14 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
-  ArrowUpRight,
   CalendarDays,
   CheckCircle2,
   CircleAlert,
+  FolderKanban,
   Layers,
+  LayoutGrid,
   ListTodo,
+  PenLine,
   Sparkles,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -99,7 +101,7 @@ function OverviewContent({ data }: { data: DashboardData }) {
           </div>
         </header>
 
-        {data.totals.boards === 0 ? (
+        {data.totals.boards === 0 && data.totals.projects === 0 ? (
           <section className="mt-10 animate-rise">
             <div className="dot-grid relative overflow-hidden rounded-2xl border border-border/80 bg-card px-6 py-16 shadow-soft sm:px-12">
               <div className="absolute -top-24 -right-16 size-64 rounded-full bg-primary/6 blur-3xl" />
@@ -178,6 +180,68 @@ function OverviewContent({ data }: { data: DashboardData }) {
                 delay={3}
               />
             </section>
+
+            {data.projects.length > 0 && (
+              <section className="mt-5 animate-rise" style={{ animationDelay: "160ms" }}>
+                <div className="mb-2 flex items-end justify-between gap-3">
+                  <div>
+                    <PageSectionTitle>Projects</PageSectionTitle>
+                    <p className="-mt-2 text-[12px] text-muted-foreground">
+                      Progress across every project in this workspace.
+                    </p>
+                  </div>
+                  <FolderKanban className="size-4 text-muted-foreground/50" />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {data.projects.map((project) => {
+                    const percent = completionPercent(
+                      project.doneCount,
+                      project.taskCount,
+                    );
+                    return (
+                      <Link
+                        key={project.id}
+                        to={`/projects/${project.id}`}
+                        className="group rounded-xl border border-border/70 bg-card p-4 transition-colors hover:border-border hover:bg-accent/35"
+                      >
+                        <div className="flex items-start gap-2">
+                          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/8 text-primary">
+                            <FolderKanban className="size-4" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[13.5px] font-semibold">
+                              {project.name}
+                            </p>
+                            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                              {project.description || "Project"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] text-muted-foreground">
+                          <span className="inline-flex items-center gap-1">
+                            <LayoutGrid className="size-3" />
+                            {project.kanbanCount} Kanban
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <PenLine className="size-3" />
+                            {project.whiteboardCount} Whiteboard
+                          </span>
+                          <span className="ml-auto tabular-nums">
+                            {project.doneCount}/{project.taskCount}
+                          </span>
+                        </div>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-primary/70 transition-all group-hover:bg-primary"
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
               <Card className="animate-rise overflow-hidden">
@@ -346,39 +410,49 @@ function OverviewContent({ data }: { data: DashboardData }) {
 
               <Card className="animate-rise" style={{ animationDelay: "140ms" }}>
                 <CardHeader className="pb-1">
-                  <PageSectionTitle>Recently added</PageSectionTitle>
+                  <PageSectionTitle>Recent activity</PageSectionTitle>
                   <p className="-mt-2 text-[12px] text-muted-foreground">
-                    The newest work across every board.
+                    Recent task and whiteboard updates across projects.
                   </p>
                 </CardHeader>
                 <CardContent className="pt-3">
-                  {data.recent.length === 0 ? (
+                  {data.activity.length === 0 ? (
                     <EmptyState
                       icon={Sparkles}
-                      title="No tasks yet"
-                      description="Create a task on any board to get started."
+                      title="No activity yet"
+                      description="Create or update work to see it here."
                       compact
                     />
                   ) : (
                     <ul className="divide-y divide-border/60">
-                      {data.recent.slice(0, 5).map((task) => (
-                        <li key={task.id}>
+                      {data.activity.slice(0, 6).map((item) => (
+                        <li key={item.id}>
                           <Link
-                            to={`/boards/${task.boardId}?task=${task.id}`}
+                            to={
+                              item.kind === "task"
+                                ? `/boards/${item.boardId}?task=${item.id.slice("task:".length)}`
+                                : `/boards/${item.boardId}`
+                            }
                             className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-accent/50"
                           >
-                            <span
-                              className={cn(
-                                "size-1.5 shrink-0 rounded-full",
-                                BOARD_COLOR_CLASS[task.boardColor],
-                                "board-dot",
-                              )}
-                            />
-                            <span className="min-w-0 flex-1 truncate text-[12.5px]">
-                              {task.title}
+                            {item.boardType === "whiteboard" ? (
+                              <PenLine className="size-3.5 shrink-0 text-muted-foreground/60" />
+                            ) : (
+                              <LayoutGrid className="size-3.5 shrink-0 text-muted-foreground/60" />
+                            )}
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[12.5px]">
+                                {item.title}
+                              </span>
+                              <span className="block truncate text-[10.5px] text-muted-foreground">
+                                {[item.projectName, item.boardName]
+                                  .filter(Boolean)
+                                  .join(" / ")}
+                                {item.detail ? ` · ${item.detail}` : ""}
+                              </span>
                             </span>
-                            <span className="shrink-0 text-[10.5px] text-muted-foreground">
-                              {task.boardName}
+                            <span className="shrink-0 text-[10px] text-muted-foreground/70">
+                              {format(new Date(item.timestamp), "MMM d")}
                             </span>
                           </Link>
                         </li>

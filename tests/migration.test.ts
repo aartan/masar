@@ -24,6 +24,7 @@ import {
   columns,
   comments,
   labels,
+  projects,
   subtasks,
   taskLabels,
   tasks,
@@ -194,6 +195,43 @@ describe("0001 auth and workspace ownership migration", () => {
     expect(boardCount?.value).toBe(3);
   });
 
+  it("assigns existing boards to their owner's default project and defaults type to kanban", async () => {
+    await migrateToLatest();
+
+    // One "General" project per owner. The legacy boards share the
+    // legacy-workspace owner; the rollout board is unowned, so it is left
+    // unscoped for the legacy claim (its owner_id is null too).
+    const projectRows = await fixture.db
+      .select({ id: projects.id, ownerId: projects.ownerId, name: projects.name })
+      .from(projects);
+    expect(projectRows).toHaveLength(1);
+    expect(projectRows[0]).toMatchObject({
+      id: `default-project-${LEGACY_WORKSPACE_ID}`,
+      ownerId: LEGACY_WORKSPACE_ID,
+      name: "General",
+    });
+
+    const boardRows = await fixture.db
+      .select({ id: boards.id, projectId: boards.projectId, type: boards.type })
+      .from(boards);
+    const byId = new Map(boardRows.map((row) => [row.id, row]));
+    expect(byId.get("legacy-board-1")?.projectId).toBe(
+      `default-project-${LEGACY_WORKSPACE_ID}`,
+    );
+    expect(byId.get("legacy-board-2")?.projectId).toBe(
+      `default-project-${LEGACY_WORKSPACE_ID}`,
+    );
+    // The unowned rollout board stays unscoped, mirroring its null owner.
+    expect(byId.get("rollout-board")?.projectId).toBeNull();
+    // Every existing board defaults to the kanban type.
+    expect(boardRows.every((row) => row.type === "kanban")).toBe(true);
+
+    const [foreignKeyProblem] = await fixture.client
+      .execute("PRAGMA foreign_key_check")
+      .then((result) => result.rows);
+    expect(foreignKeyProblem).toBeUndefined();
+  });
+
   it("claims legacy and unowned boards only for an explicit, confirmed account", async () => {
     await migrateToLatest();
 
@@ -225,10 +263,16 @@ describe("0001 auth and workspace ownership migration", () => {
     });
 
     const claimed = await fixture.db
-      .select({ ownerId: boards.ownerId })
+      .select({ ownerId: boards.ownerId, projectId: boards.projectId })
       .from(boards);
     expect(claimed).toHaveLength(3);
     expect(claimed.every((row) => row.ownerId === owner.id)).toBe(true);
+    expect(claimed.every((row) => Boolean(row.projectId))).toBe(true);
+
+    const claimedProjects = await fixture.db
+      .select({ ownerId: projects.ownerId })
+      .from(projects);
+    expect(claimedProjects.every((row) => row.ownerId === owner.id)).toBe(true);
 
     const [legacyUser] = await fixture.db
       .select({ id: users.id })

@@ -7,12 +7,14 @@ import {
   deleteBoard,
   getBoardDetail,
   listBoards,
+  moveBoard,
   reorderBoards,
   updateBoard,
 } from "@/lib/server/boards";
 import { createColumn, deleteColumn, reorderColumns, updateColumn } from "@/lib/server/columns";
 import { createLabel, deleteLabel, updateLabel } from "@/lib/server/labels";
 import { createTask, reorderTasks } from "@/lib/server/tasks";
+import { getWhiteboardScene, saveWhiteboardScene } from "@/lib/server/whiteboards";
 import {
   boardCreateSchema,
   boardUpdateSchema,
@@ -20,10 +22,12 @@ import {
   columnUpdateSchema,
   labelCreateSchema,
   labelUpdateSchema,
+  moveBoardSchema,
   reorderBoardsSchema,
   reorderColumnsSchema,
   reorderTasksSchema,
   taskCreateSchema,
+  whiteboardSceneSchema,
 } from "@/lib/validation";
 
 export const boardRoutes = new Hono();
@@ -52,6 +56,16 @@ boardRoutes.post("/boards/reorder", async (c) => {
     const user = await requireApiUser();
     const input = await parseJsonBody(c.req.raw, reorderBoardsSchema);
     return jsonOk({ boards: await reorderBoards(input.boardIds, user.id) });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+});
+
+boardRoutes.post("/boards/move", async (c) => {
+  try {
+    const user = await requireApiUser();
+    const input = await parseJsonBody(c.req.raw, moveBoardSchema);
+    return jsonOk({ boards: await moveBoard(input, user.id) });
   } catch (error) {
     return handleRouteError(error);
   }
@@ -145,6 +159,33 @@ boardRoutes.post("/boards/:boardId/tasks/reorder", async (c) => {
     const input = await parseJsonBody(c.req.raw, reorderTasksSchema);
     return jsonOk({
       tasks: await reorderTasks(c.req.param("boardId"), input, user.id),
+    });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+});
+
+boardRoutes.get("/boards/:boardId/scene", async (c) => {
+  try {
+    const user = await requireApiUser();
+    return jsonOk({
+      scene: await getWhiteboardScene(c.req.param("boardId"), user.id),
+    });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+});
+
+boardRoutes.put("/boards/:boardId/scene", async (c) => {
+  try {
+    const user = await requireApiUser();
+    const input = await parseJsonBody(c.req.raw, whiteboardSceneSchema);
+    return jsonOk({
+      scene: await saveWhiteboardScene(
+        c.req.param("boardId"),
+        input.scene,
+        user.id,
+      ),
     });
   } catch (error) {
     return handleRouteError(error);

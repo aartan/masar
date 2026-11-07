@@ -8,8 +8,8 @@ import { ApiError } from "@/lib/api";
 import type { Label } from "@/lib/types";
 import type { LabelCreateInput, LabelUpdateInput } from "@/lib/validation";
 import {
+  assertBoardWritable,
   isUniqueConstraintError,
-  requireBoard,
   requireLabel,
   serializeLabel,
 } from "./queries";
@@ -20,7 +20,7 @@ export async function createLabel(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<Label> {
-  await requireBoard(database, boardId, ownerId);
+  await assertBoardWritable(database, boardId, ownerId);
   const id = randomUUID();
   const now = new Date();
 
@@ -55,7 +55,8 @@ export async function updateLabel(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<Label> {
-  await requireLabel(database, labelId, ownerId);
+  const existing = await requireLabel(database, labelId, ownerId);
+  await assertBoardWritable(database, existing.boardId, ownerId);
 
   try {
     await database
@@ -87,6 +88,7 @@ export async function deleteLabel(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<void> {
-  await requireLabel(database, labelId, ownerId);
+  const label = await requireLabel(database, labelId, ownerId);
+  await assertBoardWritable(database, label.boardId, ownerId);
   await database.delete(labels).where(eq(labels.id, labelId));
 }

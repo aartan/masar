@@ -6,15 +6,23 @@ import {
   columns,
   comments,
   labels,
+  projects,
   subtasks,
   taskLabels,
   tasks,
   type BoardRow,
+  type ProjectRow,
   type TaskRow,
 } from "@/db/schema";
 import { ApiError } from "@/lib/api";
-import type { BoardColumn, BoardSummary, Label, Task } from "@/lib/types";
-import type { BoardColor, LabelColor, Priority } from "@/lib/constants";
+import type {
+  BoardColumn,
+  BoardSummary,
+  Label,
+  ProjectSummary,
+  Task,
+} from "@/lib/types";
+import type { BoardColor, BoardType, LabelColor, Priority } from "@/lib/constants";
 
 function ownedBoardIds(database: AppDatabase, ownerId: string) {
   return database
@@ -29,6 +37,8 @@ export function serializeBoard(
 ): BoardSummary {
   return {
     id: row.id,
+    projectId: row.projectId,
+    type: row.type as BoardType,
     name: row.name,
     description: row.description,
     color: row.color as BoardColor,
@@ -38,6 +48,33 @@ export function serializeBoard(
     taskCount: counts.taskCount,
     doneCount: counts.doneCount,
     columnCount: counts.columnCount,
+  };
+}
+
+export function serializeProject(
+  row: ProjectRow,
+  counts: {
+    boardCount: number;
+    kanbanCount: number;
+    whiteboardCount: number;
+    taskCount: number;
+    doneCount: number;
+  },
+): ProjectSummary {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    position: row.position,
+    archived: row.archived,
+    archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    boardCount: counts.boardCount,
+    kanbanCount: counts.kanbanCount,
+    whiteboardCount: counts.whiteboardCount,
+    taskCount: counts.taskCount,
+    doneCount: counts.doneCount,
   };
 }
 
@@ -298,6 +335,164 @@ export async function requireBoard(
   return row;
 }
 
+export async function requireProject(
+  database: AppDatabase,
+  projectId: string,
+  ownerId: string,
+): Promise<ProjectRow> {
+  const [row] = await database
+    .select()
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.ownerId, ownerId)))
+    .limit(1);
+  if (!row) throw new ApiError("Project not found.", 404);
+  return row;
+}
+
+/**
+ * Archiving a project makes its contents read-only. Mutations to a board,
+ * column, task, label or whiteboard first resolve the owning project and call
+ * this; a 409 is returned so the UI can explain why the edit was blocked.
+ */
+export function assertProjectWritable(project: ProjectRow): void {
+  if (project.archived) {
+    throw new ApiError(
+      "This project is archived. Restore it to make changes.",
+      409,
+    );
+  }
+}
+
+/** Reject content mutations when the board's project is archived. */
+export async function assertBoardWritable(
+  database: AppDatabase,
+  boardId: string,
+  ownerId: string,
+): Promise<BoardRow> {
+  const board = await requireBoard(database, boardId, ownerId);
+  if (board.projectId) {
+    const project = await requireProject(database, board.projectId, ownerId);
+    assertProjectWritable(project);
+  }
+  return board;
+}
+
+export async function assertTaskWritable(
+  database: AppDatabase,
+  taskId: string,
+  ownerId: string,
+): Promise<TaskRow> {
+  const task = await requireTask(database, taskId, ownerId);
+  await assertBoardWritable(database, task.boardId, ownerId);
+  return task;
+}
+
+export async function assertSubtaskWritable(
+  database: AppDatabase,
+  subtaskId: string,
+  ownerId: string,
+) {
+  const subtask = await requireSubtask(database, subtaskId, ownerId);
+  await assertTaskWritable(database, subtask.taskId, ownerId);
+  return subtask;
+}
+
+export async function assertCommentWritable(
+  database: AppDatabase,
+  commentId: string,
+  ownerId: string,
+) {
+  const comment = await requireComment(database, commentId, ownerId);
+  await assertTaskWritable(database, comment.taskId, ownerId);
+  return comment;
+}
+
+export async function fetchProjectSummaries(
+  database: AppDatabase,
+  ownerId: string,
+): Promise<ProjectSummary[]> {
+  const projectRows = await database
+    .select()
+    .from(projects)
+    .where(eq(projects.ownerId, ownerId))
+    .orderBy(asc(projects.position), asc(projects.createdAt));
+  if (projectRows.length === 0) return [];
+
+  const boardRows = await database
+    .select({
+      id: boards.id,
+      projectId: boards.projectId,
+      type: boards.type,
+    })
+    .from(boards)
+    .where(eq(boards.ownerId, ownerId));
+
+  const projectCounts = new Map<
+    string,
+    {
+      boardCount: number;
+      kanbanCount: number;
+      whiteboardCount: number;
+      taskCount: number;
+      doneCount: number;
+    }
+  >();
+  for (const board of boardRows) {
+    if (!board.projectId) continue;
+    const current = projectCounts.get(board.projectId) ?? {
+      boardCount: 0,
+      kanbanCount: 0,
+      whiteboardCount: 0,
+      taskCount: 0,
+      doneCount: 0,
+    };
+    current.boardCount += 1;
+    if (board.type === "whiteboard") current.whiteboardCount += 1;
+    else current.kanbanCount += 1;
+    projectCounts.set(board.projectId, current);
+  }
+
+  if (boardRows.length > 0) {
+    const taskRows = await database
+      .select({
+        boardId: tasks.boardId,
+        total: count(),
+        done: sql<number>`sum(case when ${columns.isDone} = 1 then 1 else 0 end)`.mapWith(
+          Number,
+        ),
+      })
+      .from(tasks)
+      .innerJoin(columns, eq(tasks.columnId, columns.id))
+      .where(inArray(tasks.boardId, boardRows.map((board) => board.id)))
+      .groupBy(tasks.boardId);
+
+    const boardProject = new Map(
+      boardRows.map((board) => [board.id, board.projectId]),
+    );
+    for (const row of taskRows) {
+      const projectId = boardProject.get(row.boardId);
+      if (!projectId) continue;
+      const current = projectCounts.get(projectId);
+      if (!current) continue;
+      current.taskCount += Number(row.total);
+      current.doneCount += Number(row.done ?? 0);
+    }
+  }
+
+  return projectRows.map((row) =>
+    serializeProject(
+      row,
+      projectCounts.get(row.id) ?? {
+        boardCount: 0,
+        kanbanCount: 0,
+        whiteboardCount: 0,
+        taskCount: 0,
+        doneCount: 0,
+      },
+    ),
+  );
+}
+
 export async function requireColumn(
   database: AppDatabase,
   columnId: string,
@@ -423,6 +618,29 @@ export async function nextBoardPosition(
     .select({ value: sql<number>`coalesce(max(${boards.position}), -1)` })
     .from(boards)
     .where(eq(boards.ownerId, ownerId));
+  return (row?.value ?? -1) + 1;
+}
+
+export async function nextProjectPosition(
+  database: AppDatabase,
+  ownerId: string,
+): Promise<number> {
+  const [row] = await database
+    .select({ value: sql<number>`coalesce(max(${projects.position}), -1)` })
+    .from(projects)
+    .where(eq(projects.ownerId, ownerId));
+  return (row?.value ?? -1) + 1;
+}
+
+/** Position of the next board within a specific project, for scoped reorder. */
+export async function nextBoardPositionInProject(
+  database: AppDatabase,
+  projectId: string,
+): Promise<number> {
+  const [row] = await database
+    .select({ value: sql<number>`coalesce(max(${boards.position}), -1)` })
+    .from(boards)
+    .where(eq(boards.projectId, projectId));
   return (row?.value ?? -1) + 1;
 }
 

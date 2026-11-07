@@ -7,6 +7,7 @@ import { bodyLimit } from "hono/body-limit";
 
 import { handleRouteError } from "@/lib/api";
 import { boardRoutes } from "./routes/boards";
+import { projectRoutes } from "./routes/projects";
 import { syncRoutes } from "./routes/sync";
 import { taskRoutes } from "./routes/tasks";
 import { workspaceRoutes } from "./routes/workspace";
@@ -33,6 +34,7 @@ export function createLocalApp(options: LocalAppOptions = {}): Hono {
     : null;
 
   app.route("/api", workspaceRoutes);
+  app.route("/api", projectRoutes);
   app.route("/api", boardRoutes);
   app.route("/api", taskRoutes);
   app.route("/api", syncRoutes);

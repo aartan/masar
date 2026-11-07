@@ -1,39 +1,74 @@
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 
 import { getDb, type AppDatabase } from "@/db";
-import { boards, columns, tasks } from "@/db/schema";
+import { boards, columns, tasks, whiteboards } from "@/db/schema";
 import type { BoardColor, Priority } from "@/lib/constants";
 import { addDaysIso, todayIso } from "@/lib/dates";
-import type { BoardStats, DashboardData } from "@/lib/types";
-import { fetchBoardSummaries, fetchTasks } from "./queries";
+import type {
+  ActivityItem,
+  BoardStats,
+  DashboardData,
+  DashboardTask,
+} from "@/lib/types";
+import { fetchBoardSummaries, fetchProjectSummaries, fetchTasks } from "./queries";
 
 export async function getDashboardData(
   ownerId: string,
   database: AppDatabase = getDb(),
+  projectId?: string,
 ): Promise<DashboardData> {
-  const [boardSummaries, allColumns, allTasks] = await Promise.all([
+  const [allBoardSummaries, allProjectSummaries] = await Promise.all([
     fetchBoardSummaries(database, ownerId),
-    database
-      .select()
-      .from(columns)
-      .where(
-        inArray(
-          columns.boardId,
-          database
-            .select({ id: boards.id })
-            .from(boards)
-            .where(eq(boards.ownerId, ownerId)),
-        ),
-      )
-      .orderBy(asc(columns.position)),
+    fetchProjectSummaries(database, ownerId),
+  ]);
+  const activeProjectIds = new Set(
+    allProjectSummaries
+      .filter((project) => !project.archived)
+      .map((project) => project.id),
+  );
+  const boardSummaries = projectId
+    ? allBoardSummaries.filter((board) => board.projectId === projectId)
+    : allBoardSummaries.filter(
+        (board) => !board.projectId || activeProjectIds.has(board.projectId),
+      );
+  const boardIds = boardSummaries.map((board) => board.id);
+  const projectSummaries = projectId
+    ? allProjectSummaries.filter((project) => project.id === projectId)
+    : allProjectSummaries.filter((project) => !project.archived);
+
+  const [allColumns, allOwnerTasks, whiteboardRows] = await Promise.all([
+    boardIds.length > 0
+      ? database
+          .select()
+          .from(columns)
+          .where(inArray(columns.boardId, boardIds))
+          .orderBy(asc(columns.position))
+      : Promise.resolve([]),
     fetchTasks(database, { ownerId }),
+    boardIds.length > 0
+      ? database
+          .select({
+            boardId: whiteboards.boardId,
+            updatedAt: whiteboards.updatedAt,
+          })
+          .from(whiteboards)
+          .where(inArray(whiteboards.boardId, boardIds))
+          .orderBy(desc(whiteboards.updatedAt))
+          .limit(20)
+      : Promise.resolve([]),
   ]);
 
+  const allTasks = allOwnerTasks.filter((task) =>
+    boardIds.includes(task.boardId),
+  );
   const today = todayIso();
   const weekAhead = addDaysIso(today, 7);
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const columnMap = new Map(allColumns.map((column) => [column.id, column]));
   const boardMap = new Map(boardSummaries.map((board) => [board.id, board]));
+  const projectMap = new Map(
+    projectSummaries.map((project) => [project.id, project]),
+  );
 
   const isDone = (columnId: string) => columnMap.get(columnId)?.isDone ?? false;
   const doneTasks = allTasks.filter((task) => isDone(task.columnId));
@@ -76,15 +111,20 @@ export async function getDashboardData(
     };
   });
 
-  const enrich = (task: (typeof allTasks)[number]) => {
+  const enrich = (task: (typeof allTasks)[number]): DashboardTask => {
     const column = columnMap.get(task.columnId);
     const board = boardMap.get(task.boardId);
+    const project = board?.projectId
+      ? projectMap.get(board.projectId)
+      : undefined;
     return {
       ...task,
       boardName: board?.name ?? "Unknown board",
       boardColor: (board?.color ?? "slate") as BoardColor,
       columnName: column?.name ?? "Unknown",
       columnIsDone: column?.isDone ?? false,
+      projectId: board?.projectId ?? null,
+      projectName: project?.name ?? null,
     };
   };
 
@@ -99,9 +139,51 @@ export async function getDashboardData(
     .map(enrich);
 
   const recent = [...allTasks]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, 6)
     .map(enrich);
+
+  const activity: ActivityItem[] = [];
+  for (const task of [...allTasks]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 12)) {
+    const board = boardMap.get(task.boardId);
+    if (!board) continue;
+    const project = board.projectId ? projectMap.get(board.projectId) : undefined;
+    activity.push({
+      id: `task:${task.id}`,
+      kind: "task",
+      title: task.title,
+      detail:
+        columnMap.get(task.columnId)?.isDone === true
+          ? "Completed"
+          : columnMap.get(task.columnId)?.name ?? null,
+      boardId: board.id,
+      boardName: board.name,
+      boardType: board.type,
+      projectId: board.projectId,
+      projectName: project?.name ?? null,
+      timestamp: task.updatedAt,
+    });
+  }
+  for (const row of whiteboardRows) {
+    const board = boardMap.get(row.boardId);
+    if (!board) continue;
+    const project = board.projectId ? projectMap.get(board.projectId) : undefined;
+    activity.push({
+      id: `whiteboard:${row.boardId}`,
+      kind: "whiteboard",
+      title: board.name,
+      detail: "Whiteboard saved",
+      boardId: board.id,
+      boardName: board.name,
+      boardType: board.type,
+      projectId: board.projectId,
+      projectName: project?.name ?? null,
+      timestamp: row.updatedAt.toISOString(),
+    });
+  }
+  activity.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
   return {
     totals: {
@@ -112,9 +194,15 @@ export async function getDashboardData(
       dueSoon: dueSoonTasks.length,
       completedLast7Days: completedLast7Days.length,
       boards: boardSummaries.length,
+      projects: projectSummaries.length,
+      whiteboards: boardSummaries.filter(
+        (board) => board.type === "whiteboard",
+      ).length,
     },
     priorityCounts,
     boardStats,
+    projects: projectSummaries,
+    activity: activity.slice(0, 10),
     upcoming,
     recent,
   };

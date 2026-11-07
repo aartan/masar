@@ -113,9 +113,11 @@ function getServerView(): ViewMode {
 export function BoardView({
   initialData,
   initialTaskId,
+  readOnly = false,
 }: {
   initialData: BoardDetail;
   initialTaskId?: string;
+  readOnly?: boolean;
 }) {
   const navigate = useNavigate();
   const { refreshBoards } = useWorkspace();
@@ -163,6 +165,7 @@ export function BoardView({
   React.useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (
+        readOnly ||
         event.key.toLowerCase() !== "n" ||
         event.metaKey ||
         event.ctrlKey ||
@@ -191,7 +194,7 @@ export function BoardView({
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [readOnly]);
 
   const filteredTasks = React.useMemo(
     () => filterAndSortTasks(tasks, filters),
@@ -199,7 +202,7 @@ export function BoardView({
   );
   const filtersActive = hasActiveFilters(filters);
   const reorderPaused = filtersActive || filters.sort !== "manual";
-  const dragDisabled = reorderPaused || isReordering;
+  const dragDisabled = readOnly || reorderPaused || isReordering;
   const doneColumnIds = new Set(
     columns.filter((column) => column.isDone).map((column) => column.id),
   );
@@ -713,9 +716,16 @@ export function BoardView({
               )}
             />
             <div className="min-w-0 flex-1">
-              <h1 className="font-display truncate text-[24px] leading-tight font-semibold tracking-[-0.03em] sm:text-[27px]">
-                {board.name}
-              </h1>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="font-display truncate text-[24px] leading-tight font-semibold tracking-[-0.03em] sm:text-[27px]">
+                  {board.name}
+                </h1>
+                {readOnly && (
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                    Read-only (archived)
+                  </span>
+                )}
+              </div>
               {board.description && (
                 <p className="mt-1 max-w-2xl truncate text-[12px] text-muted-foreground">
                   {board.description}
@@ -779,44 +789,48 @@ export function BoardView({
                   List
                 </button>
               </div>
-              <Button
-                size="sm"
-                onClick={() => {
-                  setNewTaskColumnId(undefined);
-                  setNewTaskOpen(true);
-                }}
-                title="New task (N)"
-                className="h-8"
-              >
-                <Plus className="size-3.5" />
-                <span className="hidden sm:inline">New task</span>
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+              {!readOnly && (
+                <>
                   <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Board actions"
-                    className="text-muted-foreground"
+                    size="sm"
+                    onClick={() => {
+                      setNewTaskColumnId(undefined);
+                      setNewTaskOpen(true);
+                    }}
+                    title="New task (N)"
+                    className="h-8"
                   >
-                    <MoreHorizontal className="size-4" />
+                    <Plus className="size-3.5" />
+                    <span className="hidden sm:inline">New task</span>
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
-                    <PencilLine />
-                    Board settings
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onSelect={() => setDeleteBoardOpen(true)}
-                  >
-                    <Trash2 />
-                    Delete board
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Board actions"
+                        className="text-muted-foreground"
+                      >
+                        <MoreHorizontal className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
+                        <PencilLine />
+                        Board settings
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onSelect={() => setDeleteBoardOpen(true)}
+                      >
+                        <Trash2 />
+                        Delete board
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -860,7 +874,7 @@ export function BoardView({
         {view === "board" ? (
           <DndContext
             id="masar-board"
-            sensors={sensors}
+            sensors={readOnly ? [] : sensors}
             collisionDetection={collisionDetection}
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
@@ -878,6 +892,7 @@ export function BoardView({
                   labels={labels}
                   filtersActive={filtersActive}
                   dragDisabled={dragDisabled}
+                  readOnly={readOnly}
                   canMoveLeft={index > 0}
                   canMoveRight={index < columns.length - 1}
                   onOpenNewTask={(columnId) => {
@@ -903,17 +918,19 @@ export function BoardView({
                 />
               ))}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingColumn(null);
-                  setColumnDialogOpen(true);
-                }}
-                className="mt-0 flex h-10 w-[220px] shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-dashed border-border/80 text-[12px] font-medium text-muted-foreground/70 transition-colors hover:border-border hover:bg-card/50 hover:text-foreground"
-              >
-                <Plus className="size-3.5" />
-                Add column
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingColumn(null);
+                    setColumnDialogOpen(true);
+                  }}
+                  className="mt-0 flex h-10 w-[220px] shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-dashed border-border/80 text-[12px] font-medium text-muted-foreground/70 transition-colors hover:border-border hover:bg-card/50 hover:text-foreground"
+                >
+                  <Plus className="size-3.5" />
+                  Add column
+                </button>
+              )}
             </div>
 
             <DragOverlay
@@ -994,6 +1011,7 @@ export function BoardView({
         columns={columns}
         labels={labels}
         open={Boolean(selectedTask)}
+        readOnly={readOnly}
         onOpenChange={handleSheetOpenChange}
         onTaskUpdated={handleTaskUpdated}
         onTaskDeleted={handleTaskDeletedFromSheet}

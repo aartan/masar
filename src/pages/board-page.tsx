@@ -2,13 +2,23 @@ import * as React from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { BoardView } from "@/components/board/board-view";
+import { useWorkspace } from "@/components/layout/workspace-provider";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/client-api";
 import type { BoardDetail } from "@/lib/types";
 
+// Excalidraw is heavy; load the whiteboard view only when a whiteboard board
+// is opened so it never enters the Kanban bundle.
+const WhiteboardView = React.lazy(() =>
+  import("@/components/whiteboard/whiteboard-view").then((module) => ({
+    default: module.WhiteboardView,
+  })),
+);
+
 export function BoardPage() {
   const { boardId = "" } = useParams();
+  const { projects } = useWorkspace();
   const [searchParams] = useSearchParams();
   const [data, setData] = React.useState<BoardDetail | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -73,12 +83,36 @@ export function BoardPage() {
     requestedTask && data.tasks.some((task) => task.id === requestedTask)
       ? requestedTask
       : undefined;
+  const readOnly =
+    projects.find((project) => project.id === data.board.projectId)?.archived ??
+    false;
+
+  if (data.board.type === "whiteboard") {
+    return (
+      <React.Suspense
+        fallback={
+          <div className="flex h-full flex-col bg-canvas">
+            <div className="border-b border-border/60 bg-background/65 px-4 py-5 sm:px-6">
+              <Skeleton className="h-3 w-40" />
+              <Skeleton className="mt-3 h-7 w-64" />
+            </div>
+            <div className="flex-1 p-4 sm:p-6">
+              <Skeleton className="h-full min-h-[420px] w-full rounded-2xl" />
+            </div>
+          </div>
+        }
+      >
+        <WhiteboardView key={boardId} board={data.board} />
+      </React.Suspense>
+    );
+  }
 
   return (
     <BoardView
       key={`${boardId}:${initialTaskId ?? ""}`}
       initialData={data}
       initialTaskId={initialTaskId}
+      readOnly={readOnly}
     />
   );
 }

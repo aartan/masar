@@ -10,8 +10,10 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BoardPage } from "@/pages/board-page";
 import { CalendarPage } from "@/pages/calendar-page";
+import { ConflictsPage } from "@/pages/conflicts-page";
 import { NotFoundPage } from "@/pages/not-found-page";
 import OverviewPage from "@/pages/overview-page";
+import { ProjectPage } from "@/pages/project-page";
 import { AccountPage } from "@/pages/account-page";
 import { DeleteAccountPage } from "@/pages/delete-account-page";
 
@@ -64,6 +66,8 @@ export function App() {
                 <Routes>
                   <Route path="/" element={<OverviewPage />} />
                   <Route path="/calendar" element={<CalendarPage />} />
+                  <Route path="/conflicts" element={<ConflictsPage />} />
+                  <Route path="/projects/:projectId" element={<ProjectPage />} />
                   <Route path="/boards/:boardId" element={<BoardPage />} />
                   <Route path="/account" element={<AccountPage />} />
                   <Route path="/account/delete" element={<DeleteAccountPage />} />

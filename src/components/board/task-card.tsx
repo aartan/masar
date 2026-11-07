@@ -38,6 +38,7 @@ export function TaskCard({
   columns,
   labels,
   disabled,
+  readOnly = false,
   onOpen,
   onDuplicate,
   onMoveTo,
@@ -48,6 +49,7 @@ export function TaskCard({
   columns: BoardColumn[];
   labels: Label[];
   disabled?: boolean;
+  readOnly?: boolean;
   onOpen: () => void;
   onDuplicate: () => void;
   onMoveTo: (columnId: string) => void;
@@ -119,6 +121,7 @@ export function TaskCard({
             </span>
           )}
         </div>
+        {!readOnly && (
         <div
           className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
           onClick={(event) => event.stopPropagation()}
@@ -192,6 +195,7 @@ export function TaskCard({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        )}
       </div>
 
       <h4

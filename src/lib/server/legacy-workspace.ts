@@ -1,7 +1,9 @@
-import { count, eq, isNull, or } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+
+import { and, count, eq, isNull, or } from "drizzle-orm";
 
 import type { AppDatabase } from "@/db";
-import { boards, users } from "@/db/schema";
+import { boards, projects, users } from "@/db/schema";
 
 export const LEGACY_WORKSPACE_ID = "legacy-workspace";
 
@@ -52,12 +54,56 @@ export async function claimLegacyWorkspace(
   }
 
   await database.transaction(async (tx) => {
+    // Reassign projects first so the boards' project_id FK still resolves after
+    // the legacy user row (and its cascade) is removed. Both legacy and
+    // NULL-owned rows move to the explicit account.
+    await tx
+      .update(projects)
+      .set({ ownerId: owner.id })
+      .where(
+        or(eq(projects.ownerId, LEGACY_WORKSPACE_ID), isNull(projects.ownerId)),
+      );
     await tx
       .update(boards)
       .set({ ownerId: owner.id })
       .where(
         or(eq(boards.ownerId, LEGACY_WORKSPACE_ID), isNull(boards.ownerId)),
       );
+
+    // Rollout-era boards can have neither an owner nor a project. Give them a
+    // visible home now that they belong to an explicit account.
+    const projectless = await tx
+      .select({ id: boards.id })
+      .from(boards)
+      .where(
+        and(eq(boards.ownerId, owner.id), isNull(boards.projectId)),
+      )
+      .limit(1);
+    if (projectless.length > 0) {
+      const [existingProject] = await tx
+        .select({ id: projects.id })
+        .from(projects)
+        .where(
+          and(eq(projects.ownerId, owner.id), eq(projects.archived, false)),
+        )
+        .limit(1);
+      const projectId = existingProject?.id ?? randomUUID();
+      if (!existingProject) {
+        await tx.insert(projects).values({
+          id: projectId,
+          ownerId: owner.id,
+          name: "General",
+          archived: false,
+        });
+      }
+      await tx
+        .update(boards)
+        .set({ projectId })
+        .where(
+          and(eq(boards.ownerId, owner.id), isNull(boards.projectId)),
+        );
+    }
+
     await tx.delete(users).where(eq(users.id, LEGACY_WORKSPACE_ID));
   });
 

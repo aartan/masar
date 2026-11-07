@@ -68,6 +68,7 @@ export function TaskDetailSheet({
   columns,
   labels,
   open,
+  readOnly = false,
   onOpenChange,
   onTaskUpdated,
   onTaskDeleted,
@@ -78,6 +79,7 @@ export function TaskDetailSheet({
   columns: BoardColumn[];
   labels: BoardLabel[];
   open: boolean;
+  readOnly?: boolean;
   onOpenChange: (open: boolean) => void;
   onTaskUpdated: (task: Task) => void;
   onTaskDeleted: (taskId: string) => void;
@@ -225,7 +227,7 @@ export function TaskDetailSheet({
 
   async function saveTitle() {
     const current = detailRef.current;
-    if (!current) return;
+    if (!current || readOnly) return;
     const trimmed = title.trim();
     if (!trimmed) {
       setTitle(current.title);
@@ -237,7 +239,7 @@ export function TaskDetailSheet({
 
   async function saveDescription() {
     const current = detailRef.current;
-    if (!current) return;
+    if (!current || readOnly) return;
     const trimmed = descriptionRef.current.trim();
     const next = trimmed || null;
     if (next === current.description) {
@@ -395,8 +397,10 @@ export function TaskDetailSheet({
   }
 
   function closeSheet() {
-    void saveDescription();
-    flushPendingSubtaskEdit();
+    if (!readOnly) {
+      void saveDescription();
+      flushPendingSubtaskEdit();
+    }
     onOpenChange(false);
   }
 
@@ -631,32 +635,34 @@ export function TaskDetailSheet({
               <span className="truncate text-muted-foreground/70">Details</span>
             </span>
             <div className="ml-auto flex items-center gap-1">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Task actions"
-                    disabled={!detail || busy}
-                  >
-                    <MoreHorizontal className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => void duplicate()}>
-                    <Copy />
-                    Duplicate task
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onSelect={() => setDeleteOpen(true)}
-                  >
-                    <Trash2 />
-                    Delete task
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {!readOnly && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Task actions"
+                      disabled={!detail || busy}
+                    >
+                      <MoreHorizontal className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => void duplicate()}>
+                      <Copy />
+                      Duplicate task
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={() => setDeleteOpen(true)}
+                    >
+                      <Trash2 />
+                      Delete task
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -709,6 +715,7 @@ export function TaskDetailSheet({
                   <textarea
                     ref={titleRef}
                     value={title}
+                    readOnly={readOnly}
                     onChange={(event) => setTitle(event.target.value)}
                     onBlur={() => void saveTitle()}
                     onKeyDown={(event) => {
@@ -726,6 +733,12 @@ export function TaskDetailSheet({
                     <Loader2 className="mt-1.5 size-3.5 shrink-0 animate-spin text-muted-foreground/50" />
                   )}
                 </div>
+                {readOnly && (
+                  <p className="mt-3 rounded-lg border border-border/60 bg-muted/35 px-3 py-2 text-[11.5px] text-muted-foreground">
+                    Archived project — this task is read-only. Restore the
+                    project to make changes.
+                  </p>
+                )}
                 <p className="mt-2 flex flex-wrap items-center gap-2 text-[10.5px] text-muted-foreground/60">
                   <span>Created {formatDateTime(detail.createdAt)}</span>
                   {detail.completedAt && (
@@ -741,6 +754,7 @@ export function TaskDetailSheet({
                     <Select
                       value={detail.columnId}
                       onValueChange={(value) => void changeColumn(value)}
+                      disabled={readOnly}
                     >
                       <SelectTrigger className="h-8 text-[12.5px]">
                         <SelectValue />
@@ -757,6 +771,7 @@ export function TaskDetailSheet({
                   <MetaField label="Priority">
                     <PrioritySelect
                       value={detail.priority as Priority}
+                      disabled={readOnly}
                       onChange={(priority) =>
                         void patchTask({ priority })
                       }
@@ -769,6 +784,7 @@ export function TaskDetailSheet({
                         <Input
                           type="date"
                           value={detail.dueDate ?? ""}
+                          disabled={readOnly}
                           onChange={(event) =>
                             void patchTask({
                               dueDate: event.target.value || null,
@@ -778,7 +794,7 @@ export function TaskDetailSheet({
                           aria-label="Due date"
                         />
                       </div>
-                      {detail.dueDate && (
+                      {detail.dueDate && !readOnly && (
                         <Button
                           variant="ghost"
                           size="icon-xs"
@@ -798,12 +814,14 @@ export function TaskDetailSheet({
                     <h3 className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/60 uppercase">
                       Labels
                     </h3>
-                    <LabelManagerPopover
-                      labels={labels}
-                      selectedIds={detail.labelIds}
-                      onToggle={(label) => void toggleLabel(label)}
-                      onCreate={createLabelForTask}
-                    />
+                    {!readOnly && (
+                      <LabelManagerPopover
+                        labels={labels}
+                        selectedIds={detail.labelIds}
+                        onToggle={(label) => void toggleLabel(label)}
+                        onCreate={createLabelForTask}
+                      />
+                    )}
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     {detail.labelIds.length === 0 && (
@@ -814,6 +832,9 @@ export function TaskDetailSheet({
                     {detail.labelIds.map((id) => {
                       const label = labels.find((item) => item.id === id);
                       if (!label) return null;
+                      if (readOnly) {
+                        return <LabelChip key={id} label={label} />;
+                      }
                       return (
                         <button
                           key={id}
@@ -836,6 +857,7 @@ export function TaskDetailSheet({
                   </h3>
                   <textarea
                     value={description}
+                    readOnly={readOnly}
                     onChange={(event) => {
                       descriptionRef.current = event.target.value;
                       descriptionDirtyRef.current = true;
@@ -889,11 +911,12 @@ export function TaskDetailSheet({
                         >
                           <Checkbox
                             checked={subtask.completed}
+                            disabled={readOnly}
                             onCheckedChange={() => void toggleSubtask(subtask)}
                             className="mt-0.5 size-3.5"
                             aria-label={`Subtask: ${subtask.title}`}
                           />
-                          {editing ? (
+                          {editing && !readOnly ? (
                             <Input
                               autoFocus
                               value={subtaskEdit?.title ?? ""}
@@ -923,9 +946,10 @@ export function TaskDetailSheet({
                             <button
                               type="button"
                               onClick={() => startEditingSubtask(subtask)}
-                              title="Edit subtask"
+                              disabled={readOnly}
+                              title={readOnly ? undefined : "Edit subtask"}
                               className={cn(
-                                "min-w-0 flex-1 text-left text-[12.5px] leading-relaxed transition-colors hover:text-foreground",
+                                "min-w-0 flex-1 text-left text-[12.5px] leading-relaxed transition-colors hover:text-foreground disabled:hover:text-inherit",
                                 subtask.completed &&
                                   "text-muted-foreground/60 line-through",
                               )}
@@ -933,7 +957,7 @@ export function TaskDetailSheet({
                               {subtask.title}
                             </button>
                           )}
-                          {!editing && (
+                          {!editing && !readOnly && (
                             <button
                               type="button"
                               onClick={() => startEditingSubtask(subtask)}
@@ -943,37 +967,41 @@ export function TaskDetailSheet({
                               <Pencil className="size-3" />
                             </button>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => void deleteSubtask(subtask)}
-                            className="mt-0.5 text-muted-foreground/0 transition-colors group-hover/subtask:text-muted-foreground/50 hover:text-destructive"
-                            aria-label={`Delete subtask ${subtask.title}`}
-                          >
-                            <X className="size-3.5" />
-                          </button>
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              onClick={() => void deleteSubtask(subtask)}
+                              className="mt-0.5 text-muted-foreground/0 transition-colors group-hover/subtask:text-muted-foreground/50 hover:text-destructive"
+                              aria-label={`Delete subtask ${subtask.title}`}
+                            >
+                              <X className="size-3.5" />
+                            </button>
+                          )}
                         </li>
                       );
                     })}
                   </ul>
-                  <form onSubmit={addSubtask} className="mt-2 flex items-center gap-1.5">
-                    <Input
-                      value={subtaskTitle}
-                      onChange={(event) => setSubtaskTitle(event.target.value)}
-                      placeholder="Add a subtask…"
-                      maxLength={200}
-                      className="h-8 text-[12px]"
-                      disabled={busy}
-                    />
-                    <Button
-                      type="submit"
-                      variant="outline"
-                      size="icon-sm"
-                      disabled={!subtaskTitle.trim() || busy}
-                      aria-label="Add subtask"
-                    >
-                      <Plus className="size-3.5" />
-                    </Button>
-                  </form>
+                  {!readOnly && (
+                    <form onSubmit={addSubtask} className="mt-2 flex items-center gap-1.5">
+                      <Input
+                        value={subtaskTitle}
+                        onChange={(event) => setSubtaskTitle(event.target.value)}
+                        placeholder="Add a subtask…"
+                        maxLength={200}
+                        className="h-8 text-[12px]"
+                        disabled={busy}
+                      />
+                      <Button
+                        type="submit"
+                        variant="outline"
+                        size="icon-sm"
+                        disabled={!subtaskTitle.trim() || busy}
+                        aria-label="Add subtask"
+                      >
+                        <Plus className="size-3.5" />
+                      </Button>
+                    </form>
+                  )}
                 </section>
 
                 <section className="mt-6 border-t border-border/60 pt-5">
@@ -1002,14 +1030,16 @@ export function TaskDetailSheet({
                               <span className="text-[10px] text-muted-foreground/60">
                                 {formatRelative(comment.createdAt)}
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => void deleteComment(comment)}
-                                className="ml-auto text-muted-foreground/0 transition-colors group-hover/comment:text-muted-foreground/40 hover:text-destructive"
-                                aria-label="Delete comment"
-                              >
-                                <Trash2 className="size-3" />
-                              </button>
+                              {!readOnly && (
+                                <button
+                                  type="button"
+                                  onClick={() => void deleteComment(comment)}
+                                  className="ml-auto text-muted-foreground/0 transition-colors group-hover/comment:text-muted-foreground/40 hover:text-destructive"
+                                  aria-label="Delete comment"
+                                >
+                                  <Trash2 className="size-3" />
+                                </button>
+                              )}
                             </div>
                             <p className="mt-1 rounded-lg rounded-tl-sm bg-muted/45 px-2.5 py-2 text-[12px] leading-relaxed whitespace-pre-wrap text-foreground/85">
                               {comment.body}
@@ -1019,37 +1049,39 @@ export function TaskDetailSheet({
                       ))}
                     </ul>
                   )}
-                  <form onSubmit={addComment} className="mt-3">
-                    <Textarea
-                      value={commentBody}
-                      onChange={(event) => setCommentBody(event.target.value)}
-                      placeholder="Leave a comment…"
-                      rows={2}
-                      maxLength={2000}
-                      className="min-h-[64px] text-[12px]"
-                      onKeyDown={(event) => {
-                        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                          event.preventDefault();
-                          event.currentTarget.form?.requestSubmit();
-                        }
-                      }}
-                    />
-                    <div className="mt-1.5 flex items-center justify-between">
-                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground/50">
-                        <MessageSquare className="size-3" />
-                        ⌘↵ to comment
-                      </span>
-                      <Button
-                        type="submit"
-                        size="sm"
-                        disabled={!commentBody.trim() || busy}
-                        className="h-7 text-[11.5px]"
-                      >
-                        {busy && <Loader2 className="size-3 animate-spin" />}
-                        Comment
-                      </Button>
-                    </div>
-                  </form>
+                  {!readOnly && (
+                    <form onSubmit={addComment} className="mt-3">
+                      <Textarea
+                        value={commentBody}
+                        onChange={(event) => setCommentBody(event.target.value)}
+                        placeholder="Leave a comment…"
+                        rows={2}
+                        maxLength={2000}
+                        className="min-h-[64px] text-[12px]"
+                        onKeyDown={(event) => {
+                          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                            event.preventDefault();
+                            event.currentTarget.form?.requestSubmit();
+                          }
+                        }}
+                      />
+                      <div className="mt-1.5 flex items-center justify-between">
+                        <span className="flex items-center gap-1 text-[10px] text-muted-foreground/50">
+                          <MessageSquare className="size-3" />
+                          ⌘↵ to comment
+                        </span>
+                        <Button
+                          type="submit"
+                          size="sm"
+                          disabled={!commentBody.trim() || busy}
+                          className="h-7 text-[11.5px]"
+                        >
+                          {busy && <Loader2 className="size-3 animate-spin" />}
+                          Comment
+                        </Button>
+                      </div>
+                    </form>
+                  )}
                 </section>
               </div>
             </div>

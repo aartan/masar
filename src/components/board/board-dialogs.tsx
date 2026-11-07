@@ -5,6 +5,7 @@ import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { LabelSettingsSection } from "@/components/board/label-settings-section";
+import { useWorkspace } from "@/components/layout/workspace-provider";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,7 +29,12 @@ import {
 import { PrioritySelect } from "@/components/shared/priority-select";
 import { LabelChip } from "@/components/shared/task-meta";
 import { api, errorMessage } from "@/lib/client-api";
-import type { BoardColumn, Label as BoardLabel, Task } from "@/lib/types";
+import type {
+  BoardColumn,
+  BoardSummary,
+  Label as BoardLabel,
+  Task,
+} from "@/lib/types";
 import type { Priority } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -403,16 +409,12 @@ export function BoardSettingsDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  board: { id: string; name: string; description: string | null };
+  board: BoardSummary;
   labels: BoardLabel[];
-  onSaved: (board: {
-    id: string;
-    name: string;
-    description: string | null;
-  }) => void;
-  onLabelCreated: (label: BoardLabel) => void;
-  onLabelUpdated: (label: BoardLabel) => void;
-  onLabelDeleted: (labelId: string) => void;
+  onSaved: (board: BoardSummary) => void;
+  onLabelCreated?: (label: BoardLabel) => void;
+  onLabelUpdated?: (label: BoardLabel) => void;
+  onLabelDeleted?: (labelId: string) => void;
   onRequestDelete: () => void;
 }) {
   return (
@@ -443,37 +445,38 @@ function BoardSettingsForm({
   onClose,
   onRequestDelete,
 }: {
-  board: { id: string; name: string; description: string | null };
+  board: BoardSummary;
   labels: BoardLabel[];
-  onSaved: (board: {
-    id: string;
-    name: string;
-    description: string | null;
-  }) => void;
-  onLabelCreated: (label: BoardLabel) => void;
-  onLabelUpdated: (label: BoardLabel) => void;
-  onLabelDeleted: (labelId: string) => void;
+  onSaved: (board: BoardSummary) => void;
+  onLabelCreated?: (label: BoardLabel) => void;
+  onLabelUpdated?: (label: BoardLabel) => void;
+  onLabelDeleted?: (labelId: string) => void;
   onClose: () => void;
   onRequestDelete: () => void;
 }) {
+  const { projects } = useWorkspace();
   const [name, setName] = React.useState(board.name);
   const [description, setDescription] = React.useState(board.description ?? "");
+  const [projectId, setProjectId] = React.useState(board.projectId ?? "");
   const [loading, setLoading] = React.useState(false);
+  const activeProjects = projects.filter((project) => !project.archived);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!name.trim() || loading) return;
     setLoading(true);
     try {
-      const { board: saved } = await api<{
-        board: { id: string; name: string; description: string | null };
-      }>(`/api/boards/${board.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || null,
-        }),
-      });
+      const { board: saved } = await api<{ board: BoardSummary }>(
+        `/api/boards/${board.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            name: name.trim(),
+            description: description.trim() || null,
+            ...(projectId ? { projectId } : {}),
+          }),
+        },
+      );
       onSaved(saved);
       onClose();
       toast.success("Board updated");
@@ -491,8 +494,9 @@ function BoardSettingsForm({
       <DialogHeader>
         <DialogTitle>Board settings</DialogTitle>
         <DialogDescription>
-          Rename your board, update its description, and manage the labels used
-          across its tasks.
+          {board.type === "whiteboard"
+            ? "Rename the canvas, update its description, or move it to another project."
+            : "Rename your board, update its description, move it between projects, and manage its labels."}
         </DialogDescription>
       </DialogHeader>
       <form
@@ -512,6 +516,33 @@ function BoardSettingsForm({
             autoFocus
           />
         </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Type</Label>
+            <div className="flex h-9 items-center rounded-lg border border-input bg-muted/30 px-3 text-[13px] capitalize text-muted-foreground">
+              {board.type}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Project</Label>
+            <Select
+              value={projectId}
+              onValueChange={setProjectId}
+              disabled={loading || activeProjects.length === 0}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Project" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeProjects.map((project) => (
+                  <SelectItem key={project.id} value={project.id}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
         <div className="space-y-2">
           <Label htmlFor="board-settings-description">Description</Label>
           <Textarea
@@ -524,13 +555,15 @@ function BoardSettingsForm({
           />
         </div>
       </form>
-      <LabelSettingsSection
-        boardId={board.id}
-        labels={labels}
-        onCreated={onLabelCreated}
-        onUpdated={onLabelUpdated}
-        onDeleted={onLabelDeleted}
-      />
+      {board.type === "kanban" && (
+        <LabelSettingsSection
+          boardId={board.id}
+          labels={labels}
+          onCreated={onLabelCreated!}
+          onUpdated={onLabelUpdated ?? (() => undefined)}
+          onDeleted={onLabelDeleted ?? (() => undefined)}
+        />
+      )}
       <DialogFooter className="border-t border-border/60 pt-4">
         <Button
           type="button"

@@ -4,9 +4,19 @@ import { z } from "zod";
 import { ApiError, handleRouteError, jsonOk, parseJsonBody } from "@/lib/api";
 import { getLocalUser } from "@/lib/server/desktop";
 import { importLocalWorkspace } from "@/sync/import-local";
-import { acknowledgeChanges, applyRemoteChanges, prepareSync } from "@/sync/local";
+import {
+  acknowledgeChanges,
+  applyCloudConflict,
+  applyRemoteChanges,
+  getSyncState,
+  keepLocalConflict,
+  listSyncConflicts,
+  prepareSync,
+  recordSyncConflicts,
+} from "@/sync/local";
 
 const ENTITY_TYPES = [
+  "project",
   "board",
   "column",
   "task",
@@ -14,6 +24,7 @@ const ENTITY_TYPES = [
   "task_label",
   "subtask",
   "comment",
+  "whiteboard",
 ] as const;
 
 const remoteChangeSchema = z.object({
@@ -37,6 +48,39 @@ const prepareSchema = z.object({
 
 const ackSchema = z.object({
   throughId: z.number().int().nonnegative(),
+});
+
+const remoteConflictSchema = z.object({
+  id: z.string().min(1).max(120),
+  entityType: z.enum(ENTITY_TYPES),
+  entityId: z.string().min(1).max(120),
+  incomingDeleted: z.boolean(),
+  incomingData: z.record(z.string(), z.unknown()).default({}),
+  incomingUpdatedAt: z.string().datetime({ offset: true }),
+  winningDeleted: z.boolean(),
+  winningData: z.record(z.string(), z.unknown()).default({}),
+  winningUpdatedAt: z.string().datetime({ offset: true }),
+  revision: z.number().int().nonnegative(),
+  createdAt: z.string().datetime({ offset: true }),
+});
+
+const recordConflictsSchema = z.object({
+  conflicts: z.array(remoteConflictSchema).max(100),
+});
+
+const latestEntitySchema = z.object({
+  deleted: z.boolean(),
+  data: z.record(z.string(), z.unknown()).default({}),
+  updatedAt: z.string().datetime({ offset: true }),
+  revision: z.number().int().nonnegative(),
+});
+
+const applyCloudConflictSchema = z.object({
+  current: latestEntitySchema.nullable().optional(),
+});
+
+const keepLocalConflictSchema = z.object({
+  revision: z.number().int().nonnegative(),
 });
 
 /**
@@ -102,7 +146,52 @@ syncRoutes.post("/sync/ack", async (c) => {
   try {
     requireSyncScope();
     const input = await parseJsonBody(c.req.raw, ackSchema);
-    return jsonOk({ deleted: await acknowledgeChanges(input.throughId) });
+    return jsonOk({
+      deleted: await acknowledgeChanges(input.throughId),
+    });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+});
+
+syncRoutes.get("/sync/conflicts", async (_c) => {
+  try {
+    requireSyncScope();
+    return jsonOk({ conflicts: await listSyncConflicts() });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+});
+
+syncRoutes.post("/sync/conflicts/record", async (c) => {
+  try {
+    requireSyncScope();
+    const input = await parseJsonBody(c.req.raw, recordConflictsSchema);
+    return jsonOk({
+      recorded: await recordSyncConflicts(input.conflicts),
+    });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+});
+
+syncRoutes.post("/sync/conflicts/:conflictId/apply-cloud", async (c) => {
+  try {
+    requireSyncScope();
+    const input = await parseJsonBody(c.req.raw, applyCloudConflictSchema);
+    await applyCloudConflict(c.req.param("conflictId"), input.current ?? undefined);
+    return jsonOk({ state: await getSyncState() });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+});
+
+syncRoutes.post("/sync/conflicts/:conflictId/keep-local", async (c) => {
+  try {
+    requireSyncScope();
+    const input = await parseJsonBody(c.req.raw, keepLocalConflictSchema);
+    await keepLocalConflict(c.req.param("conflictId"), input.revision);
+    return jsonOk({ state: await getSyncState() });
   } catch (error) {
     return handleRouteError(error);
   }

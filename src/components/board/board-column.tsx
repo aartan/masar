@@ -47,6 +47,7 @@ export function BoardColumn({
   labels,
   filtersActive,
   dragDisabled,
+  readOnly = false,
   canMoveLeft,
   canMoveRight,
   onOpenNewTask,
@@ -65,6 +66,7 @@ export function BoardColumn({
   labels: Label[];
   filtersActive: boolean;
   dragDisabled: boolean;
+  readOnly?: boolean;
   canMoveLeft: boolean;
   canMoveRight: boolean;
   onOpenNewTask: (columnId: string) => void;
@@ -167,63 +169,65 @@ export function BoardColumn({
         <span className="ml-0.5 rounded-full bg-foreground/5 px-1.5 py-px text-[10px] font-medium tabular-nums text-muted-foreground">
           {countLabel}
         </span>
-        <div className="ml-auto flex items-center gap-0.5">
-          <button
-            type="button"
-            onClick={() => onOpenNewTask(column.id)}
-            className="grid size-6 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
-            aria-label={`Add task to ${column.name}`}
-          >
-            <Plus className="size-3.5" />
-          </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="grid size-6 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
-                aria-label={`Column actions for ${column.name}`}
-              >
-                <MoreHorizontal className="size-3.5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem onSelect={() => onEditColumn(column)}>
-                <PencilLine />
-                Rename column
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onToggleDone(column)}>
-                <CheckCircle2 />
-                {column.isDone
-                  ? "Remove completion status"
-                  : "Set as completion column"}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={() => onMoveColumn(column.id, -1)}
-                disabled={!canMoveLeft}
-              >
-                <ArrowLeft />
-                Move left
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => onMoveColumn(column.id, 1)}
-                disabled={!canMoveRight}
-              >
-                <ArrowRight />
-                Move right
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                disabled={columns.length <= 1}
-                onSelect={() => onDeleteColumn(column)}
-              >
-                <Trash2 />
-                Delete column
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        {!readOnly && (
+          <div className="ml-auto flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => onOpenNewTask(column.id)}
+              className="grid size-6 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+              aria-label={`Add task to ${column.name}`}
+            >
+              <Plus className="size-3.5" />
+            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="grid size-6 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                  aria-label={`Column actions for ${column.name}`}
+                >
+                  <MoreHorizontal className="size-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onSelect={() => onEditColumn(column)}>
+                  <PencilLine />
+                  Rename column
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onToggleDone(column)}>
+                  <CheckCircle2 />
+                  {column.isDone
+                    ? "Remove completion status"
+                    : "Set as completion column"}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() => onMoveColumn(column.id, -1)}
+                  disabled={!canMoveLeft}
+                >
+                  <ArrowLeft />
+                  Move left
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => onMoveColumn(column.id, 1)}
+                  disabled={!canMoveRight}
+                >
+                  <ArrowRight />
+                  Move right
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  disabled={columns.length <= 1}
+                  onSelect={() => onDeleteColumn(column)}
+                >
+                  <Trash2 />
+                  Delete column
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
       </header>
 
       <div
@@ -246,6 +250,7 @@ export function BoardColumn({
                 columns={columns}
                 labels={labels}
                 disabled={dragDisabled}
+                readOnly={readOnly}
                 onOpen={() => taskHandlers.onOpenTask(task.id)}
                 onDuplicate={() => taskHandlers.onDuplicateTask(task)}
                 onMoveTo={(columnId) =>
@@ -276,13 +281,15 @@ export function BoardColumn({
                     <p className="text-[11.5px] text-muted-foreground/70">
                       No tasks yet.
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => setComposing(true)}
-                      className="mt-1 text-[11px] font-medium text-primary hover:underline"
-                    >
-                      Add the first one
-                    </button>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => setComposing(true)}
+                        className="mt-1 text-[11px] font-medium text-primary hover:underline"
+                      >
+                        Add the first one
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -291,6 +298,7 @@ export function BoardColumn({
         </SortableContext>
       </div>
 
+      {!readOnly && (
       <div className="px-2 pt-0.5 pb-2">
         {composing ? (
           <div className="rounded-xl border border-border/80 bg-card p-2 shadow-soft">
@@ -346,6 +354,7 @@ export function BoardColumn({
           </button>
         )}
       </div>
+      )}
     </section>
   );
 }

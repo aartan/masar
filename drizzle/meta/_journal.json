@@ -29,6 +29,27 @@
       "when": 1793477964493,
       "tag": "0003_stormy_robin_chapel",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794015616360,
+      "tag": "0004_third_zodiak",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794015822507,
+      "tag": "0005_fixed_skreet",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794068721275,
+      "tag": "0006_lonely_patch",
+      "breakpoints": true
     }
   ]
 }

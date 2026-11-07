@@ -7,7 +7,11 @@ import { subtasks } from "@/db/schema";
 import { ApiError } from "@/lib/api";
 import type { Subtask } from "@/lib/types";
 import type { SubtaskUpdateInput } from "@/lib/validation";
-import { requireSubtask, requireTask } from "./queries";
+import {
+  assertSubtaskWritable,
+  assertTaskWritable,
+  requireTask,
+} from "./queries";
 import { serializeSubtask } from "./tasks";
 
 export async function createSubtask(
@@ -16,7 +20,7 @@ export async function createSubtask(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<Subtask> {
-  await requireTask(database, taskId, ownerId);
+  await assertTaskWritable(database, taskId, ownerId);
   const [row] = await database
     .select({ value: sql<number>`coalesce(max(${subtasks.position}), -1)` })
     .from(subtasks)
@@ -48,7 +52,7 @@ export async function updateSubtask(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<Subtask> {
-  await requireSubtask(database, subtaskId, ownerId);
+  await assertSubtaskWritable(database, subtaskId, ownerId);
 
   await database
     .update(subtasks)
@@ -73,7 +77,7 @@ export async function deleteSubtask(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<void> {
-  await requireSubtask(database, subtaskId, ownerId);
+  await assertSubtaskWritable(database, subtaskId, ownerId);
   await database.delete(subtasks).where(eq(subtasks.id, subtaskId));
 }
 

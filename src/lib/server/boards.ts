@@ -3,20 +3,28 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 
 import { getDb, type AppDatabase } from "@/db";
-import { boards, columns, tasks } from "@/db/schema";
+import { boards, columns, tasks, whiteboards } from "@/db/schema";
 import { ApiError } from "@/lib/api";
-import { DEFAULT_COLUMNS, type BoardColor } from "@/lib/constants";
+import { DEFAULT_COLUMNS, type BoardColor, type BoardType } from "@/lib/constants";
 import type { BoardDetail, BoardSummary } from "@/lib/types";
-import type { BoardCreateInput, BoardUpdateInput } from "@/lib/validation";
+import type {
+  BoardCreateInput,
+  BoardUpdateInput,
+  MoveBoardInput,
+} from "@/lib/validation";
 import {
+  assertProjectWritable,
   fetchBoardSummaries,
   fetchBoardSummary,
   fetchColumns,
   fetchLabels,
   fetchTasks,
-  nextBoardPosition,
+  nextBoardPositionInProject,
   requireBoard,
+  requireProject,
 } from "./queries";
+import { ensureDefaultProject } from "./projects";
+import { DEFAULT_PROJECT_NAME } from "@/lib/constants";
 
 export async function listBoards(
   ownerId: string,
@@ -61,6 +69,63 @@ export async function reorderBoards(
   return fetchBoardSummaries(database, ownerId);
 }
 
+/**
+ * Set the exact ordering of boards within one project, moving any board that
+ * currently lives elsewhere into it. `boardIds` is the full, final list of
+ * boards for the target project, in order — this powers both reordering within
+ * a project and dragging a board in from another project. Every id must be an
+ * owned board; the target project must be writable (not archived), and a board
+ * cannot be moved out of an archived source project.
+ */
+export async function moveBoard(
+  input: MoveBoardInput,
+  ownerId: string,
+  database: AppDatabase = getDb(),
+): Promise<BoardSummary[]> {
+  const targetProject = await requireProject(database, input.projectId, ownerId);
+  assertProjectWritable(targetProject);
+
+  const owned = await database
+    .select({ id: boards.id, projectId: boards.projectId })
+    .from(boards)
+    .where(eq(boards.ownerId, ownerId));
+  const ownedById = new Map(owned.map((row) => [row.id, row.projectId]));
+
+  const incoming = new Set(input.boardIds);
+  if (
+    input.boardIds.length !== incoming.size ||
+    input.boardIds.some((id) => !ownedById.has(id))
+  ) {
+    throw new ApiError(
+      "Board order must list owned boards exactly once.",
+      400,
+    );
+  }
+
+  // A board arriving from another project must not be leaving an archived one.
+  const sourceProjectIds = new Set(
+    input.boardIds
+      .map((id) => ownedById.get(id))
+      .filter((id): id is string => Boolean(id) && id !== input.projectId),
+  );
+  for (const sourceId of sourceProjectIds) {
+    const source = await requireProject(database, sourceId, ownerId);
+    assertProjectWritable(source);
+  }
+
+  const now = new Date();
+  await database.transaction(async (tx) => {
+    for (const [index, boardId] of input.boardIds.entries()) {
+      await tx
+        .update(boards)
+        .set({ projectId: input.projectId, position: index, updatedAt: now })
+        .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)));
+    }
+  });
+
+  return fetchBoardSummaries(database, ownerId);
+}
+
 export async function getBoardDetail(
   boardId: string,
   ownerId: string,
@@ -88,7 +153,20 @@ export async function createBoard(
   ownerId: string,
   database: AppDatabase = getDb(),
 ): Promise<BoardSummary> {
-  const position = await nextBoardPosition(database, ownerId);
+  // Resolve the target project. An explicit projectId must be owned and
+  // writable; otherwise fall back to the workspace's default project, creating
+  // it on first use so a board always has a home.
+  let projectId: string;
+  if (input.projectId) {
+    const project = await requireProject(database, input.projectId, ownerId);
+    assertProjectWritable(project);
+    projectId = project.id;
+  } else {
+    projectId = await ensureDefaultProject(ownerId, DEFAULT_PROJECT_NAME, database);
+  }
+
+  const type: BoardType = input.type ?? "kanban";
+  const position = await nextBoardPositionInProject(database, projectId);
   const boardId = randomUUID();
   const now = new Date();
 
@@ -96,6 +174,8 @@ export async function createBoard(
     await tx.insert(boards).values({
       id: boardId,
       ownerId,
+      projectId,
+      type,
       name: input.name,
       description: input.description?.trim() || null,
       color: (input.color ?? "sage") satisfies BoardColor,
@@ -104,17 +184,26 @@ export async function createBoard(
       updatedAt: now,
     });
 
-    await tx.insert(columns).values(
-      DEFAULT_COLUMNS.map((column, index) => ({
-        id: randomUUID(),
+    if (type === "whiteboard") {
+      // A whiteboard has no Kanban columns; it starts with an empty scene.
+      await tx.insert(whiteboards).values({
         boardId,
-        name: column.name,
-        position: index,
-        isDone: column.isDone,
-        createdAt: now,
+        scene: "{}",
         updatedAt: now,
-      })),
-    );
+      });
+    } else {
+      await tx.insert(columns).values(
+        DEFAULT_COLUMNS.map((column, index) => ({
+          id: randomUUID(),
+          boardId,
+          name: column.name,
+          position: index,
+          isDone: column.isDone,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      );
+    }
   });
 
   const board = await fetchBoardSummary(database, boardId, ownerId);

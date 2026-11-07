@@ -6,15 +6,23 @@ import {
   columns,
   comments,
   labels,
+  projects,
   subtasks,
   taskLabels,
   tasks,
   type BoardRow,
+  type ProjectRow,
   type TaskRow,
 } from "@/db/schema";
 import { ApiError } from "@/lib/api";
-import type { BoardColumn, BoardSummary, Label, Task } from "@/lib/types";
-import type { BoardColor, LabelColor, Priority } from "@/lib/constants";
+import type {
+  BoardColumn,
+  BoardSummary,
+  Label,
+  ProjectSummary,
+  Task,
+} from "@/lib/types";
+import type { BoardColor, BoardType, LabelColor, Priority } from "@/lib/constants";
 
 function ownedBoardIds(database: AppDatabase, ownerId: string) {
   return database
@@ -29,6 +37,8 @@ export function serializeBoard(
 ): BoardSummary {
   return {
     id: row.id,
+    projectId: row.projectId,
+    type: row.type as BoardType,
     name: row.name,
     description: row.description,
     color: row.color as BoardColor,
@@ -38,6 +48,22 @@ export function serializeBoard(
     taskCount: counts.taskCount,
     doneCount: counts.doneCount,
     columnCount: counts.columnCount,
+  };
+}
+
+export function serializeProject(
+  row: ProjectRow,
+  counts: { boardCount: number },
+): ProjectSummary {
+  return {
+    id: row.id,
+    name: row.name,
+    position: row.position,
+    archived: row.archived,
+    archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    boardCount: counts.boardCount,
   };
 }
 
@@ -298,6 +324,59 @@ export async function requireBoard(
   return row;
 }
 
+export async function requireProject(
+  database: AppDatabase,
+  projectId: string,
+  ownerId: string,
+): Promise<ProjectRow> {
+  const [row] = await database
+    .select()
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.ownerId, ownerId)))
+    .limit(1);
+  if (!row) throw new ApiError("Project not found.", 404);
+  return row;
+}
+
+/**
+ * Archiving a project makes its contents read-only. Mutations to a board,
+ * column, task, label or whiteboard first resolve the owning project and call
+ * this; a 409 is returned so the UI can explain why the edit was blocked.
+ */
+export function assertProjectWritable(project: ProjectRow): void {
+  if (project.archived) {
+    throw new ApiError(
+      "This project is archived. Restore it to make changes.",
+      409,
+    );
+  }
+}
+
+export async function fetchProjectSummaries(
+  database: AppDatabase,
+  ownerId: string,
+): Promise<ProjectSummary[]> {
+  const projectRows = await database
+    .select()
+    .from(projects)
+    .where(eq(projects.ownerId, ownerId))
+    .orderBy(asc(projects.position), asc(projects.createdAt));
+  if (projectRows.length === 0) return [];
+
+  const boardCounts = await database
+    .select({ projectId: boards.projectId, value: count() })
+    .from(boards)
+    .where(eq(boards.ownerId, ownerId))
+    .groupBy(boards.projectId);
+  const countMap = new Map(
+    boardCounts.map((row) => [row.projectId, row.value]),
+  );
+
+  return projectRows.map((row) =>
+    serializeProject(row, { boardCount: countMap.get(row.id) ?? 0 }),
+  );
+}
+
 export async function requireColumn(
   database: AppDatabase,
   columnId: string,
@@ -423,6 +502,29 @@ export async function nextBoardPosition(
     .select({ value: sql<number>`coalesce(max(${boards.position}), -1)` })
     .from(boards)
     .where(eq(boards.ownerId, ownerId));
+  return (row?.value ?? -1) + 1;
+}
+
+export async function nextProjectPosition(
+  database: AppDatabase,
+  ownerId: string,
+): Promise<number> {
+  const [row] = await database
+    .select({ value: sql<number>`coalesce(max(${projects.position}), -1)` })
+    .from(projects)
+    .where(eq(projects.ownerId, ownerId));
+  return (row?.value ?? -1) + 1;
+}
+
+/** Position of the next board within a specific project, for scoped reorder. */
+export async function nextBoardPositionInProject(
+  database: AppDatabase,
+  projectId: string,
+): Promise<number> {
+  const [row] = await database
+    .select({ value: sql<number>`coalesce(max(${boards.position}), -1)` })
+    .from(boards)
+    .where(eq(boards.projectId, projectId));
   return (row?.value ?? -1) + 1;
 }
 

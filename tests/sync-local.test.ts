@@ -32,7 +32,11 @@ afterAll(async () => {
 beforeEach(async () => {
   await test.db.delete(boards);
   const client = getClient();
+  // Boards cascade-delete columns/tasks/whiteboards; clear the remaining
+  // top-level tables and sync bookkeeping so each test starts clean.
+  await client.execute("delete from projects");
   await client.execute("delete from sync_changes");
+  await client.execute("delete from sync_entity_revisions");
   await client.execute(
     "update sync_state set remote_user_id = null, last_revision = 0, last_synced_at = null, bootstrapped = 0, applying = 0 where id = 1",
   );

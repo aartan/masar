@@ -1,11 +1,25 @@
 import type {
   BoardColor,
+  BoardType,
   LabelColor,
   Priority,
 } from "@/lib/constants";
 
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  position: number;
+  archived: boolean;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  boardCount: number;
+}
+
 export interface BoardSummary {
   id: string;
+  projectId: string | null;
+  type: BoardType;
   name: string;
   description: string | null;
   color: BoardColor;
@@ -80,6 +94,19 @@ export interface BoardDetail {
   columns: BoardColumn[];
   tasks: Task[];
   labels: Label[];
+}
+
+/** Serialized Excalidraw scene payload for a whiteboard board. */
+export interface WhiteboardScene {
+  boardId: string;
+  /** Opaque Excalidraw scene JSON ({ elements, appState, files }). */
+  scene: string;
+  updatedAt: string;
+}
+
+export interface ProjectDetail {
+  project: ProjectSummary;
+  boards: BoardSummary[];
 }
 
 export interface CalendarData {

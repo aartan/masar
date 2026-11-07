@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   BOARD_COLORS,
+  BOARD_TYPES,
   DUE_FILTERS,
   LABEL_COLORS,
   PRIORITIES,
@@ -38,6 +39,8 @@ export const boardCreateSchema = z.object({
   name: nameSchema(80, "Board name"),
   description: z.string().trim().max(400).nullish(),
   color: z.enum(BOARD_COLORS).optional(),
+  type: z.enum(BOARD_TYPES).optional(),
+  projectId: idSchema.optional(),
 });
 
 export const boardUpdateSchema = z
@@ -49,6 +52,38 @@ export const boardUpdateSchema = z
   .refine((value) => Object.keys(value).length > 0, {
     message: "Nothing to update",
   });
+
+export const projectCreateSchema = z.object({
+  name: nameSchema(80, "Project name"),
+});
+
+export const projectUpdateSchema = z
+  .object({
+    name: nameSchema(80, "Project name").optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "Nothing to update",
+  });
+
+export const reorderProjectsSchema = z.object({
+  projectIds: z.array(idSchema).min(1).max(200),
+});
+
+/** Move a board to a project and/or reorder the boards within a project. */
+export const moveBoardSchema = z.object({
+  projectId: idSchema,
+  boardIds: z.array(idSchema).min(1).max(200),
+});
+
+export const deleteProjectSchema = z.object({
+  confirmation: z.literal("DELETE", {
+    message: 'Type "DELETE" exactly to confirm.',
+  }),
+});
+
+export const whiteboardSceneSchema = z.object({
+  scene: z.string(),
+});
 
 export const columnCreateSchema = z.object({
   name: nameSchema(60, "Column name"),
@@ -166,6 +201,10 @@ export const signupStartSchema = z.object({
 
 export type BoardCreateInput = z.infer<typeof boardCreateSchema>;
 export type BoardUpdateInput = z.infer<typeof boardUpdateSchema>;
+export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
+export type ProjectUpdateInput = z.infer<typeof projectUpdateSchema>;
+export type MoveBoardInput = z.infer<typeof moveBoardSchema>;
+export type WhiteboardSceneInput = z.infer<typeof whiteboardSceneSchema>;
 export type ColumnCreateInput = z.infer<typeof columnCreateSchema>;
 export type ColumnUpdateInput = z.infer<typeof columnUpdateSchema>;
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>;

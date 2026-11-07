@@ -9,6 +9,7 @@ import {
   columns,
   comments,
   labels,
+  projects,
   subtasks,
   taskLabels,
   tasks,
@@ -20,6 +21,7 @@ import {
   deleteBoard,
   getBoardDetail,
   listBoards,
+  moveBoard,
   reorderBoards,
   updateBoard,
 } from "@/lib/server/boards";
@@ -31,6 +33,21 @@ import {
 } from "@/lib/server/columns";
 import { createComment, deleteComment } from "@/lib/server/comments";
 import { createLabel, deleteLabel, updateLabel } from "@/lib/server/labels";
+import {
+  archiveProject,
+  createProject,
+  deleteProject,
+  getProjectDetail,
+  listProjects,
+  reorderProjects,
+  restoreProject,
+  updateProject,
+} from "@/lib/server/projects";
+import {
+  getWhiteboardScene,
+  MAX_SCENE_BYTES,
+  saveWhiteboardScene,
+} from "@/lib/server/whiteboards";
 import {
   createSubtask,
   deleteSubtask,
@@ -73,6 +90,7 @@ afterAll(async () => {
 beforeEach(async () => {
   // Every test starts from empty workspaces. Cascades remove child rows.
   await test.db.delete(boards);
+  await test.db.delete(projects);
 });
 
 async function makeBoard(
@@ -171,6 +189,153 @@ describe("boards", () => {
     await expect(
       updateBoard("missing", { name: "Nope" }, owner.id, test.db),
     ).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("projects", () => {
+  it("creates boards under the default project and groups them", async () => {
+    const { board } = await makeBoard("First board");
+    const list = await listProjects(owner.id, test.db);
+    expect(list).toHaveLength(1);
+    expect(list[0]?.name).toBe("General");
+    expect(list[0]?.boardCount).toBe(1);
+    expect(board.projectId).toBe(list[0]?.id);
+    expect(board.type).toBe("kanban");
+  });
+
+  it("creates, renames, reorders, archives and restores projects", async () => {
+    const a = await createProject({ name: "Alpha" }, owner.id, test.db);
+    const b = await createProject({ name: "Beta" }, owner.id, test.db);
+    expect(a.position).toBe(0);
+    expect(b.position).toBe(1);
+
+    const renamed = await updateProject(a.id, { name: "Alpha 2" }, owner.id, test.db);
+    expect(renamed.name).toBe("Alpha 2");
+
+    const reordered = await reorderProjects([b.id, a.id], owner.id, test.db);
+    expect(reordered.map((project) => project.id)).toEqual([b.id, a.id]);
+
+    const archived = await archiveProject(a.id, owner.id, test.db);
+    expect(archived.archived).toBe(true);
+    expect(archived.archivedAt).not.toBeNull();
+
+    const restored = await restoreProject(a.id, owner.id, test.db);
+    expect(restored.archived).toBe(false);
+    expect(restored.archivedAt).toBeNull();
+  });
+
+  it("creates a whiteboard board with no columns and an empty scene", async () => {
+    const project = await createProject({ name: "Canvas project" }, owner.id, test.db);
+    const board = await createBoard(
+      { name: "Canvas", type: "whiteboard", projectId: project.id },
+      owner.id,
+      test.db,
+    );
+    expect(board.type).toBe("whiteboard");
+
+    const detail = await getBoardDetail(board.id, owner.id, test.db);
+    expect(detail.columns).toHaveLength(0);
+
+    const scene = await getWhiteboardScene(board.id, owner.id, test.db);
+    expect(scene.scene).toBe("{}");
+  });
+
+  it("moves a board into another project and reorders within it", async () => {
+    const source = await createProject({ name: "Source" }, owner.id, test.db);
+    const target = await createProject({ name: "Target" }, owner.id, test.db);
+    const one = await createBoard({ name: "One", projectId: target.id }, owner.id, test.db);
+    const two = await createBoard({ name: "Two", projectId: source.id }, owner.id, test.db);
+
+    // Move "two" into target, placed before "one".
+    const result = await moveBoard(
+      { projectId: target.id, boardIds: [two.id, one.id] },
+      owner.id,
+      test.db,
+    );
+    const inTarget = result
+      .filter((board) => board.projectId === target.id)
+      .sort((a, b) => a.position - b.position)
+      .map((board) => board.id);
+    expect(inTarget).toEqual([two.id, one.id]);
+    expect(result.find((board) => board.id === two.id)?.projectId).toBe(target.id);
+  });
+
+  it("refuses to create or mutate boards in an archived project", async () => {
+    const project = await createProject({ name: "Frozen" }, owner.id, test.db);
+    const board = await createBoard({ name: "Board", projectId: project.id }, owner.id, test.db);
+    await archiveProject(project.id, owner.id, test.db);
+
+    await expect(
+      createBoard({ name: "New", projectId: project.id }, owner.id, test.db),
+    ).rejects.toMatchObject({ status: 409 });
+
+    await expect(
+      moveBoard({ projectId: project.id, boardIds: [board.id] }, owner.id, test.db),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("permanently deletes a project and all its boards", async () => {
+    const project = await createProject({ name: "Doomed" }, owner.id, test.db);
+    await createBoard({ name: "Board A", projectId: project.id }, owner.id, test.db);
+    await createBoard({ name: "Board B", projectId: project.id }, owner.id, test.db);
+
+    await deleteProject(project.id, owner.id, test.db);
+
+    expect(await listProjects(owner.id, test.db)).toHaveLength(0);
+    const remaining = await listBoards(owner.id, test.db);
+    expect(remaining).toHaveLength(0);
+  });
+
+  it("scopes projects to their owner", async () => {
+    const mine = await createProject({ name: "Mine" }, owner.id, test.db);
+    await expect(getProjectDetail(mine.id, other.id, test.db)).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+});
+
+describe("whiteboards", () => {
+  async function makeWhiteboard(projectName = "WB project") {
+    const project = await createProject({ name: projectName }, owner.id, test.db);
+    const board = await createBoard(
+      { name: "Canvas", type: "whiteboard", projectId: project.id },
+      owner.id,
+      test.db,
+    );
+    return { project, board };
+  }
+
+  it("saves and reloads a scene", async () => {
+    const { board } = await makeWhiteboard();
+    const payload = JSON.stringify({ elements: [{ id: "a", type: "rectangle" }] });
+    const saved = await saveWhiteboardScene(board.id, payload, owner.id, test.db);
+    expect(saved.scene).toBe(payload);
+
+    const reloaded = await getWhiteboardScene(board.id, owner.id, test.db);
+    expect(reloaded.scene).toBe(payload);
+  });
+
+  it("rejects a scene over the size limit", async () => {
+    const { board } = await makeWhiteboard("Too big");
+    const huge = "x".repeat(MAX_SCENE_BYTES + 1);
+    await expect(
+      saveWhiteboardScene(board.id, huge, owner.id, test.db),
+    ).rejects.toMatchObject({ status: 413 });
+  });
+
+  it("refuses to save a scene for a non-whiteboard board", async () => {
+    const { board } = await makeBoard("Kanban board");
+    await expect(
+      saveWhiteboardScene(board.id, "{}", owner.id, test.db),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("refuses to save a scene when the project is archived", async () => {
+    const { project, board } = await makeWhiteboard("Archive me");
+    await archiveProject(project.id, owner.id, test.db);
+    await expect(
+      saveWhiteboardScene(board.id, "{}", owner.id, test.db),
+    ).rejects.toMatchObject({ status: 409 });
   });
 });
 

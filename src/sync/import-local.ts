@@ -16,9 +16,14 @@ export interface ImportLocalResult {
  */
 const TABLES = [
   {
+    table: "projects",
+    columns:
+      "id, owner_id, name, position, archived, archived_at, created_at, updated_at",
+  },
+  {
     table: "boards",
     columns:
-      "id, owner_id, name, description, color, position, created_at, updated_at",
+      "id, owner_id, project_id, type, name, description, color, position, created_at, updated_at",
   },
   {
     table: "columns",
@@ -41,6 +46,10 @@ const TABLES = [
   {
     table: "comments",
     columns: "id, task_id, author, body, created_at, updated_at",
+  },
+  {
+    table: "whiteboards",
+    columns: "board_id, scene, updated_at",
   },
 ] as const;
 

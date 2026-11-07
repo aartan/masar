@@ -14,7 +14,8 @@ import {
   getBoardDetail,
   updateBoard,
 } from "@/lib/server/boards";
-import { listSyncConflicts } from "@/sync/local";
+import { createTask, updateTask } from "@/lib/server/tasks";
+import { keepLocalConflict, listSyncConflicts } from "@/sync/local";
 import { createTestDatabase, type TestDatabase } from "./helpers/test-db";
 
 /**
@@ -630,6 +631,119 @@ describe("cross-device premium sync lifecycle", () => {
     } finally {
       api.close();
       await mirror.close();
+    }
+  });
+
+  it("converges simultaneous task moves after the user keeps a version", async () => {
+    const userId = "user-task-conflict";
+    const user = {
+      id: userId,
+      name: "Task conflict",
+      email: "task-conflict@example.test",
+    };
+    const mirrorA = await createTestDatabase();
+    const mirrorB = await createTestDatabase();
+    await mirrorA.client.execute(LOCAL_USER_STUB);
+    await mirrorB.client.execute(LOCAL_USER_STUB);
+    const fakeClient = clientFor(user);
+
+    const withApi = async <T,>(
+      db: TestDatabase,
+      operation: (origin: string) => Promise<T>,
+    ): Promise<T> => {
+      await activateDatabase(db.url);
+      const api = await startLocalApi(userId);
+      try {
+        return await operation(api.url);
+      } finally {
+        api.close();
+      }
+    };
+    const engineFor = (origin: string) =>
+      new SyncEngine({
+        getClient: () => fakeClient as unknown as PremiumApiClient,
+        getLocalOrigin: () => origin,
+        isOnline: () => true,
+        log: () => undefined,
+        onStatus: () => undefined,
+        onUnauthorized: () => undefined,
+      });
+
+    try {
+      let boardId = "";
+      let taskId = "";
+      let columnA = "";
+      let columnB = "";
+
+      await withApi(mirrorA, async (origin) => {
+        const engine = engineFor(origin);
+        await engine.syncNow("startup");
+        const board = await createBoard(
+          { name: "Task conflict board" },
+          "local-user",
+          getDb(),
+        );
+        boardId = board.id;
+        const detail = await getBoardDetail(board.id, "local-user", getDb());
+        columnA = detail.columns[1]!.id;
+        columnB = detail.columns[2]!.id;
+        const task = await createTask(
+          board.id,
+          { columnId: detail.columns[0]!.id, title: "Move me" },
+          "local-user",
+          getDb(),
+        );
+        taskId = task.id;
+        await engine.syncNow("local-change");
+      });
+
+      await withApi(mirrorB, async (origin) => {
+        await engineFor(origin).syncNow("startup");
+      });
+
+      await withApi(mirrorA, async (origin) => {
+        await updateTask(taskId, { columnId: columnA }, "local-user", getDb());
+        await engineFor(origin).syncNow("local-change");
+      });
+
+      await withApi(mirrorB, async (origin) => {
+        await updateTask(taskId, { columnId: columnB }, "local-user", getDb());
+        const engine = engineFor(origin);
+        await engine.syncNow("conflict");
+
+        const conflicts = await listSyncConflicts();
+        expect(conflicts).toHaveLength(1);
+        expect(conflicts[0]).toMatchObject({
+          entityType: "task",
+          entityId: taskId,
+        });
+        const remoteConflict = await remote.getConflict(userId, conflicts[0]!.id);
+        expect(remoteConflict.current).not.toBeNull();
+        await remote.resolveConflict(userId, conflicts[0]!.id, "local");
+        await keepLocalConflict(
+          conflicts[0]!.id,
+          remoteConflict.current!.revision,
+        );
+        await engine.syncNow("resolve-local");
+      });
+
+      await withApi(mirrorA, async (origin) => {
+        await engineFor(origin).syncNow("pull-resolution");
+        const detail = await getBoardDetail(boardId, "local-user", getDb());
+        expect(detail.tasks.find((task) => task.id === taskId)?.columnId).toBe(
+          columnB,
+        );
+      });
+
+      await withApi(mirrorB, async () => {
+        const detail = await getBoardDetail(boardId, "local-user", getDb());
+        expect(detail.tasks.find((task) => task.id === taskId)?.columnId).toBe(
+          columnB,
+        );
+      });
+    } finally {
+      await mirrorA.close();
+      await mirrorB.close();
     }
   });
 

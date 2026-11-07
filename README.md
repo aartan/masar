@@ -25,7 +25,7 @@ The overview brings the workspace together: open tasks, due dates, recent comple
 - **Calendar planning** — Plan scheduled work in month, week and day views. Drag tasks onto a date, or move them back to Unscheduled to clear the due date.
 - **Overview dashboard** — Review open tasks, due dates, recent completions, progress by board, workload by priority and recently added work.
 - **Local-first by default** — No account is needed. Projects, boards, tasks and whiteboards live in a local SQLite database and remain available offline.
-- **Optional cloud sync** — Sign in from Account settings to use a separate synced workspace. Projects, boards, tasks and whiteboards sync in the background while your subscription is active; local data is only uploaded when you choose to import it. If two devices edit the same item before they catch up, the conflict inbox lets you keep either the cloud version or this device’s version.
+- **Optional cloud sync** — Sign in from Account settings to use a separate synced workspace. Projects, boards, tasks and whiteboards sync in the background while your subscription is active; local data is only uploaded when you choose to import it. If two devices edit the same item before they catch up, the conflict inbox shows a field-level diff and lets you keep either the cloud version or this device’s version, individually or in bulk.
 - **Desktop polish** — Light, dark and system themes, responsive layouts, mouse and keyboard drag-and-drop, and a clear offline indicator.
 - **Keyboard shortcuts** — Press `N` on a board to create a task, `?` for the shortcut guide, and `Cmd/Ctrl+K` for search.
 

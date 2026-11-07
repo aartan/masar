@@ -246,6 +246,39 @@ describe("sync route workspace scoping", () => {
     });
   });
 
+  it("records more than a hundred conflicts in one local call", async () => {
+    process.env.MASAR_SYNC_SCOPE = "remote-user-a";
+    await request("/api/sync/prepare", {
+      method: "POST",
+      body: JSON.stringify({ remoteUserId: "remote-user-a" }),
+    });
+    const now = new Date().toISOString();
+    const conflicts = Array.from({ length: 120 }, (_, index) => ({
+      id: `bulk-conflict-${index}`,
+      entityType: "project",
+      entityId: `bulk-project-${index}`,
+      incomingDeleted: false,
+      incomingData: { id: `bulk-project-${index}`, name: `Local ${index}` },
+      incomingUpdatedAt: now,
+      winningDeleted: false,
+      winningData: { id: `bulk-project-${index}`, name: `Cloud ${index}` },
+      winningUpdatedAt: now,
+      revision: index + 1,
+      createdAt: now,
+    }));
+
+    const recorded = await request("/api/sync/conflicts/record", {
+      method: "POST",
+      body: JSON.stringify({ conflicts }),
+    });
+    expect(recorded.status).toBe(200);
+
+    const list = await json<{ conflicts: unknown[] }>(
+      await request("/api/sync/conflicts"),
+    );
+    expect(list.conflicts).toHaveLength(120);
+  });
+
   it("reports the premium account through /api/me in sync mode", async () => {
     process.env.MASAR_SYNC_SCOPE = "remote-user-a";
     process.env.MASAR_SYNC_USER_NAME = "Premium Person";

@@ -256,9 +256,13 @@ export class SyncEngine {
 
       // Conflict rows are safe in sync_conflicts now; the outbox rows can be
       // removed rather than retried. Pull will skip these entities until the
-      // user resolves them.
+      // user resolves them. Recording the accepted revisions in the same local
+      // transaction means an edit made before the next pull (rapid consecutive
+      // card moves) pushes with the correct base revision instead of a stale
+      // one that the server would reject as a self-conflict.
       await this.localRequest("POST", "/api/sync/ack", {
         throughId: last.id,
+        accepted: response.acceptedChanges ?? [],
       });
       lastId = last.id;
     }

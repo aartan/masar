@@ -354,20 +354,57 @@ export async function listPendingChanges(
   });
 }
 
+export interface AcceptedSyncChange {
+  entityType: SyncEntityType;
+  entityId: string;
+  revision: number;
+}
+
 /**
- * Delete acknowledged outbox rows. Conflict snapshots have already been
- * copied into sync_conflicts by this point, so nothing user-visible is lost.
+ * Record the revisions the server assigned to accepted pushes and delete the
+ * acknowledged outbox rows in one transaction. Recording the revision here —
+ * instead of waiting for the pull — means edits queued between a successful
+ * push and the next pull (rapid consecutive card moves) already carry the
+ * correct base revision and cannot be rejected as self-conflicts.
  */
-export async function acknowledgeChanges(throughId: number): Promise<number> {
+export async function acknowledgeChanges(
+  throughId: number,
+  accepted: AcceptedSyncChange[] = [],
+): Promise<number> {
   if (!Number.isInteger(throughId) || throughId < 0) {
     throw new Error("throughId must be a non-negative integer");
   }
   const client = getClient();
-  const result = await client.execute({
-    sql: "delete from sync_changes where id <= ?",
-    args: [throughId],
-  });
-  return Number(result.rowsAffected ?? 0);
+  const tx = await client.transaction("write");
+  try {
+    for (const change of accepted) {
+      const entityType = assertEntityType(change.entityType);
+      const revision = Math.trunc(change.revision);
+      if (!Number.isInteger(revision) || revision < 0) {
+        throw new Error("accepted revisions must be non-negative integers");
+      }
+      // Revisions only move forward: a replayed or duplicate ack must never
+      // regress an entity below a revision the pull already recorded.
+      await tx.execute({
+        sql: `insert into sync_entity_revisions (entity_type, entity_id, revision)
+              values (?, ?, ?)
+              on conflict(entity_type, entity_id) do update set
+                revision = max(revision, excluded.revision)`,
+        args: [entityType, change.entityId, revision],
+      });
+    }
+    const result = await tx.execute({
+      sql: "delete from sync_changes where id <= ?",
+      args: [throughId],
+    });
+    await tx.commit();
+    return Number(result.rowsAffected ?? 0);
+  } catch (error) {
+    await tx.rollback();
+    throw error;
+  } finally {
+    tx.close();
+  }
 }
 
 interface ApplyResult {
@@ -921,6 +958,28 @@ async function keepLocalIfNewer(
   change: RemoteSyncChange,
 ): Promise<boolean> {
   if (change.entityType === "task_label") return false;
+
+  // An unsynced local edit on an entity that has already round-tripped the
+  // cloud (its outbox row joins a non-null base revision) is always newer than
+  // the pull cursor and must win locally. Clock comparison is not reliable
+  // across devices; the follow-up push resolves causality with the base
+  // revision recorded from the push response or from this pull.
+  // Bootstrap rows carry a null base revision, so a fresh mirror's first pull
+  // is unaffected and still fills the local database.
+  const pendingBase = await tx.execute({
+    sql: `select r.revision as base_revision
+          from sync_changes c
+          left join sync_entity_revisions r
+            on r.entity_type = c.entity_type and r.entity_id = c.entity_id
+          where c.entity_type = ? and c.entity_id = ?
+          order by c.id desc limit 1`,
+    args: [change.entityType, change.entityId],
+  });
+  const baseRevision = pendingBase.rows[0]?.base_revision;
+  if (baseRevision !== null && baseRevision !== undefined) {
+    return true;
+  }
+
   const remote = Date.parse(change.updatedAt);
   if (!Number.isFinite(remote)) return false;
 

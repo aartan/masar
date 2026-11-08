@@ -253,6 +253,102 @@ describe("local sync outbox", () => {
     expect(pending.some((change) => change.entityId === "remote-board-2")).toBe(true);
   });
 
+  it("keeps an unsynced local edit even when the remote timestamp is newer", async () => {
+    await prepareSync("remote-user-a");
+    const now = Date.now();
+    await applyRemoteChanges(1, [
+      {
+        entityType: "board",
+        entityId: "remote-board-3",
+        deleted: false,
+        data: {
+          id: "remote-board-3",
+          name: "Remote original",
+          description: null,
+          color: "sage",
+          position: 0,
+          created_at: now,
+          updated_at: now,
+        },
+        updatedAt: new Date(now).toISOString(),
+        revision: 1,
+      },
+    ]);
+    await acknowledgeChanges(10_000);
+
+    // An unsynced local edit queues an outbox row whose base revision is the
+    // healed one from the pull above.
+    await updateBoard("remote-board-3", { name: "Local unsynced" }, LOCAL_USER_ID, test.db);
+    const pendingBefore = await listPendingChanges(0, 10);
+    expect(pendingBefore.some((change) => change.entityId === "remote-board-3")).toBe(true);
+
+    // The remote change claims a newer clock than the local edit. Clock
+    // comparison alone would let it overwrite the unsynced edit; the pending
+    // row must win locally and be re-pushed with the healed base revision.
+    const newer = new Date(now + 120_000).toISOString();
+    const result = await applyRemoteChanges(2, [
+      {
+        entityType: "board",
+        entityId: "remote-board-3",
+        deleted: false,
+        data: {
+          id: "remote-board-3",
+          name: "Remote newer clock",
+          description: null,
+          color: "sky",
+          position: 0,
+          created_at: now,
+          updated_at: now + 120_000,
+        },
+        updatedAt: newer,
+        revision: 2,
+      },
+    ]);
+
+    expect(result.skipped).toEqual([
+      expect.objectContaining({ entityId: "remote-board-3", reason: "Local change is newer" }),
+    ]);
+    const [row] = await test.db
+      .select()
+      .from(boards)
+      .where(eq(boards.id, "remote-board-3"));
+    expect(row?.name).toBe("Local unsynced");
+    // The pending edit now carries the revision the skipped change had.
+    const pending = await listPendingChanges(0, 10);
+    const change = pending.find((item) => item.entityId === "remote-board-3");
+    expect(change?.baseRevision).toBe(2);
+  });
+
+  it("records accepted push revisions atomically with the outbox ack", async () => {
+    await prepareSync("remote-user-a");
+    const { board } = await makeBoard("Acked board");
+    let pending = await listPendingChanges(0, 500);
+    const last = pending[pending.length - 1]!;
+
+    await acknowledgeChanges(last.id, [
+      { entityType: "board", entityId: board.id, revision: 9 },
+    ]);
+
+    const revisions = await getClient().execute(
+      "select revision from sync_entity_revisions where entity_type = 'board' and entity_id = ?",
+      [board.id],
+    );
+    expect(Number(revisions.rows[0]?.revision)).toBe(9);
+
+    pending = await listPendingChanges(0, 500);
+    expect(pending.some((change) => change.entityId === board.id)).toBe(false);
+
+    // Revisions only move forward: a replayed ack must not regress them.
+    await acknowledgeChanges(10_000, [
+      { entityType: "board", entityId: board.id, revision: 5 },
+    ]);
+    const after = await getClient().execute(
+      "select revision from sync_entity_revisions where entity_type = 'board' and entity_id = ?",
+      [board.id],
+    );
+    expect(Number(after.rows[0]?.revision)).toBe(9);
+  });
+
 
   it("applies project and whiteboard entities and records their revisions", async () => {
     await prepareSync("remote-user-a");

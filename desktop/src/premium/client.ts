@@ -55,6 +55,16 @@ export interface PushResponse {
   accepted: number;
   ignored: number;
   rejected: number;
+  /**
+   * The server revision assigned to each accepted change. Sent by sync-api
+   * versions that support it; older servers omit the field, and the engine
+   * then relies on the pull to heal local revisions.
+   */
+  acceptedChanges?: Array<{
+    entityType: string;
+    entityId: string;
+    revision: number;
+  }>;
   conflicts: Array<{
     id: string;
     entityType: string;

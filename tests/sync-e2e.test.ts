@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
 import { createLocalApp } from "@/server/app";
-import { boards } from "@/db/schema";
+import { boards, tasks } from "@/db/schema";
 import { getClient, getDatabaseBundle, getDb } from "@/db";
 import { SyncEngine } from "../desktop/src/premium/sync-engine";
 import type { PremiumApiClient } from "../desktop/src/premium/client";
@@ -76,6 +76,8 @@ class FakeSyncApi {
   private revisions = new Map<string, number>();
   private conflictRows = new Map<string, Map<string, FakeConflict>>();
   private conflictSeq = 0;
+  /** When set, the next pull throws, simulating a network failure. */
+  failNextPull = false;
 
   private rowsFor(userId: string): Map<string, RemoteRow> {
     let rows = this.workspaces.get(userId);
@@ -159,6 +161,11 @@ class FakeSyncApi {
     let accepted = 0;
     let ignored = 0;
     let rejected = 0;
+    const acceptedChanges: Array<{
+      entityType: string;
+      entityId: string;
+      revision: number;
+    }> = [];
     const conflicts: Array<{
       id: string;
       entityType: string;
@@ -246,12 +253,21 @@ class FakeSyncApi {
         revision,
       });
       accepted += 1;
+      acceptedChanges.push({
+        entityType: change.entityType,
+        entityId: change.entityId,
+        revision,
+      });
     }
     this.revisions.set(userId, revision);
-    return { revision, accepted, ignored, rejected, conflicts };
+    return { revision, accepted, ignored, rejected, acceptedChanges, conflicts };
   }
 
   async pull(userId: string, since: number, limit = 500) {
+    if (this.failNextPull) {
+      this.failNextPull = false;
+      throw new Error("simulated pull failure");
+    }
     const revision = this.revisions.get(userId) ?? 0;
     const rows = [...this.rowsFor(userId).values()]
       .filter((row) => row.revision > since)
@@ -267,6 +283,20 @@ class FakeSyncApi {
 
   entityCount(userId: string): number {
     return this.rowsFor(userId).size;
+  }
+
+  entity(
+    userId: string,
+    entityType: string,
+    entityId: string,
+  ): RemoteRow | undefined {
+    return this.rowsFor(userId).get(`${entityType}:${entityId}`);
+  }
+
+  conflictCount(userId: string): number {
+    return [...this.conflictsFor(userId).values()].filter(
+      (row) => !row.resolvedAt,
+    ).length;
   }
 }
 
@@ -565,6 +595,74 @@ describe("cross-device premium sync lifecycle", () => {
       // No conflicts were archived and nothing is left pending.
       const state = await fetch(`${api.url}/api/sync/state`).then((r) => r.json());
       expect(state.state.pendingChanges).toBe(0);
+    } finally {
+      api.close();
+      await mirror.close();
+    }
+  });
+
+  it("does not self-conflict when the same card is moved again before the pull heals revisions", async () => {
+    const userId = "user-rapid";
+    const user = { id: userId, name: "Rapid", email: "rapid@example.test" };
+    const mirror = await createTestDatabase();
+    await mirror.client.execute(LOCAL_USER_STUB);
+    await activateDatabase(mirror.url);
+
+    const fakeClient = clientFor(user);
+    const api = await startLocalApi(userId);
+    const engine = new SyncEngine({
+      getClient: () => fakeClient as unknown as PremiumApiClient,
+      getLocalOrigin: () => api.url,
+      isOnline: () => true,
+      log: () => undefined,
+      onStatus: () => undefined,
+      onUnauthorized: () => undefined,
+    });
+    try {
+      await engine.syncNow("startup");
+
+      // Create a board and a task; sync so the server holds them at a known
+      // revision and the local revision table is healed.
+      await createBoard({ name: "Rapid board" }, "local-user", getDb());
+      const [board] = await getDb().select().from(boards);
+      const detail = await getBoardDetail(board!.id, "local-user", getDb());
+      const [source, second, third] = detail.columns;
+      expect(source && second && third).toBeTruthy();
+      const task = await createTask(
+        board!.id,
+        { columnId: source!.id, title: "Rapid card" },
+        "local-user",
+        getDb(),
+      );
+      await engine.syncNow("local-change");
+
+      // First move. The push is accepted (revision advances on the server),
+      // but the pull that normally heals the local revision table fails — a
+      // flaky network is exactly the window where rapid consecutive moves
+      // used to push a stale base revision and conflict with themselves.
+      await updateTask(task.id, { columnId: second!.id }, "local-user", getDb());
+      remote.failNextPull = true;
+      await engine.syncNow("local-change");
+
+      // Second move, made before any pull could heal the revision.
+      await updateTask(task.id, { columnId: third!.id }, "local-user", getDb());
+      await engine.syncNow("local-change");
+
+      // The cloud holds the newest move and no conflict was recorded: the
+      // second push carried the revision the first push was accepted at.
+      const remoteTask = remote.entity(userId, "task", task.id);
+      expect(remoteTask?.data.column_id).toBe(third!.id);
+      expect(remote.conflictCount(userId)).toBe(0);
+
+      const [localTask] = await getDb()
+        .select()
+        .from(tasks)
+        .where(eq(tasks.id, task.id));
+      expect(localTask?.columnId).toBe(third!.id);
+
+      const state = await fetch(`${api.url}/api/sync/state`).then((r) => r.json());
+      expect(state.state.pendingChanges).toBe(0);
+      expect(state.state.conflictCount).toBe(0);
     } finally {
       api.close();
       await mirror.close();

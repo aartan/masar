@@ -12,7 +12,7 @@ import {
 } from "@/lib/server/image-cache";
 import { decodeDataUrl } from "@/lib/server/image-data";
 import { imageStorageClientFromEnv } from "@/lib/server/images";
-import { requireWhiteboardBoard } from "@/lib/server/whiteboards";
+import { requireImageBoard } from "@/lib/server/whiteboards";
 import { imageCachePutSchema, imageUploadSchema } from "@/lib/validation";
 
 const imageIdSchema = z.string().trim().min(1).max(120);
@@ -31,7 +31,7 @@ function requireImageStorage() {
   const client = imageStorageClientFromEnv();
   if (!client) {
     throw new ApiError(
-      "Sign in to premium sync to store and view whiteboard images.",
+      "Sign in to premium sync to store and view images.",
       409,
     );
   }
@@ -119,7 +119,7 @@ imageRoutes.put("/boards/:boardId/images/:fileId/cache", async (c) => {
     requireImageStorage();
     const boardId = boardIdSchema.parse(c.req.param("boardId"));
     const fileId = fileIdSchema.parse(c.req.param("fileId"));
-    await requireWhiteboardBoard(getDb(), boardId, user.id);
+    await requireImageBoard(getDb(), boardId, user.id);
 
     const input = await parseJsonBody(c.req.raw, imageCachePutSchema);
     const decoded = decodeDataUrl(input.dataURL);
@@ -144,7 +144,7 @@ imageRoutes.get("/boards/:boardId/images/:fileId/cache", async (c) => {
     const user = await requireApiUser();
     const boardId = boardIdSchema.parse(c.req.param("boardId"));
     const fileId = fileIdSchema.parse(c.req.param("fileId"));
-    await requireWhiteboardBoard(getDb(), boardId, user.id);
+    await requireImageBoard(getDb(), boardId, user.id);
 
     const cached = await getCachedImage(boardId, fileId);
     if (!cached) {
@@ -169,7 +169,7 @@ imageRoutes.delete("/boards/:boardId/images/:fileId/cache", async (c) => {
     const user = await requireApiUser();
     const boardId = boardIdSchema.parse(c.req.param("boardId"));
     const fileId = fileIdSchema.parse(c.req.param("fileId"));
-    await requireWhiteboardBoard(getDb(), boardId, user.id);
+    await requireImageBoard(getDb(), boardId, user.id);
 
     const removed = await deleteCachedImage(boardId, fileId);
     return jsonOk({ removed });

@@ -10,8 +10,8 @@ import {
 import { Kbd } from "@/components/shared/empty-state";
 
 const SHORTCUTS = [
-  { keys: ["⌘", "K"], label: "Search tasks and boards", alternate: "Ctrl K" },
-  { keys: ["N"], label: "Create a task on the current board" },
+  { keys: ["⌘", "K"], label: "Search tasks and spaces", alternate: "Ctrl K" },
+  { keys: ["N"], label: "Create a task on the current space" },
   { keys: ["?"], label: "Show this shortcut guide" },
   { keys: ["Esc"], label: "Close a panel or dialog" },
   { keys: ["Tab"], label: "Move through controls and fields" },

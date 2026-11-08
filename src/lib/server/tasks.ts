@@ -98,7 +98,7 @@ export async function createTask(
   await assertBoardWritable(database, boardId, ownerId);
   const column = await requireColumn(database, input.columnId, ownerId);
   if (column.boardId !== boardId) {
-    throw new ApiError("That column does not belong to this board.", 400);
+    throw new ApiError("That column does not belong to this space.", 400);
   }
 
   const labelIds = await assertLabelsBelongToBoard(
@@ -149,7 +149,7 @@ export async function updateTask(
   if (input.columnId && input.columnId !== existing.columnId) {
     const target = await requireColumn(database, input.columnId, ownerId);
     if (target.boardId !== existing.boardId) {
-      throw new ApiError("That column does not belong to this board.", 400);
+      throw new ApiError("That column does not belong to this space.", 400);
     }
     nextColumnId = target.id;
     nextPosition = await nextTaskPosition(database, target.id);
@@ -286,7 +286,7 @@ export async function reorderTasks(
       .where(eq(columns.boardId, boardId)),
     database.select().from(tasks).where(eq(tasks.boardId, boardId)),
   ]);
-  if (boardColumns.length === 0) throw new ApiError("Board not found.", 404);
+  if (boardColumns.length === 0) throw new ApiError("Space not found.", 404);
 
   const columnMap = new Map(boardColumns.map((column) => [column.id, column]));
   const taskMap = new Map(boardTasks.map((task) => [task.id, task]));
@@ -297,7 +297,7 @@ export async function reorderTasks(
     input.columns.some((column) => !columnMap.has(column.columnId))
   ) {
     throw new ApiError(
-      "Task order must include every column on the board.",
+      "Task order must include every column on the space.",
       400,
     );
   }
@@ -320,7 +320,7 @@ export async function reorderTasks(
 
   if (seen.size !== boardTasks.length) {
     throw new ApiError(
-      "Task order must include every task on the board exactly once.",
+      "Task order must include every task on the space exactly once.",
       400,
     );
   }

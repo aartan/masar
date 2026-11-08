@@ -7,6 +7,7 @@ import { getClient, getDb } from "@/db";
 import { getLocalUser, LOCAL_USER_ID } from "@/lib/server/desktop";
 import { createBoard, getBoardDetail } from "@/lib/server/boards";
 import { saveWhiteboardScene } from "@/lib/server/whiteboards";
+import { saveNoteDocument } from "@/lib/server/notes";
 import { createTask, reorderTasks } from "@/lib/server/tasks";
 import { updateBoard } from "@/lib/server/boards";
 import {
@@ -478,6 +479,174 @@ describe("local sync outbox", () => {
     );
     expect(whiteboardChanges).toHaveLength(1);
     expect(String(whiteboardChanges[0]?.data.scene)).toContain('"id":"two"');
+  });
+
+  it("coalesces repeated note snapshots in the outbox", async () => {
+    await prepareSync("remote-user-a");
+    const board = await createBoard(
+      { name: "Log", type: "note" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+
+    await saveNoteDocument(
+      board.id,
+      JSON.stringify([{ id: "one", type: "paragraph" }]),
+      LOCAL_USER_ID,
+      test.db,
+    );
+    await saveNoteDocument(
+      board.id,
+      JSON.stringify([{ id: "two", type: "paragraph" }]),
+      LOCAL_USER_ID,
+      test.db,
+    );
+
+    const pending = await listPendingChanges(0, 500);
+    const noteChanges = pending.filter(
+      (change) => change.entityType === "note",
+    );
+    expect(noteChanges).toHaveLength(1);
+    expect(String(noteChanges[0]?.data.document)).toContain('"id":"two"');
+  });
+
+  it("does not queue a board change when a note document is saved", async () => {
+    await prepareSync("remote-user-a");
+    const board = await createBoard(
+      { name: "Log", type: "note" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+    await getClient().execute("delete from sync_changes");
+
+    await saveNoteDocument(
+      board.id,
+      JSON.stringify([{ id: "one", type: "paragraph" }]),
+      LOCAL_USER_ID,
+      test.db,
+    );
+
+    const pending = await listPendingChanges(0, 500);
+    expect(pending.map((change) => change.entityType)).toEqual(["note"]);
+  });
+
+  it("applies note entities and records their revisions", async () => {
+    await prepareSync("remote-user-a");
+    const now = Date.now();
+
+    const result = await applyRemoteChanges(4, [
+      {
+        entityType: "board",
+        entityId: "remote-note-board",
+        deleted: false,
+        data: {
+          id: "remote-note-board",
+          project_id: null,
+          type: "note",
+          name: "Remote note",
+          description: null,
+          color: "sage",
+          position: 0,
+          created_at: now,
+          updated_at: now,
+        },
+        updatedAt: new Date(now).toISOString(),
+        revision: 3,
+      },
+      {
+        entityType: "note",
+        entityId: "remote-note-board",
+        deleted: false,
+        data: {
+          id: "remote-note-board",
+          board_id: "remote-note-board",
+          document: JSON.stringify([{ id: "a", type: "paragraph" }]),
+          updated_at: now,
+        },
+        updatedAt: new Date(now).toISOString(),
+        revision: 4,
+      },
+    ]);
+
+    expect(result.applied).toBe(2);
+    expect(result.skipped).toEqual([]);
+
+    const [board] = await test.db
+      .select()
+      .from(boards)
+      .where(eq(boards.id, "remote-note-board"));
+    expect(board?.type).toBe("note");
+
+    const document = await getClient().execute({
+      sql: "select document from notes where board_id = ?",
+      args: ["remote-note-board"],
+    });
+    expect(String(document.rows[0]?.document)).toContain('"id":"a"');
+
+    const revisions = await getClient().execute(
+      "select entity_type, revision from sync_entity_revisions order by revision",
+    );
+    const byType = new Map(
+      revisions.rows.map((row) => [String(row.entity_type), Number(row.revision)]),
+    );
+    expect(byType.get("board")).toBe(3);
+    expect(byType.get("note")).toBe(4);
+  });
+
+  it("applies a note tombstone and deletes the document row", async () => {
+    await prepareSync("remote-user-a");
+    const now = Date.now();
+    await applyRemoteChanges(2, [
+      {
+        entityType: "board",
+        entityId: "remote-note-board",
+        deleted: false,
+        data: {
+          id: "remote-note-board",
+          project_id: null,
+          type: "note",
+          name: "Remote note",
+          description: null,
+          color: "sage",
+          position: 0,
+          created_at: now,
+          updated_at: now,
+        },
+        updatedAt: new Date(now).toISOString(),
+        revision: 1,
+      },
+      {
+        entityType: "note",
+        entityId: "remote-note-board",
+        deleted: false,
+        data: {
+          id: "remote-note-board",
+          board_id: "remote-note-board",
+          document: "[]",
+          updated_at: now,
+        },
+        updatedAt: new Date(now).toISOString(),
+        revision: 2,
+      },
+    ]);
+
+    const result = await applyRemoteChanges(3, [
+      {
+        entityType: "note",
+        entityId: "remote-note-board",
+        deleted: true,
+        data: {},
+        updatedAt: new Date(now + 1).toISOString(),
+        revision: 3,
+      },
+    ]);
+    expect(result.applied).toBe(1);
+
+    const rows = await getClient().execute({
+      sql: "select count(*) as count from notes where board_id = ?",
+      args: ["remote-note-board"],
+    });
+    expect(Number(rows.rows[0]?.count)).toBe(0);
   });
 
   it("does not queue a board change when a whiteboard scene is saved", async () => {

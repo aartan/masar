@@ -141,6 +141,11 @@ export const boards = sqliteTable(
      * does not know about this column and may insert rows while the new code
      * rolls out. The application never reads or writes unscoped boards; the
      * legacy claim command assigns them to their explicit owner.
+     *
+     * Naming note: the UI calls a board a "space" (Kanban spaces, whiteboard
+     * spaces and notes are all spaces). The table, routes, code identifiers
+     * and the sync entity keep the legacy "board" name so existing databases
+     * and the cloud sync protocol stay untouched.
      */
     ownerId: text("owner_id").references(() => users.id, {
       onDelete: "cascade",
@@ -156,7 +161,8 @@ export const boards = sqliteTable(
     /**
      * Board type, immutable after creation. 'kanban' is the default so every
      * existing board keeps its behaviour; 'whiteboard' renders an Excalidraw
-     * canvas and has no columns.
+     * canvas and has no columns; 'note' renders a BlockNote rich-text
+     * document and has no columns. The UI calls all three "spaces".
      */
     type: text("type").notNull().default("kanban"),
     name: text("name").notNull(),
@@ -303,6 +309,25 @@ export const whiteboards = sqliteTable("whiteboards", {
     .primaryKey()
     .references(() => boards.id, { onDelete: "cascade" }),
   scene: text("scene").notNull().default("{}"),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch() * 1000)`),
+});
+
+/**
+ * BlockNote document for a note board, keyed one-to-one by board id. The
+ * document JSON (an array of BlockNote blocks) is kept out of the boards table
+ * so board-list reads stay small and the size budget is isolated — the same
+ * arrangement as the whiteboard scene. A single `note` sync entity carries
+ * this row. Images inside the document are referenced by `/api/images/<id>`
+ * URLs in premium workspaces and embedded as data URLs in the free local
+ * workspace (identical to whiteboard scenes).
+ */
+export const notes = sqliteTable("notes", {
+  boardId: text("board_id")
+    .primaryKey()
+    .references(() => boards.id, { onDelete: "cascade" }),
+  document: text("document").notNull().default("[]"),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" })
     .notNull()
     .default(sql`(unixepoch() * 1000)`),
@@ -559,6 +584,7 @@ export type LabelRow = typeof labels.$inferSelect;
 export type SubtaskRow = typeof subtasks.$inferSelect;
 export type CommentRow = typeof comments.$inferSelect;
 export type WhiteboardRow = typeof whiteboards.$inferSelect;
+export type NoteRow = typeof notes.$inferSelect;
 export type ImageRow = typeof images.$inferSelect;
 export type ImageCacheRow = typeof imageCache.$inferSelect;
 export type BillingCustomerRow = typeof billingCustomers.$inferSelect;

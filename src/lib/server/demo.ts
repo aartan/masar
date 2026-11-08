@@ -39,7 +39,7 @@ export async function addDemoWorkspace(
     {
       name: "Welcome to Masar",
       description:
-        "A small sample board for exploring columns, tasks, labels, and keyboard shortcuts.",
+        "A small sample space for exploring columns, tasks, labels, and keyboard shortcuts.",
       color: "sage",
     },
     ownerId,
@@ -89,7 +89,7 @@ export async function addDemoWorkspace(
       columnId: column("To Do").id,
       title: "Try filters and sorting",
       description:
-        "Use the filter bar to focus on priority, labels, due dates, or the current column. Switch between board and list views from the toolbar.",
+        "Use the filter bar to focus on priority, labels, due dates, or the current column. Switch between Kanban and list views from the toolbar.",
       priority: "high",
       labelIds: [design.id, engineering.id],
     },
@@ -103,7 +103,7 @@ export async function addDemoWorkspace(
       columnId: column("In Progress").id,
       title: "Explore keyboard shortcuts",
       description:
-        "Press ? for the shortcut guide, or Cmd/Ctrl+K to search every board and task.",
+        "Press ? for the shortcut guide, or Cmd/Ctrl+K to search every space and task.",
       priority: "urgent",
       labelIds: [design.id],
     },
@@ -117,7 +117,7 @@ export async function addDemoWorkspace(
       columnId: column("Done").id,
       title: "Create your private workspace",
       description:
-        "Your account is ready. Every board you create belongs only to you.",
+        "Your account is ready. Every space you create belongs only to you.",
       priority: "low",
     },
     ownerId,
@@ -127,7 +127,7 @@ export async function addDemoWorkspace(
   await Promise.all([
     createSubtask(
       firstTask.id,
-      "Add a second board for another area of work",
+      "Add a second space for another area of work",
       ownerId,
       database,
     ),

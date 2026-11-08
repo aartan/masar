@@ -49,6 +49,11 @@ import {
   saveWhiteboardScene,
 } from "@/lib/server/whiteboards";
 import {
+  getNoteDocument,
+  MAX_NOTE_BYTES,
+  saveNoteDocument,
+} from "@/lib/server/notes";
+import {
   createSubtask,
   deleteSubtask,
   updateSubtask,
@@ -445,6 +450,84 @@ describe("whiteboards", () => {
     await expect(
       saveWhiteboardScene(board.id, "{}", owner.id, test.db),
     ).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe("notes", () => {
+  async function makeNote(projectName = "Note project") {
+    const project = await createProject({ name: projectName }, owner.id, test.db);
+    const board = await createBoard(
+      { name: "Meeting notes", type: "note", projectId: project.id },
+      owner.id,
+      test.db,
+    );
+    return { project, board };
+  }
+
+  it("creates a note board with no columns and an empty document", async () => {
+    const { board } = await makeNote();
+    expect(board.type).toBe("note");
+    const detail = await getBoardDetail(board.id, owner.id, test.db);
+    expect(detail.columns).toEqual([]);
+    expect(detail.tasks).toEqual([]);
+    expect(detail.labels).toEqual([]);
+
+    const document = await getNoteDocument(board.id, owner.id, test.db);
+    expect(document.document).toBe("[]");
+  });
+
+  it("counts notes in the project summary", async () => {
+    const { project } = await makeNote();
+    const summaries = await listProjects(owner.id, test.db);
+    const summary = summaries.find((item) => item.id === project.id);
+    expect(summary?.noteCount).toBe(1);
+    expect(summary?.kanbanCount).toBe(0);
+    expect(summary?.whiteboardCount).toBe(0);
+  });
+
+  it("saves and reloads a document", async () => {
+    const { board } = await makeNote();
+    const payload = JSON.stringify([
+      { id: "block-1", type: "paragraph", content: "Hello notes" },
+    ]);
+    const saved = await saveNoteDocument(board.id, payload, owner.id, test.db);
+    expect(saved.document).toBe(payload);
+
+    const reloaded = await getNoteDocument(board.id, owner.id, test.db);
+    expect(reloaded.document).toBe(payload);
+  });
+
+  it("rejects a document over the size limit", async () => {
+    const { board } = await makeNote("Too big");
+    const huge = "x".repeat(MAX_NOTE_BYTES + 1);
+    await expect(
+      saveNoteDocument(board.id, huge, owner.id, test.db),
+    ).rejects.toMatchObject({ status: 413 });
+  });
+
+  it("refuses to save a document for a non-note board", async () => {
+    const { board } = await makeBoard("Kanban board");
+    await expect(
+      saveNoteDocument(board.id, "[]", owner.id, test.db),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("refuses to save a document when the project is archived", async () => {
+    const { project, board } = await makeNote("Archive me");
+    await archiveProject(project.id, owner.id, test.db);
+    await expect(
+      saveNoteDocument(board.id, "[]", owner.id, test.db),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("rejects cross-account access to a note document", async () => {
+    const { board } = await makeNote();
+    await expect(
+      getNoteDocument(board.id, other.id, test.db),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      saveNoteDocument(board.id, "[]", other.id, test.db),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });
 

@@ -17,6 +17,7 @@ export interface ProjectSummary {
   boardCount: number;
   kanbanCount: number;
   whiteboardCount: number;
+  noteCount: number;
   taskCount: number;
   doneCount: number;
 }
@@ -109,9 +110,17 @@ export interface WhiteboardScene {
   updatedAt: string;
 }
 
+/** Serialized BlockNote document payload for a note board. */
+export interface NoteDocument {
+  boardId: string;
+  /** Opaque BlockNote document JSON (an array of blocks). */
+  document: string;
+  updatedAt: string;
+}
+
 export interface ActivityItem {
   id: string;
-  kind: "task" | "whiteboard";
+  kind: "task" | "whiteboard" | "note";
   title: string;
   detail: string | null;
   boardId: string;
@@ -133,7 +142,8 @@ export interface SyncConflictView {
     | "task_label"
     | "subtask"
     | "comment"
-    | "whiteboard";
+    | "whiteboard"
+    | "note";
   entityId: string;
   incomingDeleted: boolean;
   incomingData: Record<string, unknown>;
@@ -213,6 +223,7 @@ export interface DashboardData {
     open: number;
     projects: number;
     whiteboards: number;
+    notes: number;
   };
   priorityCounts: Record<Priority, number>;
   boardStats: BoardStats[];

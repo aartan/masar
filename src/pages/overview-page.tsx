@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CheckCircle2,
   CircleAlert,
+  FileText,
   FolderKanban,
   Layers,
   LayoutGrid,
@@ -128,8 +129,8 @@ function OverviewContent({ data }: { data: DashboardData }) {
             </h1>
             <p className="mt-1.5 max-w-lg text-[13.5px] leading-relaxed text-muted-foreground">
               {data.totals.boards > 0
-                ? `A clear view of ${data.totals.boards} ${data.totals.boards === 1 ? "board" : "boards"} and ${data.totals.open} open ${data.totals.open === 1 ? "task" : "tasks"}.`
-                : "Your workspace is ready for its first board."}
+                ? `A clear view of ${data.totals.boards} ${data.totals.boards === 1 ? "space" : "spaces"} and ${data.totals.open} open ${data.totals.open === 1 ? "task" : "tasks"}.`
+                : "Your workspace is ready for its first space."}
             </p>
           </div>
         </header>
@@ -146,16 +147,16 @@ function OverviewContent({ data }: { data: DashboardData }) {
                   A clear path from backlog to done.
                 </h2>
                 <p className="mx-auto mt-2 max-w-md text-[13.5px] leading-relaxed text-muted-foreground">
-                  Create a board, add your first tasks, and move work through
+                  Create a space, add your first tasks, and move work through
                   the columns as it progresses. Start with five and shape them
                   as you go.
                 </p>
                 <div className="mt-6 flex justify-center">
-                  <NewBoardButton label="Create your first board" size="lg" />
+                  <NewBoardButton label="Create your first space" size="lg" />
                 </div>
                 <div className="mt-8 grid gap-3 text-left sm:grid-cols-3">
                   {[
-                    ["Board", "Structure the work"],
+                    ["Spaces", "Structure the work"],
                     ["Flow", "Move work forward"],
                     ["Focus", "See what matters"],
                   ].map(([title, subtitle]) => (
@@ -182,7 +183,7 @@ function OverviewContent({ data }: { data: DashboardData }) {
                 icon={ListTodo}
                 label="Open tasks"
                 value={data.totals.open}
-                detail={`${data.totals.tasks} total across all boards`}
+                detail={`${data.totals.tasks} total across all spaces`}
                 delay={0}
               />
               <MetricCard
@@ -207,7 +208,7 @@ function OverviewContent({ data }: { data: DashboardData }) {
               />
               <MetricCard
                 icon={Layers}
-                label="Active boards"
+                label="Active spaces"
                 value={data.totals.boards}
                 detail={`${data.boardStats.reduce((sum, board) => sum + board.open, 0)} tasks in flight`}
                 delay={3}
@@ -258,6 +259,10 @@ function OverviewContent({ data }: { data: DashboardData }) {
                           <span className="inline-flex items-center gap-1">
                             <PenLine className="size-3" />
                             {project.whiteboardCount} Whiteboard
+                          </span>
+                          <span className="inline-flex items-center gap-1">
+                            <FileText className="size-3" />
+                            {project.noteCount} Note
                           </span>
                           <span className="ml-auto tabular-nums">
                             {project.doneCount}/{project.taskCount}
@@ -342,9 +347,9 @@ function OverviewContent({ data }: { data: DashboardData }) {
 
               <Card className="animate-rise" style={{ animationDelay: "60ms" }}>
                 <CardHeader className="pb-1">
-                  <PageSectionTitle>Board progress</PageSectionTitle>
+                  <PageSectionTitle>Space progress</PageSectionTitle>
                   <p className="-mt-2 text-[12px] text-muted-foreground">
-                    Completed work by board.
+                    Completed work by space.
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-4 pt-3">
@@ -392,7 +397,7 @@ function OverviewContent({ data }: { data: DashboardData }) {
                     );
                   })}
                   <NewBoardButton
-                    label="Create another board"
+                    label="Create another space"
                     variant="ghost"
                     size="sm"
                     className="mt-1 h-auto w-fit justify-start gap-1.5 px-0 text-[11.5px] font-medium text-primary hover:bg-transparent hover:underline"
@@ -445,7 +450,7 @@ function OverviewContent({ data }: { data: DashboardData }) {
                 <CardHeader className="pb-1">
                   <PageSectionTitle>Recent activity</PageSectionTitle>
                   <p className="-mt-2 text-[12px] text-muted-foreground">
-                    Recent task and whiteboard updates across projects.
+                    Recent task, whiteboard and note updates across projects.
                   </p>
                 </CardHeader>
                 <CardContent className="pt-3">
@@ -470,6 +475,8 @@ function OverviewContent({ data }: { data: DashboardData }) {
                           >
                             {item.boardType === "whiteboard" ? (
                               <PenLine className="size-3.5 shrink-0 text-muted-foreground" />
+                            ) : item.boardType === "note" ? (
+                              <FileText className="size-3.5 shrink-0 text-muted-foreground" />
                             ) : (
                               <LayoutGrid className="size-3.5 shrink-0 text-muted-foreground" />
                             )}

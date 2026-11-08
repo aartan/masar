@@ -29,11 +29,20 @@ export interface WhiteboardDiff {
   modified: number;
 }
 
+export interface NoteDiff {
+  cloudBlocks: number;
+  localBlocks: number;
+  added: number;
+  removed: number;
+  modified: number;
+}
+
 export interface ConflictDiff {
   changed: ConflictDiffRow[];
   unchanged: ConflictDiffRow[];
   summary: string;
   whiteboard: WhiteboardDiff | null;
+  note: NoteDiff | null;
 }
 
 export interface TextDiffLine {
@@ -117,6 +126,8 @@ function fieldDefinitions(type: SyncConflictView["entityType"]): FieldDefinition
     case "task_label":
       return TASK_LABEL_FIELDS;
     case "whiteboard":
+      return [];
+    case "note":
       return [];
   }
 }
@@ -244,11 +255,82 @@ function buildWhiteboardDiff(conflict: SyncConflictView): WhiteboardDiff | null 
   };
 }
 
+interface ParsedNoteBlocks {
+  blocks: Array<{ id?: unknown }>;
+}
+
+function parseNoteDocumentBlocks(document: unknown): ParsedNoteBlocks | null {
+  if (typeof document !== "string") return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(document);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  const blocks: Array<{ id?: unknown }> = [];
+  const collect = (list: unknown[]) => {
+    for (const block of list) {
+      if (!block || typeof block !== "object" || Array.isArray(block)) continue;
+      blocks.push(block as { id?: unknown });
+      const content = (block as { content?: unknown }).content;
+      if (Array.isArray(content)) collect(content);
+    }
+  };
+  collect(parsed);
+  return { blocks };
+}
+
+/**
+ * Compare two note documents by block identity, mirroring the whiteboard
+ * element diff: added/removed/modified counts by block id, with nested blocks
+ * included.
+ */
+function buildNoteDiff(conflict: SyncConflictView): NoteDiff | null {
+  const cloud = parseNoteDocumentBlocks(conflict.winningData.document);
+  const local = parseNoteDocumentBlocks(conflict.incomingData.document);
+  if (!cloud && !local) return null;
+  const cloudBlocks = cloud?.blocks ?? [];
+  const localBlocks = local?.blocks ?? [];
+  const cloudById = new Map(
+    cloudBlocks
+      .filter((block) => typeof block.id === "string")
+      .map((block) => [block.id as string, block]),
+  );
+  const localById = new Map(
+    localBlocks
+      .filter((block) => typeof block.id === "string")
+      .map((block) => [block.id as string, block]),
+  );
+  let added = 0;
+  let modified = 0;
+  for (const [id, block] of localById) {
+    const previous = cloudById.get(id);
+    if (!previous) {
+      added += 1;
+    } else if (!sameValue(previous, block)) {
+      modified += 1;
+    }
+  }
+  let removed = 0;
+  for (const id of cloudById.keys()) {
+    if (!localById.has(id)) removed += 1;
+  }
+  return {
+    cloudBlocks: cloudBlocks.length,
+    localBlocks: localBlocks.length,
+    added,
+    removed,
+    modified,
+  };
+}
+
 export function buildConflictDiff(
   conflict: SyncConflictView,
   lookup: ConflictLookup,
 ): ConflictDiff {
   const whiteboard = buildWhiteboardDiff(conflict);
+  const note = buildNoteDiff(conflict);
   const rows: ConflictDiffRow[] = [];
 
   if (conflict.incomingDeleted !== conflict.winningDeleted) {
@@ -295,11 +377,17 @@ export function buildConflictDiff(
         `${whiteboard.removed} removed`,
         `${whiteboard.modified} modified`,
       ].join(" · ")
-    : changedLabels.length > 0
-      ? `Changed: ${changedLabels.join(", ")}`
-      : "Only metadata changed";
+    : note
+      ? [
+          `${note.added} added`,
+          `${note.removed} removed`,
+          `${note.modified} modified`,
+        ].join(" · ")
+      : changedLabels.length > 0
+        ? `Changed: ${changedLabels.join(", ")}`
+        : "Only metadata changed";
 
-  return { changed, unchanged, summary, whiteboard };
+  return { changed, unchanged, summary, whiteboard, note };
 }
 
 /**

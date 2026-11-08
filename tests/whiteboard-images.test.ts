@@ -19,6 +19,7 @@ import {
   getWhiteboardScene,
   saveWhiteboardScene,
 } from "@/lib/server/whiteboards";
+import { saveNoteDocument } from "@/lib/server/notes";
 import { createTestDatabase, createTestUser, type TestDatabase } from "./helpers/test-db";
 
 let test: TestDatabase;
@@ -353,6 +354,66 @@ describe("whiteboard image cleanup", () => {
       images,
     );
     expect(images.removed.sort()).toEqual(["image-1", "image-2"]);
+  });
+});
+
+describe("note image cleanup", () => {
+  function noteDocumentWithImages(...imageIds: string[]): string {
+    return JSON.stringify([
+      ...imageIds.map((imageId) => ({
+        id: `block-${imageId}`,
+        type: "image",
+        props: { url: `/api/images/${imageId}` },
+      })),
+    ]);
+  }
+
+  it("deletes a note board's images using document references", async () => {
+    const board = await createBoard(
+      { name: "Image note", type: "note" },
+      owner.id,
+      test.db,
+    );
+    const images = new FakeImageStorage();
+    await saveNoteDocument(
+      board.id,
+      noteDocumentWithImages("image-1", "image-2"),
+      owner.id,
+      test.db,
+    );
+
+    await deleteBoard(board.id, owner.id, test.db, images);
+    expect(images.removed.sort()).toEqual(["image-1", "image-2"]);
+  });
+
+  it("deletes note images when a project is permanently deleted", async () => {
+    const project = await createProject(
+      { name: "Note image project" },
+      owner.id,
+      test.db,
+    );
+    const board = await createBoard(
+      { name: "Image note", type: "note", projectId: project.id },
+      owner.id,
+      test.db,
+    );
+    const images = new FakeImageStorage();
+    await saveNoteDocument(
+      board.id,
+      noteDocumentWithImages("image-1"),
+      owner.id,
+      test.db,
+    );
+    await archiveProject(project.id, owner.id, test.db);
+
+    await deleteProject(
+      project.id,
+      owner.id,
+      project.name,
+      test.db,
+      images,
+    );
+    expect(images.removed).toEqual(["image-1"]);
   });
 });
 

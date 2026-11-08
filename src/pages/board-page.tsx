@@ -12,10 +12,17 @@ import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardDetail } from "@/lib/types";
 
 // Excalidraw is heavy; load the whiteboard view only when a whiteboard board
-// is opened so it never enters the Kanban bundle.
+// is opened so it never enters the Kanban bundle. BlockNote is the same: the
+// note view is chunked out and loaded only when a note space is opened.
 const WhiteboardView = React.lazy(() =>
   import("@/components/whiteboard/whiteboard-view").then((module) => ({
     default: module.WhiteboardView,
+  })),
+);
+
+const NoteView = React.lazy(() =>
+  import("@/components/note/note-view").then((module) => ({
+    default: module.NoteView,
   })),
 );
 
@@ -40,7 +47,7 @@ export function BoardPage() {
       })
       .catch((caught: unknown) => {
         if (active) {
-          setError(caught instanceof Error ? caught.message : "Could not load this board.");
+          setError(caught instanceof Error ? caught.message : "Could not load this space.");
         }
       })
       .finally(() => {
@@ -68,9 +75,11 @@ export function BoardPage() {
       return <div className="h-full" aria-busy="true" />;
     }
     return (
-      <PageSkeleton label="Loading board">
+      <PageSkeleton label="Loading space">
         {boardSummary?.type === "whiteboard" ? (
           <WhiteboardSkeleton />
+        ) : boardSummary?.type === "note" ? (
+          <NoteSkeleton />
         ) : (
           <BoardSkeleton columnCount={boardSummary?.columnCount ?? 5} />
         )}
@@ -82,9 +91,9 @@ export function BoardPage() {
     return (
       <PageSurface className="grid h-full place-items-center px-6">
         <div className="max-w-sm text-center">
-          <h1 className="font-display text-xl font-semibold">Board not found</h1>
+          <h1 className="font-display text-xl font-semibold">Space not found</h1>
           <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
-            {error ?? "This board may have been deleted or does not belong to this workspace."}
+            {error ?? "This space may have been deleted or does not belong to this workspace."}
           </p>
           <Button asChild className="mt-5">
             <Link to="/">Back to overview</Link>
@@ -113,6 +122,20 @@ export function BoardPage() {
         }
       >
         <WhiteboardView key={boardId} board={data.board} />
+      </React.Suspense>
+    );
+  }
+
+  if (data.board.type === "note") {
+    return (
+      <React.Suspense
+        fallback={
+          <PageSkeleton label="Loading note">
+            <NoteSkeleton />
+          </PageSkeleton>
+        }
+      >
+        <NoteView key={boardId} board={data.board} />
       </React.Suspense>
     );
   }
@@ -229,6 +252,34 @@ function WhiteboardSkeleton() {
             ))}
           </div>
           <Skeleton className="absolute top-1/2 left-1/2 size-6 -translate-x-1/2 -translate-y-1/2 rounded-full" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NoteSkeleton() {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center gap-3 border-b border-border/60 bg-background/65 px-4 py-3 sm:px-6">
+        <Skeleton className="size-4 rounded" />
+        <Skeleton className="h-4 w-40 max-w-[40%]" />
+        <div className="ml-auto flex items-center gap-2">
+          <Skeleton className="h-6 w-14 rounded" />
+          <Skeleton className="size-8 rounded-lg" />
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[760px] px-5 py-8 sm:px-8 sm:py-12">
+          <Skeleton className="h-8 w-56 max-w-full" />
+          <div className="mt-8 space-y-4">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-11/12" />
+            <Skeleton className="h-4 w-4/5" />
+            <Skeleton className="mt-8 h-6 w-40" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-3/5" />
+          </div>
         </div>
       </div>
     </div>

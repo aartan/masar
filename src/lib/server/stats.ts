@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 
 import { getDb, type AppDatabase } from "@/db";
-import { boards, columns, tasks, whiteboards } from "@/db/schema";
+import { boards, columns, notes, tasks, whiteboards } from "@/db/schema";
 import type { BoardColor, Priority } from "@/lib/constants";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import type {
@@ -36,7 +36,7 @@ export async function getDashboardData(
     ? allProjectSummaries.filter((project) => project.id === projectId)
     : allProjectSummaries.filter((project) => !project.archived);
 
-  const [allColumns, allOwnerTasks, whiteboardRows] = await Promise.all([
+  const [allColumns, allOwnerTasks, whiteboardRows, noteRows] = await Promise.all([
     boardIds.length > 0
       ? database
           .select()
@@ -54,6 +54,17 @@ export async function getDashboardData(
           .from(whiteboards)
           .where(inArray(whiteboards.boardId, boardIds))
           .orderBy(desc(whiteboards.updatedAt))
+          .limit(20)
+      : Promise.resolve([]),
+    boardIds.length > 0
+      ? database
+          .select({
+            boardId: notes.boardId,
+            updatedAt: notes.updatedAt,
+          })
+          .from(notes)
+          .where(inArray(notes.boardId, boardIds))
+          .orderBy(desc(notes.updatedAt))
           .limit(20)
       : Promise.resolve([]),
   ]);
@@ -183,6 +194,23 @@ export async function getDashboardData(
       timestamp: row.updatedAt.toISOString(),
     });
   }
+  for (const row of noteRows) {
+    const board = boardMap.get(row.boardId);
+    if (!board) continue;
+    const project = board.projectId ? projectMap.get(board.projectId) : undefined;
+    activity.push({
+      id: `note:${row.boardId}`,
+      kind: "note",
+      title: board.name,
+      detail: "Note updated",
+      boardId: board.id,
+      boardName: board.name,
+      boardType: board.type,
+      projectId: board.projectId,
+      projectName: project?.name ?? null,
+      timestamp: row.updatedAt.toISOString(),
+    });
+  }
   activity.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
   return {
@@ -198,6 +226,7 @@ export async function getDashboardData(
       whiteboards: boardSummaries.filter(
         (board) => board.type === "whiteboard",
       ).length,
+      notes: boardSummaries.filter((board) => board.type === "note").length,
     },
     priorityCounts,
     boardStats,

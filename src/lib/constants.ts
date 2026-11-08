@@ -22,7 +22,7 @@ export const BOARD_COLORS = [
 ] as const;
 export type BoardColor = (typeof BOARD_COLORS)[number];
 
-export const BOARD_TYPES = ["kanban", "whiteboard"] as const;
+export const BOARD_TYPES = ["kanban", "whiteboard", "note"] as const;
 export type BoardType = (typeof BOARD_TYPES)[number];
 
 /** Image use cases accepted by the shared image storage API. */

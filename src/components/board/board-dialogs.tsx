@@ -126,7 +126,7 @@ function NewTaskForm({
       onCreated(task);
       onClose();
       toast.success("Task created", {
-        description: "It has been added to the board.",
+        description: "It has been added to the space.",
       });
     } catch (error) {
       toast.error("Could not create task", {
@@ -341,7 +341,7 @@ function ColumnForm({
         <DialogDescription>
           {editing
             ? "Give this stage of your workflow a clearer name."
-            : "Shape the board around the way your work actually moves."}
+            : "Shape the space around the way your work actually moves."}
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -479,9 +479,9 @@ function BoardSettingsForm({
       );
       onSaved(saved);
       onClose();
-      toast.success("Board updated");
+      toast.success("Space updated");
     } catch (error) {
-      toast.error("Could not update board", {
+      toast.error("Could not update space", {
         description: errorMessage(error),
       });
     } finally {
@@ -492,11 +492,13 @@ function BoardSettingsForm({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Board settings</DialogTitle>
+        <DialogTitle>Space settings</DialogTitle>
         <DialogDescription>
           {board.type === "whiteboard"
             ? "Rename the canvas, update its description, or move it to another project."
-            : "Rename your board, update its description, move it between projects, and manage its labels."}
+            : board.type === "note"
+              ? "Rename the note, update its description, or move it to another project."
+              : "Rename your space, update its description, move it between projects, and manage its labels."}
         </DialogDescription>
       </DialogHeader>
       <form
@@ -571,7 +573,7 @@ function BoardSettingsForm({
           className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
           onClick={onRequestDelete}
         >
-          Delete board…
+          Delete space…
         </Button>
         <Button
           type="button"

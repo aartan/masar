@@ -57,6 +57,7 @@ export function serializeProject(
     boardCount: number;
     kanbanCount: number;
     whiteboardCount: number;
+    noteCount: number;
     taskCount: number;
     doneCount: number;
   },
@@ -73,6 +74,7 @@ export function serializeProject(
     boardCount: counts.boardCount,
     kanbanCount: counts.kanbanCount,
     whiteboardCount: counts.whiteboardCount,
+    noteCount: counts.noteCount,
     taskCount: counts.taskCount,
     doneCount: counts.doneCount,
   };
@@ -331,7 +333,7 @@ export async function requireBoard(
     .from(boards)
     .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)))
     .limit(1);
-  if (!row) throw new ApiError("Board not found.", 404);
+  if (!row) throw new ApiError("Space not found.", 404);
   return row;
 }
 
@@ -433,6 +435,7 @@ export async function fetchProjectSummaries(
       boardCount: number;
       kanbanCount: number;
       whiteboardCount: number;
+      noteCount: number;
       taskCount: number;
       doneCount: number;
     }
@@ -443,11 +446,13 @@ export async function fetchProjectSummaries(
       boardCount: 0,
       kanbanCount: 0,
       whiteboardCount: 0,
+      noteCount: 0,
       taskCount: 0,
       doneCount: 0,
     };
     current.boardCount += 1;
     if (board.type === "whiteboard") current.whiteboardCount += 1;
+    else if (board.type === "note") current.noteCount += 1;
     else current.kanbanCount += 1;
     projectCounts.set(board.projectId, current);
   }
@@ -486,6 +491,7 @@ export async function fetchProjectSummaries(
         boardCount: 0,
         kanbanCount: 0,
         whiteboardCount: 0,
+        noteCount: 0,
         taskCount: 0,
         doneCount: 0,
       },
@@ -656,7 +662,7 @@ export async function assertLabelsBelongToBoard(
     .from(labels)
     .where(and(eq(labels.boardId, boardId), inArray(labels.id, unique)));
   if (rows.length !== unique.length) {
-    throw new ApiError("One or more labels do not belong to this board.", 400);
+    throw new ApiError("One or more labels do not belong to this space.", 400);
   }
   return unique;
 }

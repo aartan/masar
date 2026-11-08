@@ -239,6 +239,7 @@ export function DeleteProjectDialog({
   const boardCount = project?.boardCount ?? 0;
   const taskCount = project?.taskCount ?? 0;
   const whiteboardCount = project?.whiteboardCount ?? 0;
+  const noteCount = project?.noteCount ?? 0;
   const expected = project?.name ?? "";
 
   async function handleSubmit(event: React.FormEvent) {
@@ -253,7 +254,7 @@ export function DeleteProjectDialog({
       onOpenChange(false);
       onDeleted?.();
       toast.success("Project deleted", {
-        description: `${project.name} and its boards were permanently removed.`,
+        description: `${project.name} and its spaces were permanently removed.`,
       });
     } catch (error) {
       toast.error("Could not delete project", { description: errorMessage(error) });
@@ -269,10 +270,10 @@ export function DeleteProjectDialog({
           <DialogTitle>Delete project</DialogTitle>
           <DialogDescription>
             This permanently deletes <strong>{project?.name}</strong>. It
-            contains {boardCount} board{boardCount === 1 ? "" : "s"} (
-            {project?.kanbanCount ?? 0} Kanban, {whiteboardCount} Whiteboard)
-            and {taskCount} task{taskCount === 1 ? "" : "s"}. This cannot be
-            undone.
+            contains {boardCount} space{boardCount === 1 ? "" : "s"} (
+            {project?.kanbanCount ?? 0} Kanban, {whiteboardCount} Whiteboard,{" "}
+            {noteCount} Note) and {taskCount} task{taskCount === 1 ? "" : "s"}.
+            This cannot be undone.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-5">

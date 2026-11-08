@@ -37,7 +37,7 @@ export const dateOnlySchema = z
   }, "Use a valid date");
 
 export const boardCreateSchema = z.object({
-  name: nameSchema(80, "Board name"),
+  name: nameSchema(80, "Space name"),
   description: z.string().trim().max(400).nullish(),
   color: z.enum(BOARD_COLORS).optional(),
   type: z.enum(BOARD_TYPES).optional(),
@@ -46,7 +46,7 @@ export const boardCreateSchema = z.object({
 
 export const boardUpdateSchema = z
   .object({
-    name: nameSchema(80, "Board name").optional(),
+    name: nameSchema(80, "Space name").optional(),
     description: z.string().trim().max(400).nullable().optional(),
     color: z.enum(BOARD_COLORS).optional(),
     projectId: idSchema.optional(),
@@ -89,6 +89,10 @@ export const deleteProjectSchema = z.object({
 
 export const whiteboardSceneSchema = z.object({
   scene: z.string(),
+});
+
+export const noteDocumentSchema = z.object({
+  document: z.string(),
 });
 
 /** Multipart fields accepted by the shared image upload route. */
@@ -221,6 +225,7 @@ export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
 export type ProjectUpdateInput = z.infer<typeof projectUpdateSchema>;
 export type MoveBoardInput = z.infer<typeof moveBoardSchema>;
 export type WhiteboardSceneInput = z.infer<typeof whiteboardSceneSchema>;
+export type NoteDocumentInput = z.infer<typeof noteDocumentSchema>;
 export type ColumnCreateInput = z.infer<typeof columnCreateSchema>;
 export type ColumnUpdateInput = z.infer<typeof columnUpdateSchema>;
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>;

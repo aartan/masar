@@ -7,12 +7,14 @@ import {
   boards,
   columns,
   images as imagesTable,
+  notes,
   projects,
   tasks,
   whiteboards,
 } from "@/db/schema";
 import { ApiError } from "@/lib/api";
 import { DEFAULT_COLUMNS, type BoardColor, type BoardType } from "@/lib/constants";
+import { collectNoteImageIds } from "@/lib/note-document";
 import type { BoardDetail, BoardSummary } from "@/lib/types";
 import type {
   BoardCreateInput,
@@ -66,7 +68,7 @@ export async function reorderBoards(
     boardIds.some((id) => !existing.has(id))
   ) {
     throw new ApiError(
-      "Board order must include every board in the workspace exactly once.",
+      "Space order must include every space in the workspace exactly once.",
       400,
     );
   }
@@ -78,7 +80,7 @@ export async function reorderBoards(
     .where(and(eq(boards.ownerId, ownerId), eq(projects.archived, true)));
   if (archived.length > 0) {
     throw new ApiError(
-      "Restore archived projects before reordering their boards.",
+      "Restore archived projects before reordering their spaces.",
       409,
     );
   }
@@ -124,7 +126,7 @@ export async function moveBoard(
     input.boardIds.some((id) => !ownedById.has(id))
   ) {
     throw new ApiError(
-      "Board order must list owned boards exactly once.",
+      "Space order must list owned spaces exactly once.",
       400,
     );
   }
@@ -159,7 +161,7 @@ export async function getBoardDetail(
   database: AppDatabase = getDb(),
 ): Promise<BoardDetail> {
   const board = await fetchBoardSummary(database, boardId, ownerId);
-  if (!board) throw new ApiError("Board not found.", 404);
+  if (!board) throw new ApiError("Space not found.", 404);
 
   const [columnsData, tasksData, labelsData] = await Promise.all([
     fetchColumns(database, boardId, ownerId),
@@ -219,6 +221,13 @@ export async function createBoard(
         scene: "{}",
         updatedAt: now,
       });
+    } else if (type === "note") {
+      // A note has no Kanban columns; it starts with an empty document.
+      await tx.insert(notes).values({
+        boardId,
+        document: "[]",
+        updatedAt: now,
+      });
     } else {
       await tx.insert(columns).values(
         DEFAULT_COLUMNS.map((column, index) => ({
@@ -235,7 +244,7 @@ export async function createBoard(
   });
 
   const board = await fetchBoardSummary(database, boardId, ownerId);
-  if (!board) throw new ApiError("Board could not be created.", 500);
+  if (!board) throw new ApiError("Space could not be created.", 500);
   return board;
 }
 
@@ -267,7 +276,7 @@ export async function updateBoard(
     .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)));
 
   const board = await fetchBoardSummary(database, boardId, ownerId);
-  if (!board) throw new ApiError("Board not found.", 404);
+  if (!board) throw new ApiError("Space not found.", 404);
   return board;
 }
 
@@ -279,19 +288,28 @@ export async function deleteBoard(
 ): Promise<void> {
   await assertBoardWritable(database, boardId, ownerId);
 
-  // Collect image ids before the board (and its scene) disappears. Both the
-  // scene markers and the local metadata table are consulted because a board
-  // synced from another device may have references without local metadata.
-  const [sceneRow] = await database
-    .select({ scene: whiteboards.scene })
-    .from(whiteboards)
-    .where(eq(whiteboards.boardId, boardId))
-    .limit(1);
+  // Collect image ids before the board (and its scene/document) disappears.
+  // Both the content markers and the local metadata table are consulted
+  // because a board synced from another device may have references without
+  // local metadata.
+  const [[sceneRow], [noteRow]] = await Promise.all([
+    database
+      .select({ scene: whiteboards.scene })
+      .from(whiteboards)
+      .where(eq(whiteboards.boardId, boardId))
+      .limit(1),
+    database
+      .select({ document: notes.document })
+      .from(notes)
+      .where(eq(notes.boardId, boardId))
+      .limit(1),
+  ]);
   const stored = await database
     .select({ id: imagesTable.id })
     .from(imagesTable)
     .where(eq(imagesTable.boardId, boardId));
   const imageIds = sceneImageIds(sceneRow?.scene);
+  for (const id of collectNoteImageIds(noteRow?.document)) imageIds.add(id);
   for (const row of stored) imageIds.add(row.id);
 
   // Local image copies must not outlive the board (the FK also cascades, but

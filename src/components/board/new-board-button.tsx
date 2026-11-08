@@ -12,7 +12,7 @@ export function NewBoardButton({
   className,
   variant = "default",
   size = "default",
-  label = "New board",
+  label = "New space",
 }: {
   className?: string;
   variant?: React.ComponentProps<typeof Button>["variant"];

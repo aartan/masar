@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, LayoutGrid, Loader2, Plus, PenLine } from "lucide-react";
+import { ArrowRight, FileText, LayoutGrid, Loader2, Plus, PenLine } from "lucide-react";
 import { toast } from "sonner";
 
 import { useWorkspace } from "@/components/layout/workspace-provider";
@@ -75,6 +75,12 @@ const TYPE_OPTIONS: Array<{
     hint: "A free-form visual canvas.",
     icon: PenLine,
   },
+  {
+    value: "note",
+    label: "Note",
+    hint: "A rich-text document.",
+    icon: FileText,
+  },
 ];
 
 function CreateBoardForm({
@@ -121,15 +127,17 @@ function CreateBoardForm({
       });
       onClose();
       onCreated?.();
-      toast.success("Board created", {
+      toast.success("Space created", {
         description:
           board.type === "whiteboard"
             ? `${board.name} is ready to sketch on.`
-            : `${board.name} is ready with five starter columns.`,
+            : board.type === "note"
+              ? `${board.name} is ready to write in.`
+              : `${board.name} is ready with five starter columns.`,
       });
       navigate(`/boards/${board.id}`);
     } catch (error) {
-      toast.error("Could not create board", {
+      toast.error("Could not create space", {
         description: errorMessage(error),
       });
     } finally {
@@ -140,16 +148,16 @@ function CreateBoardForm({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Create a board</DialogTitle>
+        <DialogTitle>Create a space</DialogTitle>
         <DialogDescription>
-          Choose a board type, then name it. The type can’t be changed later.
+          Choose a space type, then name it. The type can’t be changed later.
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div
           className="grid grid-cols-2 gap-2"
           role="radiogroup"
-          aria-label="Board type"
+          aria-label="Space type"
         >
           {TYPE_OPTIONS.map((option) => {
             const Icon = option.icon;
@@ -207,13 +215,17 @@ function CreateBoardForm({
           )}
         </div>
         <div className="space-y-2">
-          <Label htmlFor="board-name">Name</Label>
+          <Label htmlFor="board-name">Space name</Label>
           <Input
             id="board-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder={
-              type === "whiteboard" ? "e.g. Brainstorm" : "e.g. Product launch"
+              type === "whiteboard"
+                ? "e.g. Brainstorm"
+                : type === "note"
+                  ? "e.g. Meeting notes"
+                  : "e.g. Product launch"
             }
             maxLength={80}
             required
@@ -231,7 +243,7 @@ function CreateBoardForm({
               id="board-description"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
-              placeholder="What is this board for?"
+              placeholder="What is this space for?"
               maxLength={400}
               rows={2}
               disabled={loading}
@@ -243,7 +255,7 @@ function CreateBoardForm({
           <div
             className="flex items-center gap-2"
             role="radiogroup"
-            aria-label="Board accent"
+            aria-label="Space accent"
           >
             {BOARD_COLORS.map((item) => (
               <button
@@ -286,7 +298,7 @@ function CreateBoardForm({
             ) : (
               <Plus className="size-4" />
             )}
-            Create board
+            Create space
             <ArrowRight className="size-3.5 opacity-60" />
           </Button>
         </DialogFooter>

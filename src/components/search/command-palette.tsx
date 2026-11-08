@@ -186,9 +186,9 @@ export function CommandPalette({
               }
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Search tasks or jump to a board…"
+            placeholder="Search tasks or jump to a space…"
             className="h-13 w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-            aria-label="Search tasks and boards"
+            aria-label="Search tasks and spaces"
             aria-controls="command-results"
             aria-activedescendant={
               items.length > 0
@@ -219,8 +219,8 @@ export function CommandPalette({
               </p>
               <p className="max-w-xs text-xs leading-relaxed text-muted-foreground">
                 {loading
-                  ? "Looking through every task on your boards."
-                  : "Try a different title, or jump to a board instead."}
+                  ? "Looking through every task on your spaces."
+                  : "Try a different title, or jump to a space instead."}
               </p>
             </div>
           ) : (
@@ -320,7 +320,7 @@ export function CommandPalette({
             <Kbd>↵</Kbd> open
           </span>
           <span className="ml-auto flex items-center gap-1">
-            <ArrowRight className="size-3" /> tasks open in their board
+            <ArrowRight className="size-3" /> tasks open in their space
           </span>
         </div>
       </DialogContent>

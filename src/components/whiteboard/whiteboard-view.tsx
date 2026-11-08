@@ -2,11 +2,7 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
-  Check,
-  CloudOff,
-  Loader2,
   PenLine,
-  RefreshCw,
   Settings2,
 } from "lucide-react";
 import { Excalidraw } from "@excalidraw/excalidraw";
@@ -26,13 +22,13 @@ import { PageSurface } from "@/components/layout/page-surface";
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { useTheme } from "@/components/theme-provider";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { SaveIndicator } from "@/components/shared/save-indicator";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, apiBlob, errorMessage } from "@/lib/client-api";
 import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardSummary, WhiteboardScene } from "@/lib/types";
-import { cn } from "@/lib/utils";
 import {
   blobToDataUrl,
   hydrateSceneFiles,
@@ -643,56 +639,3 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
   );
 }
 
-function SaveIndicator({
-  status,
-  onRetry,
-}: {
-  status: SaveStatus;
-  onRetry: () => void;
-}) {
-  if (status.phase === "unsaved") {
-    return (
-      <span className="text-[12px] text-muted-foreground">Unsaved changes</span>
-    );
-  }
-  if (status.phase === "saving") {
-    return (
-      <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-        <Loader2 className="size-3.5 animate-spin" />
-        Saving…
-      </span>
-    );
-  }
-  if (status.phase === "saved") {
-    return (
-      <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-        <Check className="size-3.5 text-success" />
-        Saved
-      </span>
-    );
-  }
-  if (status.phase === "too_large") {
-    return (
-      <span className="flex items-center gap-1.5 text-[12px] text-warning">
-        <CloudOff className="size-3.5" />
-        Too large to save — reduce images
-      </span>
-    );
-  }
-  if (status.phase === "error") {
-    return (
-      <button
-        type="button"
-        onClick={onRetry}
-        className={cn(
-          "flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[12px] text-warning transition-colors hover:bg-warning/10",
-        )}
-        title={status.message}
-      >
-        <RefreshCw className="size-3.5" />
-        Couldn’t save — retry
-      </button>
-    );
-  }
-  return null;
-}

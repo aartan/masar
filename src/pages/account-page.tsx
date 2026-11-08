@@ -149,12 +149,12 @@ export function AccountPage() {
       const result = await bridge.importLocalWorkspace();
       if (result.boards === 0) {
         setNotice(
-          "There is no local workspace to import. Boards you create here are synced automatically.",
+          "There is no local workspace to import. Spaces you create here are synced automatically.",
         );
         return;
       }
       toast.success("Local workspace imported", {
-        description: `${result.boards} board(s) and ${result.tasks} task(s) copied to your cloud workspace and queued for sync.`,
+        description: `${result.boards} space(s) and ${result.tasks} task(s) copied to your cloud workspace and queued for sync.`,
       });
     } catch (caught) {
       setError(

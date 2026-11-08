@@ -5,6 +5,7 @@ import {
   ArchiveRestore,
   CalendarDays,
   CheckCircle2,
+  FileText,
   LayoutGrid,
   Pencil,
   PenLine,
@@ -22,7 +23,7 @@ import { api, errorMessage } from "@/lib/client-api";
 import { formatDateTime } from "@/lib/dates";
 import type { ProjectDetail } from "@/lib/types";
 
-const TYPE_ICON = { kanban: LayoutGrid, whiteboard: PenLine } as const;
+const TYPE_ICON = { kanban: LayoutGrid, whiteboard: PenLine, note: FileText } as const;
 
 export function ProjectView({
   initialData,
@@ -97,7 +98,7 @@ export function ProjectView({
               {!project.archived && (
                 <Button size="sm" onClick={() => setCreateOpen(true)}>
                   <Plus className="size-4" />
-                  New board
+                  New space
                 </Button>
               )}
             </div>
@@ -113,6 +114,10 @@ export function ProjectView({
             <span className="inline-flex items-center gap-1.5">
               <PenLine className="size-3.5" />
               {project.whiteboardCount} Whiteboard
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <FileText className="size-3.5" />
+              {project.noteCount} Note
             </span>
             <span>
               {totals.tasks} task{totals.tasks === 1 ? "" : "s"}
@@ -133,15 +138,15 @@ export function ProjectView({
                 <Plus className="size-5" />
               </span>
               <div>
-                <p className="text-[14px] font-medium">No boards in this project yet</p>
+                <p className="text-[14px] font-medium">No spaces in this project yet</p>
                 <p className="mt-1 text-[12.5px] text-muted-foreground">
-                  Add a Kanban board or a whiteboard to get started.
+                  Add a Kanban space, a whiteboard or a note to get started.
                 </p>
               </div>
               {!project.archived && (
                 <Button size="sm" onClick={() => setCreateOpen(true)}>
                   <Plus className="size-4" />
-                  New board
+                  New space
                 </Button>
               )}
             </Card>
@@ -184,7 +189,7 @@ export function ProjectView({
                       </>
                     ) : (
                       <p className="mt-3 text-[11.5px] text-muted-foreground">
-                        Whiteboard canvas
+                        {board.type === "note" ? "Note" : "Whiteboard canvas"}
                       </p>
                     )}
                   </button>
@@ -266,6 +271,8 @@ export function ProjectView({
                       >
                         {item.boardType === "whiteboard" ? (
                           <PenLine className="size-3.5 shrink-0 text-muted-foreground" />
+                        ) : item.boardType === "note" ? (
+                          <FileText className="size-3.5 shrink-0 text-muted-foreground" />
                         ) : (
                           <LayoutGrid className="size-3.5 shrink-0 text-muted-foreground" />
                         )}

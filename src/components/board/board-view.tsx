@@ -165,6 +165,14 @@ export function BoardView({
     columns: BoardColumnType[];
   } | null>(null);
   const lastAppliedRefreshRef = React.useRef(0);
+  // Reorder commits are chained through a promise queue so requests reach the
+  // server in the order the user performed them, even for rapid consecutive
+  // moves. Every task mutation bumps the version; a commit applies its
+  // response (or rolls back) only when no newer mutation happened while its
+  // request was in flight, so stale data can never overwrite newer changes.
+  const commitChainRef = React.useRef<Promise<void>>(Promise.resolve());
+  const queuedCommitsRef = React.useRef(0);
+  const taskMutationVersionRef = React.useRef(0);
 
   // A background sync can change tasks, columns, labels or the board itself.
   // Apply the refreshed snapshot without remounting the page (which would lose
@@ -312,6 +320,7 @@ export function BoardView({
   }
 
   function handleTaskUpdated(updated: Task) {
+    taskMutationVersionRef.current += 1;
     const existing = tasks.find((task) => task.id === updated.id);
     setTasks((current) =>
       current.map((task) =>
@@ -324,16 +333,19 @@ export function BoardView({
   }
 
   function handleTaskCreated(task: Task) {
+    taskMutationVersionRef.current += 1;
     setTasks((current) => [...current, task]);
     void refreshBoards();
   }
 
   function handleTaskDuplicated(task: Task) {
+    taskMutationVersionRef.current += 1;
     setTasks((current) => [...current, task]);
     void refreshBoards();
   }
 
   function handleTaskDeletedFromSheet(taskId: string) {
+    taskMutationVersionRef.current += 1;
     setTasks((current) => current.filter((task) => task.id !== taskId));
     setSelectedTaskId(null);
     window.history.replaceState(null, "", `/boards/${board.id}`);
@@ -355,6 +367,7 @@ export function BoardView({
   }
 
   function handleLabelDeleted(labelId: string) {
+    taskMutationVersionRef.current += 1;
     setLabels((current) => current.filter((label) => label.id !== labelId));
     setTasks((current) =>
       current.map((task) =>
@@ -382,6 +395,7 @@ export function BoardView({
         `/api/tasks/${task.id}/duplicate`,
         { method: "POST" },
       );
+      taskMutationVersionRef.current += 1;
       setTasks((current) => [...current, copy]);
       toast.success("Task duplicated", { description: copy.title });
       void refreshBoards();
@@ -396,6 +410,7 @@ export function BoardView({
     if (!deleteTaskTarget) return;
     try {
       await api(`/api/tasks/${deleteTaskTarget.id}`, { method: "DELETE" });
+      taskMutationVersionRef.current += 1;
       setTasks((current) =>
         current.filter((task) => task.id !== deleteTaskTarget.id),
       );
@@ -421,6 +436,7 @@ export function BoardView({
           body: JSON.stringify({ columnId, title }),
         },
       );
+      taskMutationVersionRef.current += 1;
       setTasks((current) => [...current, task]);
       void refreshBoards();
       return true;
@@ -437,28 +453,55 @@ export function BoardView({
     previousTasks: Task[],
     columnName?: string,
   ) {
+    const version = ++taskMutationVersionRef.current;
+    queuedCommitsRef.current += 1;
     setIsReordering(true);
-    try {
-      const data = await api<{ tasks: Task[] }>(
-        `/api/boards/${board.id}/tasks/reorder`,
-        {
-          method: "POST",
-          body: JSON.stringify(buildTaskOrderPayload(nextTasks, columns)),
-        },
-      );
-      setTasks(data.tasks);
-      if (columnName) {
-        toast.success(`Moved to ${columnName}`);
+
+    const run = async () => {
+      try {
+        const data = await api<{ tasks: Task[] }>(
+          `/api/boards/${board.id}/tasks/reorder`,
+          {
+            method: "POST",
+            body: JSON.stringify(buildTaskOrderPayload(nextTasks, columns)),
+          },
+        );
+        if (version === taskMutationVersionRef.current) {
+          setTasks(data.tasks);
+          if (columnName) {
+            toast.success(`Moved to ${columnName}`);
+          }
+        } else if (queuedCommitsRef.current <= 1) {
+          // A newer mutation (for example a detail-sheet edit) landed while
+          // this request was in flight and no newer reorder is queued to
+          // settle the board: reconcile with the server's state instead of
+          // applying a response that may not include it.
+          await reloadBoard().catch(() => undefined);
+        }
+        void refreshBoards();
+      } catch (error) {
+        if (version === taskMutationVersionRef.current) {
+          setTasks(previousTasks);
+          toast.error("Could not save the new order", {
+            description: errorMessage(error),
+          });
+        } else if (queuedCommitsRef.current <= 1) {
+          await reloadBoard().catch(() => undefined);
+        }
+      } finally {
+        queuedCommitsRef.current -= 1;
+        if (queuedCommitsRef.current === 0) {
+          setIsReordering(false);
+        }
       }
-      void refreshBoards();
-    } catch (error) {
-      setTasks(previousTasks);
-      toast.error("Could not save the new order", {
-        description: errorMessage(error),
-      });
-    } finally {
-      setIsReordering(false);
-    }
+    };
+
+    const tail = commitChainRef.current.then(run, run);
+    commitChainRef.current = tail.then(
+      () => undefined,
+      () => undefined,
+    );
+    return tail;
   }
 
   async function moveTask(taskId: string, columnId: string) {
@@ -548,6 +591,7 @@ export function BoardView({
     const data = await api<{ board: BoardDetail }>(
       `/api/boards/${board.id}`,
     );
+    taskMutationVersionRef.current += 1;
     setBoard(data.board.board);
     setColumns(data.board.columns);
     setTasks(data.board.tasks);
@@ -719,6 +763,7 @@ export function BoardView({
   function handleDragCancel() {
     const snapshot = dragSnapshotRef.current;
     if (snapshot) {
+      taskMutationVersionRef.current += 1;
       setTasks(snapshot.tasks);
       setColumns(snapshot.columns);
     }

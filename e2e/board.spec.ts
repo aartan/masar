@@ -410,6 +410,99 @@ test.describe("board workflows", () => {
     }
   });
 
+  test("persists rapid consecutive moves across columns", async ({ page }) => {
+    const errors = collectPageErrors(page);
+    const boardName = uniqueName("E2E Rapid");
+    const taskTitle = "Rapid card";
+    let boardId: string | undefined;
+
+    try {
+      const board = await createBoard(page.request, boardName);
+      boardId = board.id;
+      const detail = await getBoardDetail(page.request, boardId);
+      const todo = columnByName(detail.columns, "To Do");
+      await createTask(page.request, boardId, {
+        columnId: todo.id,
+        title: taskTitle,
+      });
+
+      await page.goto(`/boards/${boardId}`);
+      const card = page.getByRole("button", { name: `Open task: ${taskTitle}` });
+      await expect(card).toBeVisible();
+
+      const dropInto = async (
+        source: { x: number; y: number; width: number },
+        target: { x: number; y: number; width: number },
+      ) => {
+        await page.mouse.move(source.x + source.width / 2, source.y + 36);
+        await page.mouse.down();
+        await page.mouse.move(source.x + source.width / 2 + 10, source.y + 46, {
+          steps: 4,
+        });
+        await page.mouse.move(
+          target.x + target.width / 2,
+          target.y + 260,
+          { steps: 24 },
+        );
+        await page.mouse.up();
+      };
+
+      // Two moves in quick succession: To Do → In Progress, then immediately
+      // In Progress → In Review, each saved as its own reorder request.
+      const firstReorder = page.waitForResponse(
+        (response) =>
+          response.url().includes("/tasks/reorder") &&
+          response.request().method() === "POST",
+      );
+      const inProgressRegion = page.getByRole("region", {
+        name: "In Progress column",
+      });
+      const cardBox = await card.boundingBox();
+      const inProgressBox = await inProgressRegion.boundingBox();
+      if (!cardBox || !inProgressBox) throw new Error("Missing drag geometry");
+      await dropInto(cardBox, inProgressBox);
+      expect((await firstReorder).ok()).toBeTruthy();
+
+      const movedCard = inProgressRegion.getByRole("button", {
+        name: `Open task: ${taskTitle}`,
+      });
+      await expect(movedCard).toBeVisible();
+
+      const secondReorder = page.waitForResponse(
+        (response) =>
+          response.url().includes("/tasks/reorder") &&
+          response.request().method() === "POST",
+      );
+      const reviewRegion = page.getByRole("region", {
+        name: "In Review column",
+      });
+      // The board scrolls horizontally; bring the target column fully into
+      // view so dnd-kit auto-scroll cannot shift columns under the pointer.
+      await reviewRegion.scrollIntoViewIfNeeded();
+      const movedBox = await movedCard.boundingBox();
+      const reviewBox = await reviewRegion.boundingBox();
+      if (!movedBox || !reviewBox) throw new Error("Missing drag geometry");
+      await dropInto(movedBox, reviewBox);
+      expect((await secondReorder).ok()).toBeTruthy();
+
+      // The card lands in the last dropped column.
+      await expect(
+        reviewRegion.getByRole("button", { name: `Open task: ${taskTitle}` }),
+      ).toBeVisible();
+
+      await page.reload({ waitUntil: "networkidle" });
+      await expect(
+        page
+          .getByRole("region", { name: "In Review column" })
+          .getByRole("button", { name: `Open task: ${taskTitle}` }),
+      ).toBeVisible();
+
+      expect(errors).toEqual([]);
+    } finally {
+      if (boardId) await deleteBoard(page.request, boardId);
+    }
+  });
+
   test("reorders a task within the same column", async ({ page }) => {
     const errors = collectPageErrors(page);
     const boardName = uniqueName("E2E Reorder");

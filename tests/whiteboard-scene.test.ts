@@ -9,6 +9,7 @@ import {
   sameSceneContent,
   sceneImageReferences,
   serializeWhiteboardScene,
+  whiteboardSceneAppState,
 } from "@/lib/whiteboard-scene";
 
 const EMBEDDED = "data:image/png;base64,cG5nLWJ5dGVz";
@@ -49,8 +50,55 @@ describe("whiteboard scene image references", () => {
 
     expect(parsed.files["old-file"]?.dataURL).toBe("masar://image-1");
     expect(parsed.files["new-file"]?.dataURL).toBe(EMBEDDED);
-    expect(parsed.appState.collaborators).toBeUndefined();
-    expect(parsed.appState.scrollX).toBe(2);
+    expect(parsed.appState).toEqual({});
+  });
+
+  it("persists only scene-owned app state", () => {
+    const serialized = serializeWhiteboardScene(
+      {
+        elements: [],
+        appState: {
+          collaborators: { a: {} },
+          width: 1280,
+          height: 720,
+          offsetLeft: 10,
+          offsetTop: 20,
+          scrollX: 2,
+          scrollY: 3,
+          zoom: { value: 2 },
+          selectedElementIds: { a: true },
+          activeTool: { type: "hand" },
+          viewModeEnabled: true,
+          theme: "dark",
+          viewBackgroundColor: "#ffffff",
+          gridSize: 20,
+          gridStep: 5,
+          gridModeEnabled: true,
+        },
+        files: {},
+      },
+      new Map(),
+    );
+
+    expect((JSON.parse(serialized) as { appState: unknown }).appState).toEqual({
+      viewBackgroundColor: "#ffffff",
+      gridSize: 20,
+      gridStep: 5,
+      gridModeEnabled: true,
+    });
+  });
+
+  it("projects malformed app state to an empty object", () => {
+    expect(whiteboardSceneAppState(null)).toEqual({});
+    expect(whiteboardSceneAppState([])).toEqual({});
+    expect(whiteboardSceneAppState("not an object")).toEqual({});
+    expect(
+      whiteboardSceneAppState({
+        width: 1,
+        scrollX: 2,
+        gridModeEnabled: true,
+      }),
+    ).toEqual({ gridModeEnabled: true });
   });
 
   it("drops files that no live element references", () => {
@@ -158,7 +206,7 @@ describe("sameSceneContent", () => {
     ).toBe(false);
   });
 
-  it("distinguishes scenes with different elements or app state", () => {
+  it("distinguishes scenes with different elements or scene app state", () => {
     const base = scene({ a: "masar://img-1" }, ELEMENTS);
     const moved = scene({ a: "masar://img-2" }, [
       { id: "el", type: "image", fileId: "a", x: 10 },
@@ -167,10 +215,26 @@ describe("sameSceneContent", () => {
 
     const otherState = JSON.stringify({
       elements: ELEMENTS,
-      appState: { scrollX: 2 },
+      appState: { scrollX: 1, viewBackgroundColor: "#ff0000" },
       files: { a: { id: "a", mimeType: "image/png", dataURL: "masar://img-2", created: 1 } },
     });
     expect(sameSceneContent(base, otherState)).toBe(false);
+  });
+
+  it("ignores viewport-only app state differences", () => {
+    const base = scene({ a: "masar://img-1" }, ELEMENTS);
+    const panned = JSON.stringify({
+      elements: ELEMENTS,
+      appState: {
+        scrollX: 400,
+        scrollY: 250,
+        zoom: { value: 2 },
+        width: 800,
+        height: 600,
+      },
+      files: { a: { id: "a", mimeType: "image/png", dataURL: "masar://img-2", created: 1 } },
+    });
+    expect(sameSceneContent(base, panned)).toBe(true);
   });
 
   it("distinguishes scenes with different file metadata", () => {

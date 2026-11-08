@@ -27,6 +27,37 @@ export interface WhiteboardSceneSnapshot {
   files: Record<string, unknown>;
 }
 
+/**
+ * App state that belongs to the scene itself rather than to the local editor.
+ *
+ * Excalidraw's appState also carries canvas dimensions, offsets, scroll, zoom,
+ * selection and active-tool state. Persisting those and replaying them through
+ * `updateScene()` resizes the live canvases to another window's dimensions,
+ * which leaves uncovered/stale regions along the right and bottom edges until
+ * a real resize. This mirrors Excalidraw's own database/export allowlist.
+ */
+export const SCENE_APP_STATE_KEYS = [
+  "viewBackgroundColor",
+  "gridSize",
+  "gridStep",
+  "gridModeEnabled",
+] as const;
+
+/** Keep only the app-state fields that are shared scene content. */
+export function whiteboardSceneAppState(
+  appState: unknown,
+): Record<string, unknown> {
+  if (!appState || typeof appState !== "object" || Array.isArray(appState)) {
+    return {};
+  }
+  const source = appState as Record<string, unknown>;
+  const sceneAppState: Record<string, unknown> = {};
+  for (const key of SCENE_APP_STATE_KEYS) {
+    if (source[key] !== undefined) sceneAppState[key] = source[key];
+  }
+  return sceneAppState;
+}
+
 export function imageReference(imageId: string): string {
   return `${IMAGE_REFERENCE_PREFIX}${imageId}`;
 }
@@ -113,7 +144,7 @@ export function serializeWhiteboardScene(
   snapshot: WhiteboardSceneSnapshot,
   externalImages: ReadonlyMap<string, string>,
 ): string {
-  const { collaborators: _collaborators, ...appState } = snapshot.appState;
+  const appState = whiteboardSceneAppState(snapshot.appState);
   const usedFiles = referencedFileIds(snapshot.elements);
   const files: Record<string, unknown> = {};
   for (const [fileId, value] of Object.entries(snapshot.files)) {
@@ -184,6 +215,7 @@ export function sameSceneContent(a: string, b: string): boolean {
   return (
     JSON.stringify(docA.root.elements) ===
       JSON.stringify(docB.root.elements) &&
-    JSON.stringify(docA.root.appState) === JSON.stringify(docB.root.appState)
+    JSON.stringify(whiteboardSceneAppState(docA.root.appState)) ===
+      JSON.stringify(whiteboardSceneAppState(docB.root.appState))
   );
 }

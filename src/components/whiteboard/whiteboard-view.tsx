@@ -50,6 +50,7 @@ import {
   imageReferenceId,
   sceneImageReferences,
   serializeWhiteboardScene,
+  whiteboardSceneAppState,
 } from "@/lib/whiteboard-scene";
 
 const SAVE_DEBOUNCE_MS = 1_200;
@@ -126,7 +127,9 @@ function parseScene(raw: string): ExcalidrawInitialDataState | null {
     return {
       elements: Array.isArray(parsed.elements) ? parsed.elements : [],
       appState: {
-        ...(parsed.appState ?? {}),
+        // Never restore another window's canvas dimensions, viewport,
+        // selection or tool state as part of the scene.
+        ...whiteboardSceneAppState(parsed.appState),
         showWelcomeScreen: false,
       },
       files: parsed.files ?? {},
@@ -177,6 +180,8 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
     cachedFileIds: Set<string>;
     skipFileIds: Set<string>;
   } | null>(null);
+  /** Discards responses from sync refreshes superseded by a newer one. */
+  const refreshGenerationRef = React.useRef(0);
   /**
    * Owns dirty-state tracking and serializes saves so slow image uploads can
    * never produce overlapping PUTs or stale canonical scenes.
@@ -356,14 +361,21 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
       initialData === null ||
       !loop ||
       loop.pendingScene !== null ||
+      loop.saving ||
       !excalidraw
     ) {
       return;
     }
+    // A newer sync cycle supersedes this refresh; its response must not be
+    // applied after fresher scene data has already landed.
+    const generation = ++refreshGenerationRef.current;
     try {
       const result = await api<{ scene: WhiteboardScene }>(
         `/api/boards/${board.id}/scene`,
       );
+      if (generation !== refreshGenerationRef.current || !mountedRef.current) {
+        return;
+      }
       const remote = result.scene.scene || "{}";
       if (remote === loop.lastSavedScene) return;
       const parsed = parseScene(remote);
@@ -375,7 +387,14 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         cacheReader,
       );
       // A local edit may have started while the scene was loading.
-      if (loop.pendingScene !== null) return;
+      if (
+        generation !== refreshGenerationRef.current ||
+        !mountedRef.current ||
+        loop.pendingScene !== null ||
+        loop.saving
+      ) {
+        return;
+      }
 
       loop.setSavedScene(remote);
       externalImagesRef.current = hydrated.references;
@@ -383,6 +402,8 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
       window.setTimeout(() => {
         applyingRemoteRef.current = false;
       }, 1_000);
+      // `parseScene` projects appState down to scene-owned fields, so this
+      // keeps the local viewport, selection, tool and canvas dimensions.
       excalidraw.updateScene({
         elements: parsed.elements,
         appState: parsed.appState as AppState,

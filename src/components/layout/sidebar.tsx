@@ -292,8 +292,10 @@ export function SidebarContent({
     <div className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground">
       <div
         className={cn(
-          "flex items-center justify-between pt-5 pb-4",
-          collapsed ? "px-2" : "px-4",
+          "flex",
+          collapsed
+            ? "flex-col items-center gap-2 px-2 pt-4 pb-1"
+            : "flex-row items-center justify-between pt-5 pb-4 px-4",
         )}
       >
         <Logo compact={collapsed} showTagline={!collapsed} />
@@ -315,7 +317,7 @@ export function SidebarContent({
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size={collapsed ? "icon-xs" : "icon-sm"}
+                  size="icon-sm"
                   onClick={onToggleCollapse}
                   aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                   aria-controls="workspace-sidebar"
@@ -336,7 +338,7 @@ export function SidebarContent({
         )}
       </div>
 
-      <div className="px-3 pb-3">
+      <div className={cn(collapsed ? "px-3 pb-1" : "px-3 pb-3")}>
         {collapsed ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -344,7 +346,7 @@ export function SidebarContent({
                 type="button"
                 onClick={onOpenSearch}
                 aria-label="Search"
-                className="mx-auto flex size-9 items-center justify-center rounded-lg border border-sidebar-border bg-background/50 text-muted-foreground shadow-[0_1px_0_oklch(1_0_0/0.4)_inset] transition-colors hover:border-sidebar-border/80 hover:bg-background/80 hover:text-foreground"
+                className="mx-auto flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
               >
                 <Search className="size-4 opacity-70" />
               </button>
@@ -371,7 +373,7 @@ export function SidebarContent({
         )}
       </div>
 
-      <nav className={cn("px-3", collapsed && "space-y-1")} aria-label="Workspace">
+      <nav className={cn("px-3 space-y-1", collapsed ? "py-1" : "")} aria-label="Workspace">
         <SidebarLink
           href="/"
           icon={LayoutDashboard}
@@ -401,12 +403,12 @@ export function SidebarContent({
         )}
       </nav>
 
-      <div className={cn("flex min-h-0 flex-1 flex-col", collapsed ? "mt-4" : "mt-5")}>
+      <div className={cn("flex min-h-0 flex-1 flex-col", !collapsed && "mt-5")}>
         <div
           className={cn(
             "flex items-center",
             collapsed
-              ? "justify-center pb-2"
+              ? "justify-center"
               : "justify-between px-5 pb-1.5",
           )}
         >

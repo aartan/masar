@@ -3,7 +3,14 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 
 import { getDb, type AppDatabase } from "@/db";
-import { boards, columns, projects, tasks, whiteboards } from "@/db/schema";
+import {
+  boards,
+  columns,
+  images as imagesTable,
+  projects,
+  tasks,
+  whiteboards,
+} from "@/db/schema";
 import { ApiError } from "@/lib/api";
 import { DEFAULT_COLUMNS, type BoardColor, type BoardType } from "@/lib/constants";
 import type { BoardDetail, BoardSummary } from "@/lib/types";
@@ -24,6 +31,12 @@ import {
   requireBoard,
   requireProject,
 } from "./queries";
+import {
+  premiumImageClient,
+  removeSceneImages,
+  sceneImageIds,
+  type SceneImageStorage,
+} from "./images";
 import { ensureDefaultProject } from "./projects";
 import { DEFAULT_PROJECT_NAME } from "@/lib/constants";
 
@@ -261,11 +274,30 @@ export async function deleteBoard(
   boardId: string,
   ownerId: string,
   database: AppDatabase = getDb(),
+  images: SceneImageStorage | null = premiumImageClient(),
 ): Promise<void> {
   await assertBoardWritable(database, boardId, ownerId);
+
+  // Collect image ids before the board (and its scene) disappears. Both the
+  // scene markers and the local metadata table are consulted because a board
+  // synced from another device may have references without local metadata.
+  const [sceneRow] = await database
+    .select({ scene: whiteboards.scene })
+    .from(whiteboards)
+    .where(eq(whiteboards.boardId, boardId))
+    .limit(1);
+  const stored = await database
+    .select({ id: imagesTable.id })
+    .from(imagesTable)
+    .where(eq(imagesTable.boardId, boardId));
+  const imageIds = sceneImageIds(sceneRow?.scene);
+  for (const row of stored) imageIds.add(row.id);
+
   await database
     .delete(boards)
     .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)));
+
+  await removeSceneImages(images, imageIds);
 }
 
 export async function listBoardTaskCount(

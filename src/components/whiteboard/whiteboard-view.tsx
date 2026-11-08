@@ -28,39 +28,67 @@ import { useTheme } from "@/components/theme-provider";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, errorMessage } from "@/lib/client-api";
+import { api, apiBlob, errorMessage } from "@/lib/client-api";
 import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardSummary, WhiteboardScene } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {
+  WhiteboardSaveLoop,
+  type WhiteboardSaveStatus,
+} from "@/lib/whiteboard-save-loop";
+import {
+  imageReferenceId,
+  sceneImageReferences,
+  serializeWhiteboardScene,
+} from "@/lib/whiteboard-scene";
 
-/** Matches the server's interim scene limit (the sync envelope is larger). */
-const MAX_SCENE_BYTES = 2 * 1024 * 1024;
 const SAVE_DEBOUNCE_MS = 1_200;
 
-type SaveStatus =
-  | { phase: "idle" }
-  | { phase: "unsaved" }
-  | { phase: "saving" }
-  | { phase: "saved"; at: number }
-  | { phase: "error"; message: string }
-  | { phase: "too_large" };
+type SaveStatus = WhiteboardSaveStatus;
 
-interface SceneSnapshot {
-  elements: readonly unknown[];
-  appState: Record<string, unknown>;
-  files: Record<string, unknown>;
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("Could not read the image."));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read the image."));
+    reader.readAsDataURL(blob);
+  });
 }
 
-function serializeScene(snapshot: SceneSnapshot): string {
-  // appState holds transient UI like collaborators and the pointer; persist
-  // only what is meaningful for reload. Excalidraw's restore() fills the rest.
-  const { collaborators: _collaborators, ...appState } = snapshot.appState;
-  return JSON.stringify({
-    elements: snapshot.elements,
-    appState,
-    files: snapshot.files,
-  });
+/**
+ * Turn stored `masar://` references into data URLs Excalidraw can render, and
+ * remember which file belongs to which stored image so saves can put the
+ * reference back instead of re-uploading the bytes.
+ */
+async function hydrateSceneImages(files: Record<string, unknown>): Promise<{
+  files: Record<string, unknown>;
+  references: Map<string, string>;
+}> {
+  const hydrated = { ...files };
+  const references = new Map<string, string>();
+
+  await Promise.all(
+    Object.entries(files).map(async ([fileId, value]) => {
+      if (!value || typeof value !== "object") return;
+      const file = value as Record<string, unknown>;
+      const imageId = imageReferenceId(file.dataURL);
+      if (!imageId) return;
+      references.set(fileId, imageId);
+      try {
+        const blob = await apiBlob(`/api/images/${encodeURIComponent(imageId)}`);
+        hydrated[fileId] = { ...file, dataURL: await blobToDataUrl(blob) };
+      } catch {
+        // Keep the reference when the image cannot be fetched. Excalidraw then
+        // shows the file as unavailable instead of failing the whole canvas.
+      }
+    }),
+  );
+
+  return { files: hydrated, references };
 }
 
 function parseScene(raw: string): ExcalidrawInitialDataState | null {
@@ -96,30 +124,71 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
   const [status, setStatus] = React.useState<SaveStatus>({ phase: "idle" });
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  /** Tracks the board id for the save loop even if the prop is swapped. */
+  const boardIdRef = React.useRef(board.id);
 
   React.useEffect(() => {
     setBoard(initialBoard);
+    boardIdRef.current = initialBoard.id;
   }, [initialBoard]);
 
   const apiRef = React.useRef<ExcalidrawImperativeAPI | null>(null);
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSavedRef = React.useRef<string>("");
-  const pendingRef = React.useRef<string | null>(null);
   const applyingRemoteRef = React.useRef(false);
+  /** fileId → stored image id for files loaded from (or saved to) R2. */
+  const externalImagesRef = React.useRef<Map<string, string>>(new Map());
+  /**
+   * Owns dirty-state tracking and serializes saves so slow image uploads can
+   * never produce overlapping PUTs or stale canonical scenes.
+   */
+  const loopRef = React.useRef<WhiteboardSaveLoop | null>(null);
+  if (loopRef.current === null) {
+    loopRef.current = new WhiteboardSaveLoop({
+      save: async (serialized) => {
+        const result = await api<{ scene: WhiteboardScene }>(
+          `/api/boards/${boardIdRef.current}/scene`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ scene: serialized }),
+          },
+        );
+        const saved = result.scene.scene || "{}";
+        // The server may have replaced embedded images with references, so the
+        // canonical saved scene (not the request body) is what we compare
+        // against next time.
+        externalImagesRef.current = sceneImageReferences(saved);
+        return saved;
+      },
+      onStatus: (next) => setStatus(next),
+    });
+  }
 
   // Load the persisted scene once.
   React.useEffect(() => {
     let active = true;
     setLoadError(null);
     void api<{ scene: WhiteboardScene }>(`/api/boards/${board.id}/scene`)
-      .then((result) => {
+      .then(async (result) => {
         if (!active) return;
-        lastSavedRef.current = result.scene.scene || "{}";
+        const raw = result.scene.scene || "{}";
+        const parsed = parseScene(raw);
+        const hydrated = await hydrateSceneImages(
+          (parsed?.files ?? {}) as Record<string, unknown>,
+        );
+        if (!active) return;
+        loopRef.current!.setSavedScene(raw);
+        externalImagesRef.current = hydrated.references;
         setInitialData(
-          parseScene(result.scene.scene) ?? {
-            elements: [],
-            appState: { showWelcomeScreen: false },
-          },
+          parsed
+            ? {
+                ...parsed,
+                files: hydrated.files as unknown as BinaryFiles,
+              }
+            : {
+                elements: [],
+                appState: { showWelcomeScreen: false },
+                files: hydrated.files as unknown as BinaryFiles,
+              },
         );
       })
       .catch((error: unknown) => {
@@ -130,36 +199,14 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
     };
   }, [board.id]);
 
-  const persist = React.useCallback(
-    async (serialized: string) => {
-      if (serialized === lastSavedRef.current) return;
-      if (new TextEncoder().encode(serialized).length > MAX_SCENE_BYTES) {
-        setStatus({ phase: "too_large" });
-        return;
-      }
-      pendingRef.current = serialized;
-      setStatus({ phase: "saving" });
-      try {
-        await api(`/api/boards/${board.id}/scene`, {
-          method: "PUT",
-          body: JSON.stringify({ scene: serialized }),
-        });
-        lastSavedRef.current = serialized;
-        pendingRef.current = null;
-        setStatus({ phase: "saved", at: Date.now() });
-      } catch (error) {
-        setStatus({ phase: "error", message: errorMessage(error) });
-      }
-    },
-    [board.id],
-  );
-
   const refreshFromSync = React.useCallback(async () => {
     // Never replace a canvas with pending or in-flight local edits.
     const excalidraw = apiRef.current;
+    const loop = loopRef.current;
     if (
       initialData === null ||
-      pendingRef.current !== null ||
+      !loop ||
+      loop.pendingScene !== null ||
       !excalidraw
     ) {
       return;
@@ -169,11 +216,18 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         `/api/boards/${board.id}/scene`,
       );
       const remote = result.scene.scene || "{}";
-      if (remote === lastSavedRef.current) return;
+      if (remote === loop.lastSavedScene) return;
       const parsed = parseScene(remote);
       if (!parsed) return;
 
-      lastSavedRef.current = remote;
+      const hydrated = await hydrateSceneImages(
+        (parsed.files ?? {}) as Record<string, unknown>,
+      );
+      // A local edit may have started while the scene was loading.
+      if (loop.pendingScene !== null) return;
+
+      loop.setSavedScene(remote);
+      externalImagesRef.current = hydrated.references;
       applyingRemoteRef.current = true;
       window.setTimeout(() => {
         applyingRemoteRef.current = false;
@@ -182,7 +236,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         elements: parsed.elements,
         appState: parsed.appState as AppState,
       });
-      const files = Object.values(parsed.files ?? {}) as BinaryFileData[];
+      const files = Object.values(hydrated.files) as BinaryFileData[];
       if (files.length > 0) excalidraw.addFiles(files);
       setStatus({ phase: "saved", at: Date.now() });
     } catch {
@@ -201,32 +255,55 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
       files: BinaryFiles,
     ) => {
       if (readOnly || applyingRemoteRef.current) return;
-      const serialized = serializeScene({
-        elements,
-        appState: appState as unknown as Record<string, unknown>,
-        files: files as unknown as Record<string, unknown>,
-      });
-      if (serialized === lastSavedRef.current) return;
-      pendingRef.current = serialized;
+      const serialized = serializeWhiteboardScene(
+        {
+          elements,
+          appState: appState as unknown as Record<string, unknown>,
+          files: files as unknown as Record<string, unknown>,
+        },
+        externalImagesRef.current,
+      );
+      const loop = loopRef.current;
+      if (!loop) return;
+      loop.change(serialized);
+      if (loop.isContentSaved(serialized)) {
+        if (!loop.saving) {
+          // The canvas matches what is persisted (for example an edit was
+          // undone back to the saved state). Normalize the indicator instead
+          // of leaving it stuck at "Unsaved changes".
+          setStatus((current) =>
+            current.phase === "saved"
+              ? current
+              : { phase: "saved", at: Date.now() },
+          );
+        }
+        // While a save is in flight the loop has queued this state and emits
+        // the final status when the drain finishes.
+        return;
+      }
       setStatus((current) =>
         current.phase === "unsaved" ? current : { phase: "unsaved" },
       );
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         debounceRef.current = null;
-        void persist(serialized);
+        loopRef.current?.flush();
       }, SAVE_DEBOUNCE_MS);
     },
-    [persist, readOnly],
+    [readOnly],
   );
 
   // Flush an outstanding edit on unmount so navigating away never loses work.
   React.useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      const pending = pendingRef.current;
-      if (pending && pending !== lastSavedRef.current) {
-        // Fire-and-forget: the component is going away.
+      const loop = loopRef.current;
+      if (!loop) return;
+      const pending = loop.pendingScene;
+      if (pending && !loop.isContentSaved(pending) && !loop.saving) {
+        // Fire-and-forget: the component is going away. When a save is still
+        // in flight the loop drains this pending state itself after unmount,
+        // so the flush must not race it.
         void api(`/api/boards/${board.id}/scene`, {
           method: "PUT",
           body: JSON.stringify({ scene: pending }),
@@ -236,8 +313,8 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
   }, [board.id]);
 
   function retry() {
-    const pending = pendingRef.current;
-    if (pending) void persist(pending);
+    const loop = loopRef.current;
+    if (loop && loop.pendingScene !== null) loop.flush();
   }
 
   async function deleteBoard() {

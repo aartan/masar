@@ -1,14 +1,27 @@
 import { randomUUID } from "node:crypto";
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { getDb, type AppDatabase } from "@/db";
-import { boards, columns, labels, projects, tasks, whiteboards } from "@/db/schema";
+import {
+  boards,
+  columns,
+  images as imagesTable,
+  labels,
+  projects,
+  tasks,
+  whiteboards,
+} from "@/db/schema";
 import { ApiError } from "@/lib/api";
 import type { ProjectDetail, ProjectSummary } from "@/lib/types";
 import type { ProjectCreateInput, ProjectUpdateInput } from "@/lib/validation";
 import {
-  assertProjectWritable,
+  premiumImageClient,
+  removeSceneImages,
+  sceneImageIds,
+  type SceneImageStorage,
+} from "./images";
+import { assertProjectWritable,
   fetchBoardSummaries,
   fetchProjectSummaries,
   nextProjectPosition,
@@ -219,6 +232,7 @@ export async function deleteProject(
   ownerId: string,
   confirmation: string,
   database: AppDatabase = getDb(),
+  images: SceneImageStorage | null = premiumImageClient(),
 ): Promise<void> {
   const project = await requireProject(database, projectId, ownerId);
   if (!project.archived) {
@@ -236,6 +250,24 @@ export async function deleteProject(
     .from(boards)
     .where(and(eq(boards.projectId, projectId), eq(boards.ownerId, ownerId)));
   const boardIds = projectBoards.map((row) => row.id);
+
+  // Image objects live in R2, outside the SQLite cascade. Gather their ids
+  // before the scenes and metadata rows are deleted.
+  const imageIds = new Set<string>();
+  if (boardIds.length > 0) {
+    const scenes = await database
+      .select({ scene: whiteboards.scene })
+      .from(whiteboards)
+      .where(inArray(whiteboards.boardId, boardIds));
+    for (const scene of scenes) {
+      for (const imageId of sceneImageIds(scene.scene)) imageIds.add(imageId);
+    }
+    const stored = await database
+      .select({ id: imagesTable.id })
+      .from(imagesTable)
+      .where(inArray(imagesTable.boardId, boardIds));
+    for (const row of stored) imageIds.add(row.id);
+  }
 
   await database.transaction(async (tx) => {
     for (const boardId of boardIds) {
@@ -257,4 +289,6 @@ export async function deleteProject(
       .delete(projects)
       .where(and(eq(projects.id, projectId), eq(projects.ownerId, ownerId)));
   });
+
+  await removeSceneImages(images, imageIds);
 }

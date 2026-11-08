@@ -4,6 +4,7 @@ import {
   BOARD_COLORS,
   BOARD_TYPES,
   DUE_FILTERS,
+  IMAGE_KINDS,
   LABEL_COLORS,
   PRIORITIES,
   TASK_SORTS,
@@ -88,6 +89,11 @@ export const deleteProjectSchema = z.object({
 
 export const whiteboardSceneSchema = z.object({
   scene: z.string(),
+});
+
+/** Multipart fields accepted by the shared image upload route. */
+export const imageUploadSchema = z.object({
+  kind: z.enum(IMAGE_KINDS).default("general"),
 });
 
 export const columnCreateSchema = z.object({

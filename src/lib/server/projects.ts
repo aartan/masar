@@ -21,6 +21,7 @@ import {
   sceneImageIds,
   type SceneImageStorage,
 } from "./images";
+import { deleteBoardsCache } from "./image-cache";
 import { assertProjectWritable,
   fetchBoardSummaries,
   fetchProjectSummaries,
@@ -268,6 +269,9 @@ export async function deleteProject(
       .where(inArray(imagesTable.boardId, boardIds));
     for (const row of stored) imageIds.add(row.id);
   }
+
+  // Local image copies must not outlive the project.
+  await deleteBoardsCache(boardIds, database);
 
   await database.transaction(async (tx) => {
     for (const boardId of boardIds) {

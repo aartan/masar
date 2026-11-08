@@ -96,6 +96,11 @@ export const imageUploadSchema = z.object({
   kind: z.enum(IMAGE_KINDS).default("general"),
 });
 
+/** Payload that writes a whiteboard image's bytes into the local cache. */
+export const imageCachePutSchema = z.object({
+  dataURL: z.string().trim().min(5).max(32 * 1024 * 1024),
+});
+
 export const columnCreateSchema = z.object({
   name: nameSchema(60, "Column name"),
   isDone: z.boolean().optional(),

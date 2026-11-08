@@ -10,6 +10,13 @@ import {
   parseSceneDocument,
   type SceneFileRecord,
 } from "@/lib/whiteboard-scene";
+import { decodeDataUrl } from "./image-data";
+import {
+  cachedRemoteIdsFor,
+  pruneBoardCache,
+  putCachedImage,
+  setCachedRemoteId,
+} from "./image-cache";
 import {
   imageStorageUnavailable,
   premiumImageClient,
@@ -23,12 +30,14 @@ import { assertProjectWritable } from "./queries";
 /**
  * Maximum serialized scene size after images have been externalised. Premium
  * whiteboards store only `masar://` references, so this cap is generous; the
- * free local workspace keeps embedded images under the same limit.
+ * free local workspace keeps embedded images under the same limit. The
+ * transient embedded scene written before externalisation is also bounded by
+ * this cap so a sync cycle can never push an oversized entity.
  */
 export const MAX_SCENE_BYTES = 2 * 1024 * 1024;
 
 /** Resolve a whiteboard board owned by the caller, or throw 404. */
-async function requireWhiteboardBoard(
+export async function requireWhiteboardBoard(
   database: AppDatabase,
   boardId: string,
   ownerId: string,
@@ -59,36 +68,6 @@ async function assertBoardProjectWritable(
   if (project) assertProjectWritable(project);
 }
 
-interface DecodedImage {
-  bytes: Buffer;
-  contentType: string;
-}
-
-/** Decode an Excalidraw data URL without trusting its declared type. */
-function decodeDataUrl(value: unknown): DecodedImage | null {
-  if (typeof value !== "string" || !value.startsWith("data:")) return null;
-  const comma = value.indexOf(",");
-  if (comma < 5) return null;
-  const metadata = value.slice(5, comma);
-  const parts = metadata.split(";");
-  const contentType = (parts[0] ?? "").trim().toLowerCase();
-  if (!contentType.startsWith("image/")) return null;
-  const base64 = parts
-    .slice(1)
-    .some((part) => part.trim().toLowerCase() === "base64");
-
-  try {
-    const payload = value.slice(comma + 1);
-    const bytes = base64
-      ? Buffer.from(payload, "base64")
-      : Buffer.from(decodeURIComponent(payload), "utf8");
-    if (bytes.byteLength === 0) return null;
-    return { bytes, contentType };
-  } catch {
-    return null;
-  }
-}
-
 interface ExternalizedScene {
   scene: string;
   uploaded: RemoteImage[];
@@ -96,8 +75,9 @@ interface ExternalizedScene {
 
 /**
  * Replace embedded Excalidraw files with `masar://<imageId>` references.
- * Already-referenced files are left untouched, so a normal autosave uploads
- * only newly added images.
+ * Already-referenced files are left untouched, and files whose bytes were
+ * uploaded by an earlier save are remapped from the local cache instead of
+ * being uploaded again.
  *
  * If image storage is unavailable during a rolling deploy (or the premium
  * session has expired) the save falls back to the embedded scene. Local work
@@ -105,14 +85,17 @@ interface ExternalizedScene {
  * later save.
  */
 async function externalizeImages(
+  boardId: string,
   scene: string,
   images: SceneImageStorage,
+  database: AppDatabase,
 ): Promise<ExternalizedScene> {
   const document = parseSceneDocument(scene);
   if (!document) return { scene, uploaded: [] };
 
   const files: Record<string, SceneFileRecord> = { ...document.files };
   const uploaded: RemoteImage[] = [];
+  const knownRemoteIds = await cachedRemoteIdsFor(boardId, database);
   let changed = false;
 
   try {
@@ -121,6 +104,15 @@ async function externalizeImages(
       const decoded = decodeDataUrl(file.dataURL);
       if (!decoded) continue;
 
+      // The bytes may already live in R2 from an earlier save (for example
+      // the renderer serialized this file before it learned the reference).
+      const knownId = knownRemoteIds.get(fileId);
+      if (knownId) {
+        files[fileId] = { ...file, dataURL: imageReference(knownId) };
+        changed = true;
+        continue;
+      }
+
       const image = await images.upload({
         bytes: decoded.bytes,
         contentType: decoded.contentType,
@@ -128,6 +120,17 @@ async function externalizeImages(
         kind: "whiteboard",
       });
       uploaded.push(image);
+      try {
+        await putCachedImage(
+          boardId,
+          fileId,
+          { bytes: decoded.bytes, contentType: decoded.contentType },
+          database,
+        );
+        await setCachedRemoteId(boardId, fileId, image.id, database);
+      } catch (error) {
+        console.warn(`[masar] could not cache image ${fileId}`, error);
+      }
       files[fileId] = { ...file, dataURL: imageReference(image.id) };
       changed = true;
     }
@@ -190,12 +193,71 @@ export async function saveWhiteboardScene(
     .where(eq(whiteboards.boardId, boardId))
     .limit(1);
 
+  const now = new Date();
   let savedScene = scene;
   let uploaded: RemoteImage[] = [];
+
   if (images) {
-    const externalized = await externalizeImages(scene, images);
-    savedScene = externalized.scene;
-    uploaded = externalized.uploaded;
+    // Retain the image bytes locally and make the scene durable before the
+    // slow upload starts. A user who navigates away (or returns) while the
+    // upload is still running never loses the image: the embedded scene is
+    // already in SQLite and the bytes are in the local cache.
+    const document = parseSceneDocument(scene);
+    const embeddedFileIds: string[] = [];
+    if (document) {
+      for (const [fileId, file] of Object.entries(document.files)) {
+        if (imageReferenceId(file.dataURL)) continue;
+        const decoded = decodeDataUrl(file.dataURL);
+        if (!decoded) continue;
+        embeddedFileIds.push(fileId);
+        try {
+          await putCachedImage(
+            boardId,
+            fileId,
+            { bytes: decoded.bytes, contentType: decoded.contentType },
+            database,
+          );
+        } catch (error) {
+          console.warn(`[masar] could not cache image ${fileId}`, error);
+        }
+      }
+    }
+
+    const embeddedSize = Buffer.byteLength(scene, "utf8");
+    if (embeddedFileIds.length > 0 && embeddedSize <= MAX_SCENE_BYTES) {
+      await database
+        .insert(whiteboards)
+        .values({ boardId, scene, updatedAt: now })
+        .onConflictDoUpdate({
+          target: whiteboards.boardId,
+          set: { scene, updatedAt: now },
+        });
+    }
+
+    try {
+      const externalized = await externalizeImages(
+        boardId,
+        scene,
+        images,
+        database,
+      );
+      savedScene = externalized.scene;
+      uploaded = externalized.uploaded;
+    } catch (error) {
+      // The remote rejected or failed the upload, but the image bytes and the
+      // embedded scene are already safe locally. Keep the embedded scene and
+      // try externalising again on a later save instead of losing work.
+      if (embeddedSize <= MAX_SCENE_BYTES) {
+        console.warn(
+          "[masar] image upload failed; keeping the scene embedded for a later save",
+          error,
+        );
+        savedScene = scene;
+        uploaded = [];
+      } else {
+        throw error;
+      }
+    }
   }
 
   const size = Buffer.byteLength(savedScene, "utf8");
@@ -213,7 +275,13 @@ export async function saveWhiteboardScene(
   const previousIds = sceneImageIds(existing?.scene);
   const nextIds = sceneImageIds(savedScene);
   const removedIds = [...previousIds].filter((id) => !nextIds.has(id));
-  const now = new Date();
+
+  // Cache rows for files that no longer exist in the scene are stale.
+  const liveFileIds = new Set<string>();
+  const finalDocument = parseSceneDocument(savedScene);
+  if (finalDocument) {
+    for (const fileId of Object.keys(finalDocument.files)) liveFileIds.add(fileId);
+  }
 
   try {
     await database.transaction(async (tx) => {
@@ -271,6 +339,7 @@ export async function saveWhiteboardScene(
 
   // Best-effort: local saves must not depend on the object store being up.
   await removeSceneImages(images, removedIds);
+  await pruneBoardCache(boardId, liveFileIds, database);
 
   // Do not touch the board row here. It used to refresh boards.updated_at for
   // activity, but activity already reads whiteboards.updated_at and the extra

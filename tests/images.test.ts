@@ -223,3 +223,93 @@ describe("image proxy routes", () => {
     });
   });
 });
+
+describe("image cache routes", () => {
+  async function makeWhiteboard(): Promise<string> {
+    const response = await request("/api/boards", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Cached canvas", type: "whiteboard" }),
+    });
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { board: { id: string } };
+    return body.board.id;
+  }
+
+  const DATA_URL = `data:image/png;base64,${Buffer.from("png-bytes").toString("base64")}`;
+
+  it("caches, serves and confirms a whiteboard image", async () => {
+    const boardId = await makeWhiteboard();
+
+    const put = await request(
+      `/api/boards/${boardId}/images/file-a/cache`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dataURL: DATA_URL }),
+      },
+    );
+    expect(put.status).toBe(201);
+
+    const get = await request(`/api/boards/${boardId}/images/file-a/cache`);
+    expect(get.status).toBe(200);
+    expect(get.headers.get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await get.arrayBuffer())).toEqual(
+      new Uint8Array(Buffer.from("png-bytes")),
+    );
+
+    const remove = await request(
+      `/api/boards/${boardId}/images/file-a/cache`,
+      { method: "DELETE" },
+    );
+    expect(remove.status).toBe(200);
+    expect(await remove.json()).toEqual({ removed: true });
+
+    const missing = await request(`/api/boards/${boardId}/images/file-a/cache`);
+    expect(missing.status).toBe(404);
+  });
+
+  it("rejects a cache write without premium image storage", async () => {
+    const boardId = await makeWhiteboard();
+    delete process.env.MASAR_API_URL;
+    delete process.env.MASAR_SYNC_TOKEN;
+
+    const response = await request(
+      `/api/boards/${boardId}/images/file-a/cache`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dataURL: DATA_URL }),
+      },
+    );
+    expect(response.status).toBe(409);
+
+    // Reading is still allowed (it just reports nothing cached).
+    const get = await request(`/api/boards/${boardId}/images/file-a/cache`);
+    expect(get.status).toBe(404);
+  });
+
+  it("rejects malformed payloads and unknown boards", async () => {
+    const boardId = await makeWhiteboard();
+
+    const invalid = await request(
+      `/api/boards/${boardId}/images/file-a/cache`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dataURL: "not-a-data-url" }),
+      },
+    );
+    expect(invalid.status).toBe(422);
+
+    const unknownBoard = await request(
+      `/api/boards/nope/images/file-a/cache`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dataURL: DATA_URL }),
+      },
+    );
+    expect(unknownBoard.status).toBe(404);
+  });
+});

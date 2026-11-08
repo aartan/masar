@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  blob,
   index,
   integer,
   primaryKey,
@@ -334,6 +335,39 @@ export const images = sqliteTable(
 );
 
 /**
+ * Local copy of whiteboard image bytes, keyed by the Excalidraw file id.
+ *
+ * Bytes are retained here the moment an image enters a canvas so the image
+ * survives navigation (and restarts) before its R2 upload has completed, and
+ * so it can still be displayed when the remote copy is temporarily
+ * unreachable. `remote_image_id` is filled in after a successful upload and
+ * doubles as an upload ledger: saves remap an already-uploaded file to its
+ * reference instead of uploading the bytes again. Rows are removed only once
+ * the renderer has confirmed the remote image is available and displayed, or
+ * when the file leaves the scene. This table is local-only and has no sync
+ * triggers of its own.
+ */
+export const imageCache = sqliteTable(
+  "image_cache",
+  {
+    boardId: text("board_id")
+      .notNull()
+      .references(() => boards.id, { onDelete: "cascade" }),
+    fileId: text("file_id").notNull(),
+    remoteImageId: text("remote_image_id"),
+    contentType: text("content_type").notNull().default("image/png"),
+    byteSize: integer("byte_size").notNull().default(0),
+    bytes: blob("bytes", { mode: "buffer" }).notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.boardId, table.fileId] }),
+    index("image_cache_board_idx").on(table.boardId),
+  ],
+);
+
+/**
  * Local-only synchronisation bookkeeping. The remote API never reads these
  * tables; they record the outbox and cursor needed to resume after an
  * interrupted connection.
@@ -526,6 +560,7 @@ export type SubtaskRow = typeof subtasks.$inferSelect;
 export type CommentRow = typeof comments.$inferSelect;
 export type WhiteboardRow = typeof whiteboards.$inferSelect;
 export type ImageRow = typeof images.$inferSelect;
+export type ImageCacheRow = typeof imageCache.$inferSelect;
 export type BillingCustomerRow = typeof billingCustomers.$inferSelect;
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
 export type PendingSignupRow = typeof pendingSignups.$inferSelect;

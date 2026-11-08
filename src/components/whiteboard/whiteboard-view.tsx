@@ -34,6 +34,15 @@ import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardSummary, WhiteboardScene } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
+  blobToDataUrl,
+  hydrateSceneFiles,
+} from "@/lib/whiteboard-image-hydration";
+import {
+  forgetPendingScene,
+  rememberPendingScene,
+  takePendingScene,
+} from "@/lib/whiteboard-pending-scene";
+import {
   WhiteboardSaveLoop,
   type WhiteboardSaveStatus,
 } from "@/lib/whiteboard-save-loop";
@@ -47,48 +56,67 @@ const SAVE_DEBOUNCE_MS = 1_200;
 
 type SaveStatus = WhiteboardSaveStatus;
 
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") resolve(reader.result);
-      else reject(new Error("Could not read the image."));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error("Could not read the image."));
-    reader.readAsDataURL(blob);
-  });
-}
+/** Reads local image copies during hydration. */
+const cacheReader = {
+  cached: async (boardId: string, fileId: string): Promise<Blob | null> => {
+    try {
+      return await apiBlob(
+        `/api/boards/${boardId}/images/${encodeURIComponent(fileId)}/cache`,
+      );
+    } catch {
+      return null;
+    }
+  },
+};
 
 /**
- * Turn stored `masar://` references into data URLs Excalidraw can render, and
- * remember which file belongs to which stored image so saves can put the
- * reference back instead of re-uploading the bytes.
+ * Fetch the remote copies of referenced files in the background. Files that
+ * were not served from the local cache are added to the canvas as they land;
+ * once a remote copy is confirmed available and displayed, the local cached
+ * copy is discarded. Files in `skipFileIds` were already fetched during the
+ * blocking load and are left alone.
  */
-async function hydrateSceneImages(files: Record<string, unknown>): Promise<{
-  files: Record<string, unknown>;
-  references: Map<string, string>;
-}> {
-  const hydrated = { ...files };
-  const references = new Map<string, string>();
-
+async function fillRemoteSceneImages(
+  boardId: string,
+  files: Record<string, unknown>,
+  references: Map<string, string>,
+  cachedFileIds: Set<string>,
+  excalidraw: ExcalidrawImperativeAPI,
+  isActive: () => boolean,
+  skipFileIds: ReadonlySet<string> = new Set(),
+): Promise<void> {
   await Promise.all(
-    Object.entries(files).map(async ([fileId, value]) => {
-      if (!value || typeof value !== "object") return;
-      const file = value as Record<string, unknown>;
-      const imageId = imageReferenceId(file.dataURL);
-      if (!imageId) return;
-      references.set(fileId, imageId);
+    [...references.entries()].map(async ([fileId, imageId]) => {
+      if (skipFileIds.has(fileId)) return;
       try {
         const blob = await apiBlob(`/api/images/${encodeURIComponent(imageId)}`);
-        hydrated[fileId] = { ...file, dataURL: await blobToDataUrl(blob) };
+        const dataURL = await blobToDataUrl(blob);
+        if (!isActive()) return;
+        if (!cachedFileIds.has(fileId)) {
+          const source = files[fileId] as Record<string, unknown> | undefined;
+          excalidraw.addFiles([
+            {
+              id: fileId,
+              mimeType:
+                typeof source?.mimeType === "string"
+                  ? source.mimeType
+                  : "image/webp",
+              dataURL,
+            } as BinaryFileData,
+          ]);
+        }
+        if (cachedFileIds.has(fileId)) {
+          // Remote confirmed available and displayed: drop the local copy.
+          await api(
+            `/api/boards/${boardId}/images/${encodeURIComponent(fileId)}/cache`,
+            { method: "DELETE" },
+          ).catch(() => undefined);
+        }
       } catch {
-        // Keep the reference when the image cannot be fetched. Excalidraw then
-        // shows the file as unavailable instead of failing the whole canvas.
+        // Keep the cached copy (or the reference) and retry on the next visit.
       }
     }),
   );
-
-  return { files: hydrated, references };
 }
 
 function parseScene(raw: string): ExcalidrawInitialDataState | null {
@@ -135,8 +163,20 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
   const apiRef = React.useRef<ExcalidrawImperativeAPI | null>(null);
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const applyingRemoteRef = React.useRef(false);
+  /** True while the component is mounted (guards background image fills). */
+  const mountedRef = React.useRef(true);
   /** fileId → stored image id for files loaded from (or saved to) R2. */
   const externalImagesRef = React.useRef<Map<string, string>>(new Map());
+  /** File ids already written to the local image cache this session. */
+  const cachedFilesRef = React.useRef<Set<string>>(new Set());
+  /** Remote fills queued until the Excalidraw instance is ready. */
+  const remoteFillRef = React.useRef<{
+    boardId: string;
+    files: Record<string, unknown>;
+    references: Map<string, string>;
+    cachedFileIds: Set<string>;
+    skipFileIds: Set<string>;
+  } | null>(null);
   /**
    * Owns dirty-state tracking and serializes saves so slow image uploads can
    * never produce overlapping PUTs or stale canonical scenes.
@@ -159,9 +199,49 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         externalImagesRef.current = sceneImageReferences(saved);
         return saved;
       },
-      onStatus: (next) => setStatus(next),
+      onStatus: (next) => {
+        setStatus(next);
+        // Once everything is persisted the in-memory handoff for this board
+        // can be dropped.
+        if (next.phase === "saved") forgetPendingScene(boardIdRef.current);
+      },
     });
   }
+
+  /**
+   * Fetch the remote copies of the current scene's referenced files, adding
+   * any that were not already available locally to the canvas.
+   */
+  const startRemoteFill = React.useCallback(
+    (
+      files: Record<string, unknown>,
+      references: Map<string, string>,
+      cachedFileIds: Set<string>,
+      skipFileIds: Set<string> = new Set(),
+    ) => {
+      const excalidraw = apiRef.current;
+      if (excalidraw) {
+        void fillRemoteSceneImages(
+          boardIdRef.current,
+          files,
+          references,
+          cachedFileIds,
+          excalidraw,
+          () => mountedRef.current,
+          skipFileIds,
+        );
+      } else {
+        remoteFillRef.current = {
+          boardId: boardIdRef.current,
+          files,
+          references,
+          cachedFileIds,
+          skipFileIds,
+        };
+      }
+    },
+    [],
+  );
 
   // Load the persisted scene once.
   React.useEffect(() => {
@@ -171,25 +251,87 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
       .then(async (result) => {
         if (!active) return;
         const raw = result.scene.scene || "{}";
-        const parsed = parseScene(raw);
-        const hydrated = await hydrateSceneImages(
+        // Prefer unsaved work from a previous mount (the user navigated away
+        // while a save was still in flight, so the persisted scene can lag
+        // behind the canvas).
+        const pending = takePendingScene(board.id, raw);
+        const source = pending ?? raw;
+        const parsed = parseScene(source);
+        const hydrated = await hydrateSceneFiles(
+          board.id,
           (parsed?.files ?? {}) as Record<string, unknown>,
+          cacheReader,
+        );
+        if (!active) return;
+        // Halt the first paint until every referenced image that is not in
+        // the local cache has been fetched from remote storage. Files served
+        // from the cache (or embedded in the scene) render immediately, so a
+        // board is never blocked by images that are already available
+        // locally. A fetch failure keeps the reference and is retried by the
+        // background fill instead of blocking forever.
+        const preloadedFileIds = new Set<string>();
+        await Promise.all(
+          [...hydrated.references.entries()].map(async ([fileId, imageId]) => {
+            if (hydrated.cachedFileIds.has(fileId)) return;
+            try {
+              const blob = await apiBlob(
+                `/api/images/${encodeURIComponent(imageId)}`,
+              );
+              const dataURL = await blobToDataUrl(blob);
+              const file = hydrated.files[fileId];
+              if (file && typeof file === "object") {
+                hydrated.files[fileId] = {
+                  ...(file as Record<string, unknown>),
+                  dataURL,
+                };
+                preloadedFileIds.add(fileId);
+              }
+            } catch {
+              // Keep the reference; the background fill retries it.
+            }
+          }),
         );
         if (!active) return;
         loopRef.current!.setSavedScene(raw);
         externalImagesRef.current = hydrated.references;
+        // Files that still hold a `masar://` reference are not renderable
+        // yet; leave them out so the background remote fill can add them (a
+        // file already present in the scene is never updated by addFiles).
+        const renderableFiles = Object.fromEntries(
+          Object.entries(hydrated.files).filter(
+            ([, file]) =>
+              typeof file === "object" &&
+              file !== null &&
+              !imageReferenceId((file as Record<string, unknown>).dataURL),
+          ),
+        ) as Record<string, unknown>;
         setInitialData(
           parsed
             ? {
                 ...parsed,
-                files: hydrated.files as unknown as BinaryFiles,
+                files: renderableFiles as unknown as BinaryFiles,
               }
             : {
                 elements: [],
                 appState: { showWelcomeScreen: false },
-                files: hydrated.files as unknown as BinaryFiles,
+                files: renderableFiles as unknown as BinaryFiles,
               },
         );
+        // Continue the interrupted save so the pending scene reaches the
+        // database (and the upload finishes in the background).
+        if (pending) {
+          const loop = loopRef.current!;
+          loop.change(pending);
+          loop.flush();
+        }
+        if (hydrated.references.size > 0) {
+          startRemoteFill(
+            (parsed?.files ?? {}) as Record<string, unknown>,
+            hydrated.references,
+            hydrated.cachedFileIds,
+            preloadedFileIds,
+          );
+        }
       })
       .catch((error: unknown) => {
         if (active) setLoadError(errorMessage(error));
@@ -197,7 +339,14 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
     return () => {
       active = false;
     };
-  }, [board.id]);
+  }, [board.id, startRemoteFill]);
+
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const refreshFromSync = React.useCallback(async () => {
     // Never replace a canvas with pending or in-flight local edits.
@@ -220,8 +369,10 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
       const parsed = parseScene(remote);
       if (!parsed) return;
 
-      const hydrated = await hydrateSceneImages(
+      const hydrated = await hydrateSceneFiles(
+        board.id,
         (parsed.files ?? {}) as Record<string, unknown>,
+        cacheReader,
       );
       // A local edit may have started while the scene was loading.
       if (loop.pendingScene !== null) return;
@@ -236,13 +387,25 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         elements: parsed.elements,
         appState: parsed.appState as AppState,
       });
-      const files = Object.values(hydrated.files) as BinaryFileData[];
+      const files = Object.values(hydrated.files).filter(
+        (file) =>
+          typeof file === "object" &&
+          file !== null &&
+          !imageReferenceId((file as Record<string, unknown>).dataURL),
+      ) as BinaryFileData[];
       if (files.length > 0) excalidraw.addFiles(files);
+      if (hydrated.references.size > 0) {
+        startRemoteFill(
+          (parsed.files ?? {}) as Record<string, unknown>,
+          hydrated.references,
+          hydrated.cachedFileIds,
+        );
+      }
       setStatus({ phase: "saved", at: Date.now() });
     } catch {
       /* Keep the current canvas if a background refresh fails. */
     }
-  }, [board.id, initialData]);
+  }, [board.id, initialData, startRemoteFill]);
 
   useOnSyncComplete(() => {
     void refreshFromSync();
@@ -255,6 +418,28 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
       files: BinaryFiles,
     ) => {
       if (readOnly || applyingRemoteRef.current) return;
+
+      // Retain newly added images in the local cache immediately so they
+      // survive navigation before the scene save lands. Existing files and
+      // externally stored images are skipped.
+      for (const [fileId, file] of Object.entries(files)) {
+        if (cachedFilesRef.current.has(fileId)) continue;
+        const dataURL = (file as { dataURL?: unknown }).dataURL;
+        if (typeof dataURL !== "string" || !dataURL.startsWith("data:")) {
+          cachedFilesRef.current.add(fileId);
+          continue;
+        }
+        cachedFilesRef.current.add(fileId);
+        if (externalImagesRef.current.has(fileId)) continue;
+        void api(
+          `/api/boards/${boardIdRef.current}/images/${encodeURIComponent(fileId)}/cache`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ dataURL }),
+          },
+        ).catch(() => undefined);
+      }
+
       const serialized = serializeWhiteboardScene(
         {
           elements,
@@ -267,6 +452,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
       if (!loop) return;
       loop.change(serialized);
       if (loop.isContentSaved(serialized)) {
+        forgetPendingScene(boardIdRef.current);
         if (!loop.saving) {
           // The canvas matches what is persisted (for example an edit was
           // undone back to the saved state). Normalize the indicator instead
@@ -281,6 +467,8 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         // the final status when the drain finishes.
         return;
       }
+      // Keep the unsaved state available for the next mount of this board.
+      rememberPendingScene(boardIdRef.current, serialized);
       setStatus((current) =>
         current.phase === "unsaved" ? current : { phase: "unsaved" },
       );
@@ -404,7 +592,22 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
           )
         ) : (
           <Excalidraw
-            excalidrawAPI={(instance) => (apiRef.current = instance)}
+            excalidrawAPI={(instance) => {
+              apiRef.current = instance;
+              const pending = remoteFillRef.current;
+              if (pending) {
+                remoteFillRef.current = null;
+                void fillRemoteSceneImages(
+                  pending.boardId,
+                  pending.files,
+                  pending.references,
+                  pending.cachedFileIds,
+                  instance,
+                  () => mountedRef.current,
+                  pending.skipFileIds,
+                );
+              }
+            }}
             initialData={initialData}
             theme={resolvedTheme}
             viewModeEnabled={readOnly}

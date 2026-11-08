@@ -259,19 +259,27 @@ describe("whiteboard image externalisation", () => {
     expect(rows).toEqual([]);
   });
 
-  it("rejects an unsupported image instead of silently dropping it", async () => {
+  it("retains the image embedded when the remote rejects it", async () => {
     const board = await makeWhiteboard();
     const images = new FakeImageStorage();
     images.failOnUpload = 1;
     images.failure = new ApiError("Unsupported image type.", 415);
     const scene = sceneWithFiles({ "file-a": PNG_DATA_URL });
 
-    await expect(
-      saveWhiteboardScene(board.id, scene, owner.id, test.db, images),
-    ).rejects.toMatchObject({ status: 415 });
+    // Local-first: a remote rejection must never lose the image. The save
+    // keeps the embedded scene and can retry externalisation on a later save.
+    const saved = await saveWhiteboardScene(
+      board.id,
+      scene,
+      owner.id,
+      test.db,
+      images,
+    );
+    expect(saved.scene).toBe(scene);
+    expect(images.removed).toEqual([]);
 
     const reloaded = await getWhiteboardScene(board.id, owner.id, test.db);
-    expect(reloaded.scene).toBe("{}");
+    expect(reloaded.scene).toBe(scene);
   });
 
   it("keeps embedded images when no premium storage is available", async () => {

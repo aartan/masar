@@ -37,6 +37,7 @@ import {
   sceneImageIds,
   type SceneImageStorage,
 } from "./images";
+import { deleteBoardCache } from "./image-cache";
 import { ensureDefaultProject } from "./projects";
 import { DEFAULT_PROJECT_NAME } from "@/lib/constants";
 
@@ -292,6 +293,10 @@ export async function deleteBoard(
     .where(eq(imagesTable.boardId, boardId));
   const imageIds = sceneImageIds(sceneRow?.scene);
   for (const row of stored) imageIds.add(row.id);
+
+  // Local image copies must not outlive the board (the FK also cascades, but
+  // foreign keys are not always enforced on every connection).
+  await deleteBoardCache(boardId, database);
 
   await database
     .delete(boards)

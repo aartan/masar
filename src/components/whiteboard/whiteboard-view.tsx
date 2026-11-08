@@ -28,14 +28,17 @@ import { useTheme } from "@/components/theme-provider";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, errorMessage } from "@/lib/client-api";
+import { api, apiBlob, ClientApiError, errorMessage } from "@/lib/client-api";
 import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardSummary, WhiteboardScene } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {
+  imageReferenceId,
+  sceneImageReferences,
+  serializeWhiteboardScene,
+} from "@/lib/whiteboard-scene";
 
-/** Matches the server's interim scene limit (the sync envelope is larger). */
-const MAX_SCENE_BYTES = 2 * 1024 * 1024;
 const SAVE_DEBOUNCE_MS = 1_200;
 
 type SaveStatus =
@@ -46,21 +49,48 @@ type SaveStatus =
   | { phase: "error"; message: string }
   | { phase: "too_large" };
 
-interface SceneSnapshot {
-  elements: readonly unknown[];
-  appState: Record<string, unknown>;
-  files: Record<string, unknown>;
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("Could not read the image."));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read the image."));
+    reader.readAsDataURL(blob);
+  });
 }
 
-function serializeScene(snapshot: SceneSnapshot): string {
-  // appState holds transient UI like collaborators and the pointer; persist
-  // only what is meaningful for reload. Excalidraw's restore() fills the rest.
-  const { collaborators: _collaborators, ...appState } = snapshot.appState;
-  return JSON.stringify({
-    elements: snapshot.elements,
-    appState,
-    files: snapshot.files,
-  });
+/**
+ * Turn stored `masar://` references into data URLs Excalidraw can render, and
+ * remember which file belongs to which stored image so saves can put the
+ * reference back instead of re-uploading the bytes.
+ */
+async function hydrateSceneImages(files: Record<string, unknown>): Promise<{
+  files: Record<string, unknown>;
+  references: Map<string, string>;
+}> {
+  const hydrated = { ...files };
+  const references = new Map<string, string>();
+
+  await Promise.all(
+    Object.entries(files).map(async ([fileId, value]) => {
+      if (!value || typeof value !== "object") return;
+      const file = value as Record<string, unknown>;
+      const imageId = imageReferenceId(file.dataURL);
+      if (!imageId) return;
+      references.set(fileId, imageId);
+      try {
+        const blob = await apiBlob(`/api/images/${encodeURIComponent(imageId)}`);
+        hydrated[fileId] = { ...file, dataURL: await blobToDataUrl(blob) };
+      } catch {
+        // Keep the reference when the image cannot be fetched. Excalidraw then
+        // shows the file as unavailable instead of failing the whole canvas.
+      }
+    }),
+  );
+
+  return { files: hydrated, references };
 }
 
 function parseScene(raw: string): ExcalidrawInitialDataState | null {
@@ -106,20 +136,35 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
   const lastSavedRef = React.useRef<string>("");
   const pendingRef = React.useRef<string | null>(null);
   const applyingRemoteRef = React.useRef(false);
+  /** fileId → stored image id for files loaded from (or saved to) R2. */
+  const externalImagesRef = React.useRef<Map<string, string>>(new Map());
 
   // Load the persisted scene once.
   React.useEffect(() => {
     let active = true;
     setLoadError(null);
     void api<{ scene: WhiteboardScene }>(`/api/boards/${board.id}/scene`)
-      .then((result) => {
+      .then(async (result) => {
         if (!active) return;
-        lastSavedRef.current = result.scene.scene || "{}";
+        const raw = result.scene.scene || "{}";
+        const parsed = parseScene(raw);
+        const hydrated = await hydrateSceneImages(
+          (parsed?.files ?? {}) as Record<string, unknown>,
+        );
+        if (!active) return;
+        lastSavedRef.current = raw;
+        externalImagesRef.current = hydrated.references;
         setInitialData(
-          parseScene(result.scene.scene) ?? {
-            elements: [],
-            appState: { showWelcomeScreen: false },
-          },
+          parsed
+            ? {
+                ...parsed,
+                files: hydrated.files as unknown as BinaryFiles,
+              }
+            : {
+                elements: [],
+                appState: { showWelcomeScreen: false },
+                files: hydrated.files as unknown as BinaryFiles,
+              },
         );
       })
       .catch((error: unknown) => {
@@ -133,22 +178,30 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
   const persist = React.useCallback(
     async (serialized: string) => {
       if (serialized === lastSavedRef.current) return;
-      if (new TextEncoder().encode(serialized).length > MAX_SCENE_BYTES) {
-        setStatus({ phase: "too_large" });
-        return;
-      }
       pendingRef.current = serialized;
       setStatus({ phase: "saving" });
       try {
-        await api(`/api/boards/${board.id}/scene`, {
-          method: "PUT",
-          body: JSON.stringify({ scene: serialized }),
-        });
-        lastSavedRef.current = serialized;
-        pendingRef.current = null;
+        const result = await api<{ scene: WhiteboardScene }>(
+          `/api/boards/${board.id}/scene`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ scene: serialized }),
+          },
+        );
+        const saved = result.scene.scene || "{}";
+        // The server may have replaced embedded images with references, so the
+        // canonical saved scene (not the request body) is what we compare
+        // against next time.
+        lastSavedRef.current = saved;
+        externalImagesRef.current = sceneImageReferences(saved);
+        if (pendingRef.current === serialized) pendingRef.current = null;
         setStatus({ phase: "saved", at: Date.now() });
       } catch (error) {
-        setStatus({ phase: "error", message: errorMessage(error) });
+        if (error instanceof ClientApiError && error.status === 413) {
+          setStatus({ phase: "too_large" });
+        } else {
+          setStatus({ phase: "error", message: errorMessage(error) });
+        }
       }
     },
     [board.id],
@@ -173,7 +226,14 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
       const parsed = parseScene(remote);
       if (!parsed) return;
 
+      const hydrated = await hydrateSceneImages(
+        (parsed.files ?? {}) as Record<string, unknown>,
+      );
+      // A local edit may have started while the scene was loading.
+      if (pendingRef.current !== null) return;
+
       lastSavedRef.current = remote;
+      externalImagesRef.current = hydrated.references;
       applyingRemoteRef.current = true;
       window.setTimeout(() => {
         applyingRemoteRef.current = false;
@@ -182,7 +242,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         elements: parsed.elements,
         appState: parsed.appState as AppState,
       });
-      const files = Object.values(parsed.files ?? {}) as BinaryFileData[];
+      const files = Object.values(hydrated.files) as BinaryFileData[];
       if (files.length > 0) excalidraw.addFiles(files);
       setStatus({ phase: "saved", at: Date.now() });
     } catch {
@@ -201,11 +261,14 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
       files: BinaryFiles,
     ) => {
       if (readOnly || applyingRemoteRef.current) return;
-      const serialized = serializeScene({
-        elements,
-        appState: appState as unknown as Record<string, unknown>,
-        files: files as unknown as Record<string, unknown>,
-      });
+      const serialized = serializeWhiteboardScene(
+        {
+          elements,
+          appState: appState as unknown as Record<string, unknown>,
+          files: files as unknown as Record<string, unknown>,
+        },
+        externalImagesRef.current,
+      );
       if (serialized === lastSavedRef.current) return;
       pendingRef.current = serialized;
       setStatus((current) =>

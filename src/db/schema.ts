@@ -308,6 +308,32 @@ export const whiteboards = sqliteTable("whiteboards", {
 });
 
 /**
+ * Metadata for images stored in Cloudflare R2 through the Premium API. Only
+ * ids and processed dimensions/sizes live here; image bytes never enter
+ * SQLite. Scenes reference these rows with `masar://<id>` markers. This table
+ * is local bookkeeping for cleanup, so it has no sync triggers of its own.
+ */
+export const images = sqliteTable(
+  "images",
+  {
+    id: text("id").primaryKey(),
+    boardId: text("board_id")
+      .notNull()
+      .references(() => boards.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull().default("general"),
+    contentType: text("content_type").notNull().default("image/webp"),
+    byteSize: integer("byte_size").notNull().default(0),
+    width: integer("width").notNull().default(0),
+    height: integer("height").notNull().default(0),
+    thumbByteSize: integer("thumb_byte_size").notNull().default(0),
+    thumbWidth: integer("thumb_width").notNull().default(0),
+    thumbHeight: integer("thumb_height").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (table) => [index("images_board_idx").on(table.boardId)],
+);
+
+/**
  * Local-only synchronisation bookkeeping. The remote API never reads these
  * tables; they record the outbox and cursor needed to resume after an
  * interrupted connection.
@@ -499,6 +525,7 @@ export type LabelRow = typeof labels.$inferSelect;
 export type SubtaskRow = typeof subtasks.$inferSelect;
 export type CommentRow = typeof comments.$inferSelect;
 export type WhiteboardRow = typeof whiteboards.$inferSelect;
+export type ImageRow = typeof images.$inferSelect;
 export type BillingCustomerRow = typeof billingCustomers.$inferSelect;
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
 export type PendingSignupRow = typeof pendingSignups.$inferSelect;

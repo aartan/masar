@@ -25,6 +25,10 @@ export type BoardColor = (typeof BOARD_COLORS)[number];
 export const BOARD_TYPES = ["kanban", "whiteboard"] as const;
 export type BoardType = (typeof BOARD_TYPES)[number];
 
+/** Image use cases accepted by the shared image storage API. */
+export const IMAGE_KINDS = ["whiteboard", "note", "general"] as const;
+export type ImageKind = (typeof IMAGE_KINDS)[number];
+
 /** Name given to the project created for existing boards during migration and
  * to the first project of a brand-new workspace. Fully editable afterwards. */
 export const DEFAULT_PROJECT_NAME = "General";

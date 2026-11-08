@@ -302,6 +302,14 @@ function serverEnvFor(
           // The import action reads the local workspace file; never the other
           // way around.
           MASAR_LOCAL_DB_URL: databaseUrl(),
+          // Image uploads/downloads are proxied to the Premium API with the
+          // signed-in token. R2 credentials never reach the desktop.
+          ...(activeApiUrl && session
+            ? {
+                MASAR_API_URL: activeApiUrl,
+                MASAR_SYNC_TOKEN: session.token,
+              }
+            : {}),
         }
       : {}),
   };

@@ -64,6 +64,29 @@ export async function api<T>(
   return payload as T;
 }
 
+/** Fetch binary content (for example a whiteboard image) from the local API. */
+export async function apiBlob(
+  path: string,
+  options: RequestInit = {},
+): Promise<Blob> {
+  const response = await fetch(path, { ...options, cache: "no-store" });
+  if (!response.ok) {
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    const body = payload as ApiErrorBody | null;
+    throw new ClientApiError(
+      body?.error ?? "Could not load the image.",
+      response.status,
+      body?.fieldErrors,
+    );
+  }
+  return response.blob();
+}
+
 export function errorMessage(error: unknown): string {
   if (error instanceof ClientApiError) return error.message;
   if (error instanceof Error) return error.message;

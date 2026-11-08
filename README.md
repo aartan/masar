@@ -18,7 +18,7 @@ The overview brings the workspace together: open tasks, due dates, recent comple
 
 - **Projects** — Group related boards into projects. Create, rename, reorder and archive projects; reorder boards within a project and drag them between projects. Open a project for its own overview, or keep working from the global workspace views.
 - **Kanban boards and columns** — Create boards with five starter columns, then add, rename, reorder or delete columns to match your workflow, and mark the columns that count as done.
-- **Whiteboards** — Add Excalidraw-powered whiteboard boards for free-form visual work: diagrams, sketches and brainstorms on an infinite canvas. Whiteboards match Masar's theme, autosave as you draw, and work offline.
+- **Whiteboards** — Add Excalidraw-powered whiteboard boards for free-form visual work: diagrams, sketches and brainstorms on an infinite canvas. Whiteboards match Masar's theme, autosave as you draw, and work offline. In the premium synced workspace, images are uploaded to Cloudflare R2 through the Premium API; the free local workspace keeps them embedded so it stays offline-first.
 - **Task management** — Capture descriptions, priorities, due dates and labels. Break work into subtasks, discuss it in comments, and duplicate or delete tasks when plans change.
 - **Board and list views** — Work visually on the Kanban board or switch to a compact list. Both views open the same task details and support the same filters.
 - **Search and filters** — Filter a board by priority, label, due date or status, and sort by manual order, due date, priority or newest. Use `Cmd/Ctrl+K` to search tasks and jump to any board.

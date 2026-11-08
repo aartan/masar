@@ -7,7 +7,11 @@ function Skeleton({
   return (
     <div
       data-slot="skeleton"
-      className={cn("shimmer rounded-md bg-muted", className)}
+      aria-hidden="true"
+      className={cn(
+        "shimmer rounded-md bg-foreground/[0.06]",
+        className,
+      )}
       {...props}
     />
   );

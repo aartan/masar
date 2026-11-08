@@ -1,61 +1,860 @@
 /*
- * Retheme Excalidraw's indigo accent to a neutral slate that matches Masar's
- * UI greys. A quiet accent keeps the canvas content-first: the shapes and
- * colours a user draws stand out instead of competing with a vivid brand
- * accent. Values follow Masar's low-chroma neutrals (--foreground, --muted,
- * --secondary, --accent) from globals.css.
+ * Masar's semantic theme for Excalidraw chrome.
+ *
+ * Excalidraw ships a neutral-slate/indigo palette. The canvas itself should
+ * stay content-first, so we keep the drawing surface untouched and retheme
+ * only its surrounding UI: toolbars, properties, menus, dialogs and inputs.
  *
  * The in-canvas UI lives under .masar-whiteboard, but Excalidraw renders
  * modals (Help, command palette, dialogs), context menus and the eye-dropper
  * into body-level portals (.excalidraw-modal-container /
  * .excalidraw-eye-dropper-container) that also carry the .excalidraw class.
- * Those portals are NOT inside .masar-whiteboard, so the accent is applied to
- * them directly as well. Imported after Excalidraw's own stylesheet so these
- * overrides win.
+ * Those portals are NOT inside .masar-whiteboard, so the same token mapping is
+ * applied to them directly. Imported after Excalidraw's own stylesheet so
+ * these overrides win.
+ *
+ * Values come from globals.css: sage --primary/--ring/--accent chrome,
+ * --foreground/--secondary-foreground text, --card/--popover/--secondary/
+ * --canvas surfaces and --border/--input controls. The canvas background and
+ * the hidden menu/library chrome are deliberately left alone.
  */
 
-/* Light theme — confident dark slate accent on quiet light-slate surfaces. */
 .masar-whiteboard .excalidraw,
 .excalidraw.excalidraw-modal-container,
 .excalidraw.excalidraw-eye-dropper-container {
-  --color-primary: oklch(0.42 0.012 145);
-  --color-primary-darker: oklch(0.36 0.012 145);
-  --color-primary-darkest: oklch(0.3 0.012 145);
-  --color-primary-hover: oklch(0.36 0.012 145);
-  --color-primary-light: oklch(0.93 0.007 95);
-  --color-primary-light-darker: oklch(0.9 0.007 95);
-  --color-brand-hover: oklch(0.36 0.012 145);
-  --color-brand-active: oklch(0.3 0.012 145);
-  --color-selection: oklch(0.42 0.012 145);
-  --focus-highlight-color: oklch(0.93 0.007 95);
-  --button-color: oklch(0.42 0.012 145);
-  --button-color-darker: oklch(0.36 0.012 145);
-  --button-color-darkest: oklch(0.3 0.012 145);
-  /* Selected-tool surface (active toolbar button) + its icon/text. */
-  --color-surface-primary-container: oklch(0.93 0.007 95);
-  --color-on-primary-container: oklch(0.3 0.012 145);
+  /* Accent: sage chrome, with theme-aware hover/active variants. */
+  --color-primary: var(--primary);
+  --color-primary-darker: color-mix(
+    in oklab,
+    var(--primary) 88%,
+    var(--foreground)
+  );
+  --color-primary-darkest: color-mix(
+    in oklab,
+    var(--primary) 76%,
+    var(--foreground)
+  );
+  --color-primary-hover: color-mix(
+    in oklab,
+    var(--primary) 90%,
+    var(--foreground)
+  );
+  --color-primary-light: var(--accent);
+  --color-primary-light-darker: var(--secondary);
+  --color-brand-hover: color-mix(
+    in oklab,
+    var(--primary) 90%,
+    var(--foreground)
+  );
+  --color-brand-active: color-mix(
+    in oklab,
+    var(--primary) 78%,
+    var(--foreground)
+  );
+  --color-promo: var(--primary);
+  --color-logo-icon: var(--primary);
+  --color-logo-text: var(--foreground);
+  --link-color: var(--primary);
+
+  /* Selection and focus stay neutral/shared with the rest of Masar. */
+  --color-selection: var(--foreground);
+  --focus-highlight-color: var(--ring);
+  --select-highlight-color: var(--ring);
+
+  /* Selected tools and menu rows use the quiet app accent. */
+  --color-surface-primary-container: var(--accent);
+  --color-on-primary-container: var(--accent-foreground);
+  --button-color: var(--foreground);
+  --button-color-darker: var(--foreground);
+  --button-color-darkest: var(--foreground);
+  --button-active-border: var(--ring);
+
+  /* Surfaces: islands are cards, menus/popovers are popovers, panels sit on
+     secondary/canvas, and interactive hovers use accent. */
+  --island-bg-color: var(--card);
+  --popup-bg-color: var(--popover);
+  --popup-secondary-bg-color: var(--popover);
+  --popup-text-color: var(--popover-foreground);
+  --popup-text-inverted-color: var(--popover);
+  --sidebar-bg-color: var(--card);
+  --sidebar-border-color: var(--border);
+  --color-surface-high: var(--accent);
+  --color-surface-mid: var(--secondary);
+  --color-surface-low: var(--canvas);
+  --color-surface-lowest: var(--card);
+  --button-hover-bg: var(--accent);
+  --button-active-bg: var(--accent);
+  --overlay-bg-color: color-mix(
+    in oklab,
+    var(--background) 88%,
+    transparent
+  );
+
+  /* Elevation mirrors the app's runtime shadow tokens. */
+  --shadow-island: var(--shadow-soft);
+  --modal-shadow: var(--shadow-float);
+  --sidebar-shadow: var(--shadow-float);
+  --library-dropdown-shadow: var(--shadow-float);
+
+  /* Text: primary UI text is foreground; secondary labels still pass AA. */
+  --text-primary-color: var(--foreground);
+  --color-on-surface: var(--foreground);
+  --icon-fill-color: var(--foreground);
+  --icon-green-fill-color: var(--primary);
+  --keybinding-color: var(--secondary-foreground);
+  --input-label-color: var(--secondary-foreground);
+  --color-icon-white: var(--primary-foreground);
+
+  /* Borders and controls. */
+  --default-border-color: var(--border);
+  --dialog-border-color: var(--border);
+  --input-bg-color: var(--card);
+  --input-border-color: var(--input);
+  --input-hover-bg-color: var(--secondary);
+  --button-gray-1: var(--card);
+  --button-gray-2: var(--input);
+  --button-gray-3: var(--muted-foreground);
+  --avatar-border-color: var(--border);
+  --color-border-outline: var(--border);
+  --color-border-outline-variant: var(--input);
+
+  /* Slider and scrollbars stay neutral, using the app's control tokens. */
+  --color-slider-track: var(--border);
+  --color-slider-thumb: var(--foreground);
+  --scrollbar-thumb: var(--input);
+  --scrollbar-thumb-hover: var(--muted-foreground);
+
+  /* Align chrome radii with the app's menu/item geometry. */
+  --border-radius-md: calc(var(--radius) - 2px);
+  --border-radius-lg: var(--radius);
+
+  /* Muted/disabled text only where it still clears AA (disabled states are
+     also dimmed by opacity, matching the app). */
+  --color-muted: var(--secondary);
+  --color-muted-darker: var(--muted-foreground);
+  --color-muted-darkest: var(--foreground);
+  --color-muted-background: var(--muted-foreground);
+  --color-muted-background-darker: var(--secondary-foreground);
+  --color-disabled: var(--muted-foreground);
+
+  /* Danger: accessible red derived from --destructive. Filled danger buttons
+     use --destructive-foreground, and the dark theme darkens their fill so
+     the label stays above AA. */
+  --wb-danger: color-mix(
+    in oklab,
+    var(--destructive) 80%,
+    var(--foreground)
+  );
+  --wb-danger-surface: color-mix(
+    in oklab,
+    var(--destructive) 10%,
+    transparent
+  );
+  --wb-danger-surface-strong: color-mix(
+    in oklab,
+    var(--destructive) 16%,
+    transparent
+  );
+  --color-danger: var(--wb-danger);
+  --color-danger-dark: var(--destructive);
+  --color-danger-darker: color-mix(
+    in oklab,
+    var(--destructive) 88%,
+    var(--foreground)
+  );
+  --color-danger-darkest: color-mix(
+    in oklab,
+    var(--destructive) 78%,
+    var(--foreground)
+  );
+  --color-danger-text: var(--destructive-foreground);
+  --color-danger-background: color-mix(
+    in oklab,
+    var(--destructive) 10%,
+    var(--popover)
+  );
+  --color-danger-icon-background: color-mix(
+    in oklab,
+    var(--destructive) 18%,
+    var(--popover)
+  );
+  --color-danger-color: var(--wb-danger);
+  --color-danger-icon-color: var(--wb-danger);
+  --button-destructive-bg-color: var(--wb-danger-surface-strong);
+  --button-destructive-color: var(--wb-danger);
+
+  /* Excalidraw text fields. */
+  --ExcTextField--color: var(--foreground);
+  --ExcTextField--label-color: var(--secondary-foreground);
+  --ExcTextField--background: var(--card);
+  --ExcTextField--readonly--background: var(--secondary);
+  --ExcTextField--readonly--color: var(--foreground);
+  --ExcTextField--border: var(--input);
+  --ExcTextField--readonly--border: var(--border);
+  --ExcTextField--border-hover: color-mix(
+    in oklab,
+    var(--ring) 70%,
+    var(--input)
+  );
+  --ExcTextField--border-active: var(--ring);
+  --ExcTextField--placeholder: var(--muted-foreground);
+
+  /* Radio/switch controls. */
+  --RadioGroup-background: var(--card);
+  --RadioGroup-border: var(--border);
+  --RadioGroup-choice-color-off: var(--primary);
+  --RadioGroup-choice-color-off-hover: color-mix(
+    in oklab,
+    var(--primary) 90%,
+    var(--foreground)
+  );
+  --RadioGroup-choice-background-off: var(--card);
+  --RadioGroup-choice-background-off-active: var(--accent);
+  --RadioGroup-choice-color-on: var(--primary-foreground);
+  --RadioGroup-choice-background-on: var(--primary);
+  --RadioGroup-choice-background-on-hover: var(--color-primary-darker);
+  --RadioGroup-choice-background-on-active: var(--color-primary-darkest);
+
+  --Switch-track-background: var(--card);
+  --Switch-thumb-background: var(--foreground);
+  --Switch-hover-background: var(--ring);
+  --Switch-active-background: var(--primary);
+  --Switch-disabled-color: var(--border);
+  --Switch-disabled-toggled-background: var(--input);
+  --Switch-disabled-border: var(--border);
+
+  /* Small remaining surfaces. */
+  --list-border-color: var(--border);
+  --userlist-hint-bg-color: var(--secondary);
+  --userlist-hint-heading-color: var(--foreground);
+  --userlist-hint-text-color: var(--secondary-foreground);
+  --userlist-collaborators-border-color: var(--border);
 }
 
-/* Dark theme — light slate accent on quiet dark-slate surfaces. */
 .masar-whiteboard .excalidraw.theme--dark,
 .excalidraw.excalidraw-modal-container.theme--dark,
 .excalidraw.excalidraw-eye-dropper-container.theme--dark {
-  --color-primary: oklch(0.8 0.01 110);
-  --color-primary-darker: oklch(0.85 0.01 110);
-  --color-primary-darkest: oklch(0.9 0.01 110);
-  --color-primary-hover: oklch(0.85 0.01 110);
-  --color-primary-light: oklch(0.3 0.012 150);
-  --color-primary-light-darker: oklch(0.26 0.01 150);
-  --color-brand-hover: oklch(0.85 0.01 110);
-  --color-brand-active: oklch(0.9 0.01 110);
-  --color-selection: oklch(0.8 0.01 110);
-  --focus-highlight-color: oklch(0.3 0.012 150);
-  --button-color: oklch(0.8 0.01 110);
-  --button-color-darker: oklch(0.85 0.01 110);
-  --button-color-darkest: oklch(0.9 0.01 110);
-  /* Selected-tool surface + its icon/text, tuned for the dark canvas. */
-  --color-surface-primary-container: oklch(0.32 0.012 150);
-  --color-on-primary-container: oklch(0.9 0.012 110);
+  /* Filled danger buttons need a deeper fill in dark mode so light labels
+     retain AA contrast. Outlined/icon danger text uses --wb-danger above. */
+  --color-danger-dark: color-mix(
+    in oklab,
+    var(--destructive) 55%,
+    var(--background)
+  );
+  --color-danger-darker: color-mix(
+    in oklab,
+    var(--destructive) 48%,
+    var(--background)
+  );
+  --color-danger-darkest: color-mix(
+    in oklab,
+    var(--destructive) 42%,
+    var(--background)
+  );
+  --color-danger-background: color-mix(
+    in oklab,
+    var(--destructive) 16%,
+    var(--popover)
+  );
+  --color-danger-icon-background: color-mix(
+    in oklab,
+    var(--destructive) 24%,
+    var(--popover)
+  );
+}
+
+/*
+ * Menus should match Masar's Radix dropdowns/popovers: popover surface,
+ * 80% border, rounded-xl corners and the float shadow.
+ */
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow: var(--shadow-float);
+  padding: 6px;
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item {
+  color: var(--popover-foreground);
+  border-radius: calc(var(--radius) - 2px);
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item
+  .context-menu-item__shortcut {
+  opacity: 1;
+  color: var(--secondary-foreground);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco,
+      Consolas, monospace);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item:hover,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item:focus-visible {
+  background-color: var(--accent);
+  color: var(--foreground);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item:hover
+  .context-menu-item__shortcut,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item:focus-visible
+  .context-menu-item__shortcut {
+  color: var(--foreground);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item.dangerous
+  .context-menu-item__label {
+  color: var(--wb-danger);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item:hover.dangerous,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item:focus-visible.dangerous {
+  background-color: var(--wb-danger-surface);
+  color: var(--wb-danger);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item:hover.dangerous
+  .context-menu-item__label,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item:focus-visible.dangerous
+  .context-menu-item__label {
+  color: var(--wb-danger);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item:hover.dangerous
+  .context-menu-item__shortcut,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item:focus-visible.dangerous
+  .context-menu-item__shortcut {
+  color: var(--secondary-foreground);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item.checkmark::before {
+  color: var(--foreground);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item-separator {
+  border-top-color: var(--border);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item:disabled,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item[aria-disabled="true"],
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .context-menu-item.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/*
+ * Excalidraw's own dropdowns, pickers and colour popovers.
+ */
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .dropdown-menu
+  .dropdown-menu-container,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .picker,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .color-picker {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow: var(--shadow-float);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .dropdown-menu
+  .dropdown-menu-item {
+  border-radius: calc(var(--radius) - 2px);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .dropdown-menu
+  .dropdown-menu-item:hover {
+  background-color: var(--accent);
+  color: var(--foreground);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .dropdown-menu
+  .dropdown-menu-item--selected,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .dropdown-menu.manual-hover
+  .dropdown-menu-item--selected {
+  background-color: var(--accent) !important;
+  color: var(--accent-foreground);
+  --icon-fill-color: var(--accent-foreground);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .dropdown-menu
+  .dropdown-menu-item--selected
+  svg {
+  color: var(--accent-foreground);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .dropdown-menu
+  .dropdown-menu-item__shortcut {
+  opacity: 1;
+  color: var(--secondary-foreground);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco,
+      Consolas, monospace);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+/* Keep the properties panel's button surfaces on app panel/hover tokens.
+   Excalidraw's dark panel rule is more specific, so include the dark scopes
+   here as well while keeping the shared declarations in one place. */
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .App-menu__left,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .App-mobile-menu,
+:is(
+    .masar-whiteboard .excalidraw.theme--dark,
+    .excalidraw.excalidraw-modal-container.theme--dark,
+    .excalidraw.excalidraw-eye-dropper-container.theme--dark
+  )
+  .App-menu__left,
+:is(
+    .masar-whiteboard .excalidraw.theme--dark,
+    .excalidraw.excalidraw-modal-container.theme--dark,
+    .excalidraw.excalidraw-eye-dropper-container.theme--dark
+  )
+  .App-mobile-menu {
+  --button-bg: var(--secondary);
+  --button-hover-bg: var(--accent);
+  --button-selected-bg: var(--accent);
+  --button-selected-border: var(--accent);
+}
+
+/* Selected tools use the same accent as selected menu items. */
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .App-toolbar
+  .eraser.active {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+  --icon-fill-color: var(--accent-foreground);
+  --keybinding-color: var(--accent-foreground);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .App-toolbar__extra-tools-trigger--selected,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .App-toolbar__extra-tools-trigger--selected:hover,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .excalidraw-eye-dropper-trigger.selected {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+/* Focus treatment follows the app: ring outline, 2px offset. */
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  button:focus-visible,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .dropdown-menu-item:focus-visible,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .welcome-screen-menu-item:focus-visible,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .buttonList
+  label:focus-within,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* Secondary labels and small hints need AA contrast, not Excalidraw's grays. */
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .HintViewer,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .color-picker-content--canvas-title,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .command-palette-dialog
+  .shortcut
+  .shortcut-desc {
+  color: var(--secondary-foreground);
+}
+
+/* Inputs: card background, neutral border, secondary hover. */
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  input[type="text"]:not(:focus):hover,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  textarea:not(.excalidraw-wysiwyg):not(:focus):hover {
+  border-color: var(--input);
+  background-color: var(--secondary);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .ExcTextField__input:not(.ExcTextField__input--readonly):not(
+    :focus-within
+  ):hover {
+  border-color: var(--input);
+  background-color: var(--secondary);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  input[type="text"]:focus,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  textarea:not(.excalidraw-wysiwyg):focus {
+  border-color: var(--ring);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  input::placeholder,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  textarea::placeholder {
+  color: var(--muted-foreground);
+  opacity: 1;
+}
+
+/* Swatch and divider borders. */
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .color-picker__button,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .color-picker-swatch {
+  border-color: var(--border);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .dropdown-select {
+  color: var(--foreground);
+  background-color: var(--card);
+  border-color: var(--input);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .dropdown-select:hover,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .dropdown-select:active {
+  background-color: var(--secondary);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .divider {
+  background-color: var(--border);
+}
+
+/* Links and destructive icon actions. */
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .excalidraw-hyperlinkContainer {
+  background-color: var(--popover);
+  border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  border-radius: calc(var(--radius) - 2px);
+  box-shadow: var(--shadow-float);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .excalidraw-hyperlinkContainer
+  button {
+  color: var(--primary);
+}
+
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .excalidraw-hyperlinkContainer
+  button.excalidraw-hyperlinkContainer--remove,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .excalidraw-hyperlinkContainer--remove
+  .ToolIcon__icon
+  svg,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .ElementLinkDialog
+  .ElementLinkDialog__input
+  .ElementLinkDialog__remove,
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .ElementLinkDialog
+  .ElementLinkDialog__input
+  .ElementLinkDialog__remove
+  .ToolIcon__icon
+  svg {
+  color: var(--wb-danger);
+}
+
+/* Filled danger buttons: fill from the scoped danger pair so labels pass AA. */
+:is(
+    .masar-whiteboard .excalidraw,
+    .excalidraw.excalidraw-modal-container,
+    .excalidraw.excalidraw-eye-dropper-container
+  )
+  .Dialog__action-button--danger {
+  background-color: var(--color-danger-dark);
+  border-color: var(--color-danger-dark);
+  color: var(--color-danger-text);
+}
+
+/* The tooltip portal lives outside the Excalidraw container. */
+.excalidraw-tooltip {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  border-radius: calc(var(--radius) - 2px);
+  box-shadow: var(--shadow-float);
 }
 
 /*

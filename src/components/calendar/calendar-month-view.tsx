@@ -38,7 +38,7 @@ export function CalendarMonthView({
           {WEEKDAY_LABELS.map((label) => (
             <div
               key={label}
-              className="px-1.5 py-2 text-center text-[9.5px] font-semibold tracking-[0.1em] text-muted-foreground/65 uppercase sm:px-2 sm:text-left"
+              className="px-1.5 py-2 text-center text-[10px] font-semibold tracking-[0.1em] text-muted-foreground uppercase sm:px-2 sm:text-left"
             >
               <span className="sm:hidden">{label.slice(0, 1)}</span>
               <span className="hidden sm:inline">{label}</span>
@@ -93,7 +93,7 @@ function MonthDayCell({
       className={cn(
         "group/day relative min-h-0 overflow-hidden border-r border-b border-border/55 p-1 text-left transition-colors last:border-r-0 sm:p-1.5",
         !currentMonth && "bg-muted/15",
-        isOver && "bg-primary/[0.07] ring-2 ring-primary/35 ring-inset",
+        isOver && "bg-primary/[0.07] ring-2 ring-primary/60 ring-inset",
       )}
     >
       <div className="flex items-center justify-between gap-1">
@@ -108,13 +108,13 @@ function MonthDayCell({
               ? "bg-primary text-primary-foreground hover:bg-primary/90"
               : currentMonth
                 ? "text-foreground/80"
-                : "text-muted-foreground/40",
+                : "text-muted-foreground",
           )}
         >
           {format(date, "d")}
         </button>
         {tasks.length > 0 && (
-          <span className="text-[9px] tabular-nums text-muted-foreground/45 sm:hidden">
+          <span className="text-[10px] tabular-nums text-muted-foreground sm:hidden">
             {tasks.length}
           </span>
         )}
@@ -136,7 +136,7 @@ function MonthDayCell({
             type="button"
             onClick={() => onOpenDay(date)}
             aria-label={`Show ${hiddenCount} more tasks on ${format(date, "MMMM d")}`}
-            className="text-[8px] leading-none font-medium text-muted-foreground/70 hover:text-foreground"
+            className="text-[10px] leading-none font-medium text-muted-foreground hover:text-foreground"
           >
             +{hiddenCount} more
           </button>
@@ -157,7 +157,7 @@ function MonthDayCell({
             type="button"
             onClick={() => onOpenDay(date)}
             aria-label={`Show ${hiddenCount} more tasks on ${format(date, "MMMM d")}`}
-            className="w-fit rounded px-1 text-[9.5px] leading-3 font-medium text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+            className="w-fit rounded px-1 text-[10px] leading-3 font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             +{hiddenCount} more
           </button>

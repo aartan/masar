@@ -18,7 +18,7 @@ export function Logo({
       to={href}
       aria-label="Masar home"
       className={cn(
-        "group inline-flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+        "group inline-flex items-center gap-2.5 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         className,
       )}
     >
@@ -57,7 +57,7 @@ export function Logo({
             masar
           </span>
           {showTagline && (
-            <span className="hidden text-[9px] font-medium tracking-[0.18em] text-muted-foreground/70 uppercase sm:inline">
+            <span className="hidden text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase sm:inline">
               workspace
             </span>
           )}

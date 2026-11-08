@@ -106,7 +106,7 @@ export function TaskCard({
         }
       }}
       className={cn(
-        "group relative cursor-pointer rounded-xl border border-border/75 bg-card p-3 text-left shadow-soft outline-none transition-[border-color,box-shadow,opacity,transform] hover:border-border hover:shadow-float focus-visible:ring-2 focus-visible:ring-ring/40",
+        "group relative cursor-pointer rounded-xl border border-border/75 bg-card p-3 dark:border-border text-left shadow-soft outline-none transition-[border-color,box-shadow,opacity,transform] hover:border-border hover:shadow-float focus-visible:ring-2 focus-visible:ring-ring",
         isDragging && "opacity-35",
       )}
     >
@@ -132,7 +132,7 @@ export function TaskCard({
             ref={setActivatorNodeRef}
             type="button"
             className={cn(
-              "grid size-5 cursor-grab place-items-center rounded text-muted-foreground/50 hover:bg-accent hover:text-foreground active:cursor-grabbing",
+              "grid size-5 cursor-grab place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground active:cursor-grabbing",
               disabled && "cursor-not-allowed opacity-30",
             )}
             aria-label={`Drag task: ${task.title}`}
@@ -150,7 +150,7 @@ export function TaskCard({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="grid size-5 place-items-center rounded text-muted-foreground/50 hover:bg-accent hover:text-foreground"
+                className="grid size-5 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
                 aria-label={`Task actions for ${task.title}`}
               >
                 <MoreHorizontal className="size-3.5" />
@@ -207,7 +207,7 @@ export function TaskCard({
         {task.title}
       </h4>
       {task.description && (
-        <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-muted-foreground/80">
+        <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-muted-foreground">
           {task.description}
         </p>
       )}
@@ -217,12 +217,12 @@ export function TaskCard({
           {task.priority !== "none" && <PriorityBars priority={task.priority} />}
           <DueDateChip task={task} columnDone={column.isDone} />
         </div>
-        <div className="flex shrink-0 items-center gap-2 text-muted-foreground/70">
+        <div className="flex shrink-0 items-center gap-2 text-muted-foreground">
           {task.subtaskCount > 0 && (
             <span
               className={cn(
                 "inline-flex items-center gap-0.5 text-[10px] tabular-nums",
-                subtaskComplete && "text-emerald-600 dark:text-emerald-400",
+                subtaskComplete && "text-success",
               )}
               title={`${task.subtaskDoneCount} of ${task.subtaskCount} subtasks complete`}
             >

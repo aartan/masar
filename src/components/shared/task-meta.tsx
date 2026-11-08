@@ -80,7 +80,7 @@ export function PriorityBars({
   if (priority === "none") {
     return (
       <CircleDashed
-        className={cn("size-3.5 text-muted-foreground/50", className)}
+        className={cn("size-3.5 text-muted-foreground", className)}
         aria-label={meta.label}
       />
     );
@@ -143,9 +143,9 @@ export function DueDateChip({
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10.5px] font-medium tabular-nums",
         overdue
-          ? "bg-rose-500/10 text-rose-700 dark:text-rose-400"
+          ? "bg-destructive/10 text-destructive"
           : today
-            ? "bg-amber-500/12 text-amber-700 dark:text-amber-400"
+            ? "bg-warning/10 text-warning"
             : "text-muted-foreground",
         className,
       )}

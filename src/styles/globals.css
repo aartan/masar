@@ -20,6 +20,10 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-solid: var(--destructive-solid);
+  --color-destructive-solid-foreground: var(--destructive-solid-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -37,14 +41,20 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
-  --shadow-soft: 0 1px 2px oklch(0.2 0.01 150 / 0.04),
-    0 6px 20px -8px oklch(0.2 0.01 150 / 0.1);
-  --shadow-float: 0 2px 4px oklch(0.2 0.01 150 / 0.04),
-    0 18px 40px -16px oklch(0.2 0.01 150 / 0.22);
+  --shadow-soft: var(--elevation-soft);
+  --shadow-float: var(--elevation-float);
 }
 
 :root {
   --radius: 0.75rem;
+  /* Runtime elevation tokens. @theme inline points utilities at these names
+     so dark mode can override the shadows without rebuilding the classes. */
+  --elevation-soft: 0 1px 2px oklch(0.2 0.01 150 / 0.04),
+    0 6px 20px -8px oklch(0.2 0.01 150 / 0.1);
+  --elevation-float: 0 2px 4px oklch(0.2 0.01 150 / 0.04),
+    0 18px 40px -16px oklch(0.2 0.01 150 / 0.22);
+  --shadow-soft: var(--elevation-soft);
+  --shadow-float: var(--elevation-float);
   --background: oklch(0.974 0.005 92);
   --foreground: oklch(0.215 0.012 145);
   --card: oklch(0.995 0.002 92);
@@ -59,10 +69,14 @@
   --muted-foreground: oklch(0.505 0.012 120);
   --accent: oklch(0.932 0.017 148);
   --accent-foreground: oklch(0.33 0.045 153);
-  --destructive: oklch(0.55 0.17 27);
+  --destructive: oklch(0.535 0.17 27);
   --destructive-foreground: oklch(0.985 0.005 90);
+  --destructive-solid: var(--destructive);
+  --destructive-solid-foreground: var(--destructive-foreground);
+  --success: oklch(0.508 0.118 165.612);
+  --warning: oklch(0.473 0.137 46.201);
   --border: oklch(0.9 0.007 95);
-  --input: oklch(0.876 0.008 95);
+  --input: oklch(0.65 0.008 95);
   --ring: oklch(0.56 0.065 153);
   --sidebar: oklch(0.957 0.006 95);
   --sidebar-foreground: oklch(0.29 0.013 145);
@@ -107,10 +121,22 @@
   --muted-foreground: oklch(0.66 0.012 110);
   --accent: oklch(0.272 0.023 150);
   --accent-foreground: oklch(0.86 0.04 150);
-  --destructive: oklch(0.62 0.16 25);
+  --destructive: oklch(0.68 0.16 25);
   --destructive-foreground: oklch(0.97 0.005 90);
+  --destructive-solid: color-mix(
+    in oklab,
+    var(--destructive) 55%,
+    var(--background)
+  );
+  --destructive-solid-foreground: var(--destructive-foreground);
+  --success: oklch(0.765 0.177 163.223);
+  --warning: oklch(0.879 0.169 91.605);
   --border: oklch(0.287 0.009 150);
-  --input: oklch(0.33 0.01 150);
+  --input: oklch(0.52 0.01 150);
+  --elevation-soft: 0 1px 2px oklch(0 0 0 / 0.35),
+    0 6px 20px -8px oklch(0 0 0 / 0.5);
+  --elevation-float: 0 2px 4px oklch(0 0 0 / 0.4),
+    0 18px 40px -16px oklch(0 0 0 / 0.65);
   --ring: oklch(0.63 0.07 151);
   --sidebar: oklch(0.193 0.008 150);
   --sidebar-foreground: oklch(0.88 0.008 95);
@@ -167,16 +193,16 @@
   }
 
   input[type="date"]::-webkit-calendar-picker-indicator {
-    opacity: 0.5;
+    opacity: 0.75;
   }
 
   .dark input[type="date"]::-webkit-calendar-picker-indicator {
     filter: invert(1);
-    opacity: 0.6;
+    opacity: 0.8;
   }
 
   :focus-visible {
-    outline: 2px solid color-mix(in oklab, var(--ring) 70%, transparent);
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
 }
@@ -188,8 +214,7 @@
 
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in oklab, var(--foreground) 18%, transparent)
-      transparent;
+    scrollbar-color: var(--input) transparent;
   }
 
   .scrollbar-thin::-webkit-scrollbar {
@@ -202,12 +227,12 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: color-mix(in oklab, var(--foreground) 16%, transparent);
+    background: var(--input);
     border-radius: 999px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in oklab, var(--foreground) 28%, transparent);
+    background: var(--muted-foreground);
   }
 
   .no-scrollbar {
@@ -294,11 +319,21 @@
   }
 
   .animate-rise {
-    animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
   }
 
   .animate-fade {
     animation: fade 0.25s ease-out both;
+  }
+
+  /* Page/content entry is opacity-only so containers that host fixed-position
+     overlays (DnD, dialogs) never keep a transform after the animation ends. */
+  .animate-page-enter {
+    animation: page-enter 0.2s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+
+  .scrollbar-stable {
+    scrollbar-gutter: stable;
   }
 
   .shimmer {
@@ -341,6 +376,12 @@
   }
 }
 
+@keyframes page-enter {
+  from {
+    opacity: 0;
+  }
+}
+
 @keyframes shimmer {
   100% {
     transform: translateX(100%);
@@ -355,5 +396,12 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .animate-page-enter,
+  .animate-rise,
+  .animate-fade,
+  .shimmer::after {
+    animation: none !important;
   }
 }

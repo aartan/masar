@@ -60,11 +60,11 @@ export function BoardListView({
   return (
     <div className="h-full overflow-y-auto">
       <div className="px-4 py-4 sm:px-6">
-        <div className="hidden overflow-hidden rounded-xl border border-border/70 bg-card shadow-soft md:block">
+        <div className="hidden overflow-hidden rounded-xl border border-border/70 bg-card shadow-soft dark:border-border md:block">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] border-collapse text-left">
               <thead>
-                <tr className="border-b border-border/70 bg-muted/25 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">
+                <tr className="border-b border-border/70 bg-muted/25 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
                   <th className="px-4 py-2.5 font-semibold">Task</th>
                   <th className="px-3 py-2.5 font-semibold">Status</th>
                   <th className="px-3 py-2.5 font-semibold">Priority</th>
@@ -92,7 +92,7 @@ export function BoardListView({
                           onOpenTask(task.id);
                         }
                       }}
-                      className="group cursor-pointer transition-colors hover:bg-accent/35 focus-visible:bg-accent/35 focus-visible:outline-none"
+                      className="group cursor-pointer transition-colors hover:bg-accent/35 focus-visible:bg-accent/35 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:outline-none"
                     >
                       <td className="max-w-[360px] px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -114,14 +114,14 @@ export function BoardListView({
                               {task.title}
                             </p>
                             {task.description && (
-                              <p className="mt-0.5 max-w-[320px] truncate text-[11px] text-muted-foreground/70">
+                              <p className="mt-0.5 max-w-[320px] truncate text-[11px] text-muted-foreground">
                                 {task.description}
                               </p>
                             )}
                           </div>
                         </div>
                         {(task.subtaskCount > 0 || task.commentCount > 0) && (
-                          <div className="mt-1 flex items-center gap-2 pl-3.5 text-[10px] text-muted-foreground/60">
+                          <div className="mt-1 flex items-center gap-2 pl-3.5 text-[10px] text-muted-foreground">
                             {task.subtaskCount > 0 && (
                               <span className="inline-flex items-center gap-0.5">
                                 <ListChecks className="size-3" />
@@ -169,7 +169,7 @@ export function BoardListView({
                         </div>
                       </td>
                       <td className="px-3 py-3">
-                        <ChevronRight className="size-3.5 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/60" />
+                        <ChevronRight className="size-3.5 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
                       </td>
                     </tr>
                   );
@@ -190,7 +190,7 @@ export function BoardListView({
                 key={task.id}
                 type="button"
                 onClick={() => onOpenTask(task.id)}
-                className="w-full rounded-xl border border-border/75 bg-card p-3 text-left shadow-soft transition-colors hover:border-border"
+                className="w-full rounded-xl border border-border/75 bg-card p-3 dark:border-border text-left shadow-soft transition-colors hover:border-border"
               >
                 <div className="flex items-center justify-between gap-2">
                   <Badge variant="outline">{column?.name ?? "—"}</Badge>
@@ -215,7 +215,7 @@ export function BoardListView({
                   </div>
                 )}
                 {(task.subtaskCount > 0 || task.commentCount > 0) && (
-                  <div className="mt-2.5 flex items-center justify-end gap-2 text-[10.5px] text-muted-foreground/70">
+                  <div className="mt-2.5 flex items-center justify-end gap-2 text-[10.5px] text-muted-foreground">
                     {task.subtaskCount > 0 && (
                       <span className="inline-flex items-center gap-0.5">
                         <ListChecks className="size-3" />

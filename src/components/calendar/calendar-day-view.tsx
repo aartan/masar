@@ -36,7 +36,7 @@ export function CalendarDayView({
           className={cn(
             "flex min-h-[440px] flex-1 flex-col overflow-hidden rounded-2xl border border-border/70 bg-card shadow-soft transition-colors",
             today && "border-primary/30",
-            isOver && "bg-primary/[0.05] ring-2 ring-primary/35 ring-inset",
+            isOver && "bg-primary/[0.05] ring-2 ring-primary/60 ring-inset",
           )}
         >
           <div className="flex flex-wrap items-center gap-3 border-b border-border/65 px-4 py-3 sm:px-5">
@@ -91,7 +91,7 @@ export function CalendarDayView({
             )}
 
             {tasks.length > 0 && (
-              <div className="mt-auto flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-border/55 px-3 py-3 text-[10.5px] text-muted-foreground/55">
+              <div className="mt-auto flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-border/55 px-3 py-3 text-[10.5px] text-muted-foreground">
                 <CheckCircle2 className="size-3.5" />
                 Drop another task here to schedule it for this day.
               </div>

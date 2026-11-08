@@ -22,11 +22,14 @@ import "@excalidraw/excalidraw/index.css";
 import "./whiteboard-theme.css";
 
 import { BoardSettingsDialog } from "@/components/board/board-dialogs";
+import { PageSurface } from "@/components/layout/page-surface";
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { useTheme } from "@/components/theme-provider";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api, errorMessage } from "@/lib/client-api";
+import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardSummary, WhiteboardScene } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -88,6 +91,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
 
   const [initialData, setInitialData] =
     React.useState<ExcalidrawInitialDataState | null>(null);
+  const showSceneLoading = useDelayedLoading(initialData === null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<SaveStatus>({ phase: "idle" });
   const [settingsOpen, setSettingsOpen] = React.useState(false);
@@ -270,7 +274,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
 
   return (
     <>
-    <div className="flex h-full flex-col bg-canvas">
+    <PageSurface className="flex h-full flex-col">
       <div className="flex items-center gap-3 border-b border-border/60 bg-background/65 px-4 py-3 sm:px-6">
         <PenLine className="size-4 text-muted-foreground" />
         <h1 className="truncate font-display text-[15px] font-semibold">
@@ -307,9 +311,20 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         }}
       >
         {initialData === null ? (
-          <div className="grid h-full place-items-center text-muted-foreground">
-            <Loader2 className="size-5 animate-spin" />
-          </div>
+          showSceneLoading ? (
+            <div
+              className="grid h-full place-items-center text-muted-foreground"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex items-center gap-2 text-[12.5px]">
+                <Skeleton className="size-5 rounded-full" />
+                Loading whiteboard…
+              </div>
+            </div>
+          ) : (
+            <div className="h-full" aria-busy="true" />
+          )
         ) : (
           <Excalidraw
             excalidrawAPI={(instance) => (apiRef.current = instance)}
@@ -321,7 +336,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
           />
         )}
       </div>
-    </div>
+    </PageSurface>
     <BoardSettingsDialog
       open={settingsOpen}
       onOpenChange={setSettingsOpen}
@@ -371,14 +386,14 @@ function SaveIndicator({
   if (status.phase === "saved") {
     return (
       <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-        <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+        <Check className="size-3.5 text-success" />
         Saved
       </span>
     );
   }
   if (status.phase === "too_large") {
     return (
-      <span className="flex items-center gap-1.5 text-[12px] text-amber-700 dark:text-amber-300">
+      <span className="flex items-center gap-1.5 text-[12px] text-warning">
         <CloudOff className="size-3.5" />
         Too large to save — reduce images
       </span>
@@ -390,7 +405,7 @@ function SaveIndicator({
         type="button"
         onClick={onRetry}
         className={cn(
-          "flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[12px] text-amber-700 transition-colors hover:bg-amber-500/10 dark:text-amber-300",
+          "flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[12px] text-warning transition-colors hover:bg-warning/10",
         )}
         title={status.message}
       >

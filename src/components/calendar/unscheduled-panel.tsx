@@ -39,7 +39,7 @@ export function UnscheduledPanel({
       className={cn(
         "flex min-h-0 flex-col bg-background/35 transition-colors",
         open && "flex-1",
-        isOver && "bg-primary/[0.06]",
+        isOver && "bg-primary/[0.06] ring-2 ring-primary/60 ring-inset",
         className,
       )}
     >
@@ -51,7 +51,7 @@ export function UnscheduledPanel({
           <h2 className="text-[12px] font-semibold tracking-[-0.01em]">
             Unscheduled
           </h2>
-          <p className="mt-0.5 text-[9.5px] text-muted-foreground/70">
+          <p className="mt-0.5 text-[10px] text-muted-foreground">
             Tasks without a due date
           </p>
         </div>
@@ -71,7 +71,7 @@ export function UnscheduledPanel({
               : "Expand unscheduled tasks"
           }
           aria-expanded={open}
-          className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           {open ? (
             <ChevronUp className="size-3.5" />
@@ -94,7 +94,7 @@ export function UnscheduledPanel({
 
           {tasks.length === 0 && (
             <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border/70 px-4 py-8 text-center">
-              <span className="grid size-9 place-items-center rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+              <span className="grid size-9 place-items-center rounded-full bg-success/10 text-success">
                 <CalendarCheck2 className="size-4" />
               </span>
               <div>
@@ -107,7 +107,7 @@ export function UnscheduledPanel({
           )}
 
           {tasks.length > 0 && (
-            <p className="mt-auto px-1 pt-2 pb-1 text-center text-[9.5px] leading-relaxed text-muted-foreground/55">
+            <p className="mt-auto px-1 pt-2 pb-1 text-center text-[10px] leading-relaxed text-muted-foreground">
               Drag a task onto a calendar date to schedule it.
             </p>
           )}

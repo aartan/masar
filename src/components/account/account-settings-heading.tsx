@@ -9,7 +9,7 @@ export function AccountSettingsHeading({
 }: AccountSettingsHeadingProps) {
   return (
     <div>
-      <p className="text-[10.5px] font-semibold tracking-[0.16em] text-muted-foreground/60 uppercase">
+      <p className="text-[10.5px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
         ACCOUNT SETTINGS
       </p>
       <h1 className="font-display mt-2 text-[28px] leading-tight font-semibold text-foreground sm:text-[32px]">

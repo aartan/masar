@@ -46,6 +46,7 @@ import {
   PriorityBars,
 } from "@/components/shared/task-meta";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { PageSurface } from "@/components/layout/page-surface";
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 import { Button } from "@/components/ui/button";
@@ -734,10 +735,10 @@ export function BoardView({
     : undefined;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-canvas">
+    <PageSurface className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 border-b border-border/60 bg-background/65 backdrop-blur">
         <div className="px-4 pt-4 sm:px-6 sm:pt-5">
-          <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground/65">
+          <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground">
             <Link to="/" className="transition-colors hover:text-foreground">
               Workspace
             </Link>
@@ -769,7 +770,7 @@ export function BoardView({
                   {board.description}
                 </p>
               )}
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10.5px] text-muted-foreground/75">
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10.5px] text-muted-foreground">
                 <span>
                   {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
                 </span>
@@ -783,7 +784,7 @@ export function BoardView({
                   {completion}% complete
                 </span>
                 {overdueCount > 0 && (
-                  <span className="text-rose-600 dark:text-rose-400">
+                  <span className="text-destructive">
                     {overdueCount} overdue
                   </span>
                 )}
@@ -963,7 +964,7 @@ export function BoardView({
                     setEditingColumn(null);
                     setColumnDialogOpen(true);
                   }}
-                  className="mt-0 flex h-10 w-[220px] shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-dashed border-border/80 text-[12px] font-medium text-muted-foreground/70 transition-colors hover:border-border hover:bg-card/50 hover:text-foreground"
+                  className="mt-0 flex h-10 w-[220px] shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-dashed border-border/80 text-[12px] font-medium text-muted-foreground transition-colors hover:border-border hover:bg-card/50 hover:text-foreground"
                 >
                   <Plus className="size-3.5" />
                   Add column
@@ -1115,7 +1116,7 @@ export function BoardView({
         confirmLabel="Delete board"
         onConfirm={deleteBoard}
       />
-    </div>
+    </PageSurface>
   );
 }
 

@@ -37,6 +37,7 @@ import {
 import { CalendarWeekView } from "@/components/calendar/calendar-week-view";
 import { UnscheduledPanel } from "@/components/calendar/unscheduled-panel";
 import { TaskDetailSheet } from "@/components/board/task-detail-sheet";
+import { PageSurface } from "@/components/layout/page-surface";
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -328,10 +329,10 @@ export function CalendarView({ initialData }: { initialData: CalendarData }) {
     : false;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-canvas">
+    <PageSurface className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 border-b border-border/60 bg-background/65 backdrop-blur">
         <div className="px-4 pt-4 sm:px-6 sm:pt-5">
-          <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground/65">
+          <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground">
             <Link to="/" className="transition-colors hover:text-foreground">
               Workspace
             </Link>
@@ -413,7 +414,7 @@ export function CalendarView({ initialData }: { initialData: CalendarData }) {
               </Button>
             </div>
 
-            <div className="ml-auto hidden items-center gap-3 text-[10px] text-muted-foreground/65 sm:flex">
+            <div className="ml-auto hidden items-center gap-3 text-[10px] text-muted-foreground sm:flex">
               <LegendDot className="bg-rose-500" label="Overdue" />
               <LegendDot className="bg-amber-500" label="Today" />
               <LegendDot className="bg-emerald-500" label="Completed" />
@@ -480,15 +481,15 @@ export function CalendarView({ initialData }: { initialData: CalendarData }) {
                 type="button"
                 onClick={() => setDesktopPanelCollapsed(false)}
                 aria-label={`Expand unscheduled tasks (${unscheduledTasks.length})`}
-                className="flex h-full w-full flex-col items-center gap-3 bg-background/35 px-1 py-4 text-muted-foreground/60 transition-colors hover:bg-accent/40 hover:text-foreground"
+                className="flex h-full w-full flex-col items-center gap-3 bg-background/35 px-1 py-4 text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
               >
                 <PanelRightOpen className="size-4" />
-                <span className="text-[9.5px] font-semibold tracking-[0.16em] uppercase [writing-mode:vertical-rl]">
+                <span className="text-[10px] font-semibold tracking-[0.16em] uppercase [writing-mode:vertical-rl]">
                   Unscheduled
                 </span>
                 <Badge
                   variant="muted"
-                  className="px-1.5 text-[9.5px] tabular-nums"
+                  className="px-1.5 text-[10px] tabular-nums"
                 >
                   {unscheduledTasks.length}
                 </Badge>
@@ -526,7 +527,7 @@ export function CalendarView({ initialData }: { initialData: CalendarData }) {
         onTaskDuplicated={handleTaskDuplicated}
         onLabelCreated={handleLabelCreated}
       />
-    </div>
+    </PageSurface>
   );
 }
 

@@ -10,9 +10,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { PageSurface } from "@/components/layout/page-surface";
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
 import { api, errorMessage } from "@/lib/client-api";
 import {
@@ -22,6 +24,7 @@ import {
   type ConflictLookup,
 } from "@/lib/conflict-diff";
 import { formatDateTime } from "@/lib/dates";
+import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardDetail, SyncConflictView } from "@/lib/types";
 
@@ -50,6 +53,7 @@ export function ConflictsPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = React.useState<Choice | null>(null);
+  const showSkeleton = useDelayedLoading(loading);
 
   const load = React.useCallback(async (silent = false) => {
     if (!silent) {
@@ -194,7 +198,7 @@ export function ConflictsPage() {
       toast.success(
         choice === "cloud" ? "Cloud version kept" : "This device’s version kept",
       );
-      await Promise.all([load(), refresh()]);
+      await Promise.all([load(true), refresh()]);
     } catch (caught) {
       toast.error("Could not resolve conflict", {
         description: errorMessage(caught),
@@ -205,10 +209,10 @@ export function ConflictsPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-canvas">
+    <PageSurface scroll>
       <div className="mx-auto w-full max-w-[1000px] px-5 py-8 sm:px-8">
-        <header className="animate-rise">
-          <p className="text-[10.5px] font-semibold tracking-[0.16em] text-muted-foreground/60 uppercase">
+        <header>
+          <p className="text-[10.5px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
             Sync
           </p>
           <h1 className="font-display mt-2 text-[26px] font-semibold">
@@ -221,7 +225,7 @@ export function ConflictsPage() {
         </header>
 
         {!loading && conflicts.length > 1 && (
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-4 py-3">
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/25 bg-warning/10 px-4 py-3">
             <p className="text-[12px] text-muted-foreground">
               <span className="font-medium text-foreground">
                 {conflicts.length} conflicts
@@ -260,9 +264,11 @@ export function ConflictsPage() {
         )}
 
         {loading ? (
-          <div className="mt-8 grid place-items-center rounded-xl border border-border/70 bg-card py-20 text-muted-foreground">
-            <Loader2 className="size-5 animate-spin" />
-          </div>
+          showSkeleton ? (
+            <ConflictsSkeleton />
+          ) : (
+            <div className="mt-8 h-40" aria-busy="true" />
+          )
         ) : error ? (
           <div className="mt-8 rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-6">
             <p className="text-[13px] font-medium text-destructive">
@@ -282,7 +288,7 @@ export function ConflictsPage() {
             />
           </div>
         ) : (
-          <div className="mt-7 space-y-4">
+          <div className="mt-7 space-y-4 animate-fade">
             {conflicts.map((conflict) => (
               <ConflictCard
                 key={conflict.id}
@@ -295,6 +301,61 @@ export function ConflictsPage() {
           </div>
         )}
       </div>
+    </PageSurface>
+  );
+}
+
+function ConflictsSkeleton() {
+  return (
+    <div
+      className="mt-7 space-y-4"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <span className="sr-only">Loading sync conflicts</span>
+      {Array.from({ length: 2 }).map((_, index) => (
+        <Card key={index} className="overflow-hidden border-border/75">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 bg-muted/20 px-5 py-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-4 w-16 rounded-full" />
+                <Skeleton className="h-2.5 w-32" />
+              </div>
+              <Skeleton className="mt-2.5 h-4 w-2/5" />
+              <Skeleton className="mt-2 h-2.5 w-56 max-w-full" />
+            </div>
+            <Skeleton className="size-4 rounded" />
+          </div>
+          <div className="space-y-3 p-4 sm:p-5">
+            <Skeleton className="h-2.5 w-24" />
+            <div className="overflow-hidden rounded-lg border border-border/60">
+              {Array.from({ length: 3 }).map((_, row) => (
+                <div
+                  key={row}
+                  className="grid grid-cols-[minmax(80px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/40 px-3 py-2 last:border-b-0"
+                >
+                  <Skeleton className="h-2.5 w-16" />
+                  <Skeleton className="h-2.5 w-full" />
+                  <Skeleton className="h-2.5 w-full" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="grid border-t border-border/60 bg-background/35 sm:grid-cols-2">
+            {Array.from({ length: 2 }).map((_, side) => (
+              <div
+                key={side}
+                className="flex flex-col gap-3 border-b border-border/60 p-4 last:border-b-0 sm:border-r sm:border-b-0 sm:last:border-r-0"
+              >
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-2.5 w-32" />
+                <Skeleton className="h-8 w-36 rounded-lg" />
+              </div>
+            ))}
+          </div>
+        </Card>
+      ))}
     </div>
   );
 }
@@ -323,7 +384,7 @@ function ConflictCard({
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 bg-muted/20 px-5 py-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-amber-500/12 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-amber-700 uppercase dark:text-amber-300">
+            <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-warning uppercase">
               {TYPE_LABEL[conflict.entityType]}
             </span>
             {context && (
@@ -339,11 +400,11 @@ function ConflictCard({
             Detected {formatDateTime(conflict.createdAt)} · {diff.summary}
           </p>
         </div>
-        <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <AlertTriangle className="size-4 shrink-0 text-warning" />
       </div>
 
       <div className="p-4 sm:p-5">
-        <h3 className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground/60 uppercase">
+        <h3 className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
           What changed
         </h3>
         {diff.whiteboard && <WhiteboardDiffView stats={diff.whiteboard} />}
@@ -356,7 +417,7 @@ function ConflictCard({
         )}
         {diff.unchanged.length > 0 && (
           <details className="group mt-3">
-            <summary className="flex cursor-pointer list-none items-center gap-1 text-[11px] font-medium text-muted-foreground/70 hover:text-foreground">
+            <summary className="flex cursor-pointer list-none items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground">
               <ChevronRight className="size-3 transition-transform group-open:rotate-90" />
               Show {diff.unchanged.length} unchanged field
               {diff.unchanged.length === 1 ? "" : "s"}
@@ -400,7 +461,7 @@ function ConflictDiffTable({
 }) {
   return (
     <div className="mt-2 overflow-hidden rounded-lg border border-border/60">
-      <div className="grid grid-cols-[minmax(96px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/60 bg-muted/35 px-3 py-2 text-[9.5px] font-semibold tracking-[0.08em] text-muted-foreground/70 uppercase">
+      <div className="grid grid-cols-[minmax(96px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/60 bg-muted/35 px-3 py-2 text-[10px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
         <span>Data</span>
         <span>This device</span>
         <span>Cloud</span>
@@ -421,7 +482,7 @@ function DiffRow({ row, muted }: { row: ConflictDiffRow; muted: boolean }) {
         className={
           muted
             ? "grid grid-cols-[minmax(96px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/40 px-3 py-2 text-[11.5px]"
-            : "grid grid-cols-[minmax(96px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/40 bg-amber-500/[0.025] px-3 py-2 text-[11.5px]"
+            : "grid grid-cols-[minmax(96px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/40 bg-warning/5 px-3 py-2 text-[11.5px]"
         }
       >
         <span className="font-medium text-muted-foreground">{row.label}</span>
@@ -461,7 +522,7 @@ function TextDiffView({ cloud, local }: { cloud: string; local: string }) {
   const lines = diffText(cloud, local);
   return (
     <div className="mt-2 max-h-64 overflow-y-auto rounded-md border border-border/60 bg-background/70 px-2 py-1.5 font-mono text-[10.5px] leading-relaxed">
-      <p className="mb-1 font-sans text-[9px] font-semibold tracking-[0.08em] text-muted-foreground/60 uppercase">
+      <p className="mb-1 font-sans text-[10px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
         Cloud → This device
       </p>
       {lines.map((line, index) => (
@@ -469,9 +530,9 @@ function TextDiffView({ cloud, local }: { cloud: string; local: string }) {
           key={index}
           className={
             line.kind === "added"
-              ? "whitespace-pre-wrap break-words bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+              ? "whitespace-pre-wrap break-words bg-success/10 text-success"
               : line.kind === "removed"
-                ? "whitespace-pre-wrap break-words bg-rose-500/10 text-rose-800 line-through dark:text-rose-300"
+                ? "whitespace-pre-wrap break-words bg-destructive/10 text-destructive line-through"
                 : "whitespace-pre-wrap break-words text-muted-foreground"
           }
         >
@@ -543,7 +604,7 @@ function ResolutionAction({
         <Icon className="size-3.5" />
         {label}
       </div>
-      <p className="text-[10.5px] text-muted-foreground/70">
+      <p className="text-[10.5px] text-muted-foreground">
         {formatDateTime(timestamp)}
       </p>
       <Button

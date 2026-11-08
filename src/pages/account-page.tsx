@@ -17,12 +17,14 @@ import {
   SubscribeButton,
   SubscribeSection,
 } from "@/components/account/subscribe-section";
+import { PageSkeleton, PageSurface } from "@/components/layout/page-surface";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   billingIntervalLabel,
   entitlementSummary,
@@ -31,6 +33,7 @@ import {
   statusLabel,
   statusTone,
 } from "@/lib/subscription-format";
+import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import type { PremiumStatus } from "@/lib/premium-types";
 
 type AuthMode = "login" | "register";
@@ -48,6 +51,7 @@ export function AccountPage() {
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const showSkeleton = useDelayedLoading(loading || !premium);
 
   React.useEffect(() => {
     if (!bridge) {
@@ -185,7 +189,7 @@ export function AccountPage() {
 
   if (!bridge) {
     return (
-      <div className="h-full overflow-y-auto">
+      <PageSurface scroll>
         <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8 lg:py-10">
           <AccountSettingsHeading
             title="Account"
@@ -199,23 +203,37 @@ export function AccountPage() {
             </CardContent>
           </Card>
         </div>
-      </div>
+      </PageSurface>
     );
   }
 
   if (loading || !premium) {
+    if (error) {
+      return (
+        <PageSurface className="grid h-full place-items-center px-6 text-center">
+          <div className="max-w-sm">
+            <p className="text-[13px] font-medium">Could not load your account</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+              {error}
+            </p>
+          </div>
+        </PageSurface>
+      );
+    }
+
+    if (!showSkeleton) {
+      return <div className="h-full" aria-busy="true" />;
+    }
+
     return (
-      <div className="grid h-full place-items-center px-6">
-        <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
-          Loading account…
-        </div>
-      </div>
+      <PageSkeleton label="Loading account" scroll>
+        <AccountSkeleton />
+      </PageSkeleton>
     );
   }
 
   return (
-    <div className="h-full overflow-y-auto">
+    <PageSurface scroll>
       <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8 lg:py-10">
         <AccountSettingsHeading
           title="Account"
@@ -357,6 +375,47 @@ export function AccountPage() {
             </Card>
           </div>
         )}
+      </div>
+    </PageSurface>
+  );
+}
+
+function AccountSkeleton() {
+  return (
+    <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8 lg:py-10">
+      <div>
+        <Skeleton className="h-2.5 w-28" />
+        <Skeleton className="mt-2 h-8 w-36" />
+        <Skeleton className="mt-3 h-3.5 w-full max-w-xl" />
+      </div>
+
+      <div className="mt-6 rounded-xl border border-border/70 bg-card p-5 shadow-soft">
+        <div className="flex items-center gap-3">
+          <Skeleton className="size-9 rounded-lg" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-3.5 w-28" />
+            <Skeleton className="h-2.5 w-44 max-w-full" />
+          </div>
+          <Skeleton className="h-5 w-16 rounded-full" />
+        </div>
+        <div className="mt-5 space-y-2">
+          <Skeleton className="h-3.5 w-44" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-4/5" />
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Skeleton className="h-8 w-36 rounded-lg" />
+          <Skeleton className="h-8 w-28 rounded-lg" />
+          <Skeleton className="h-8 w-24 rounded-lg" />
+        </div>
+      </div>
+
+      <div className="mt-5 rounded-xl border border-border/70 bg-card p-5 shadow-soft">
+        <Skeleton className="h-3.5 w-32" />
+        <div className="mt-3 space-y-2">
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-3/4" />
+        </div>
       </div>
     </div>
   );

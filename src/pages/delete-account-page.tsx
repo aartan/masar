@@ -10,6 +10,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { AccountSettingsHeading } from "@/components/account/account-settings-heading";
+import { PageSkeleton, PageSurface } from "@/components/layout/page-surface";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,7 +21,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { isDeleteAccountConfirmed } from "@/lib/account-deletion";
+import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import {
   DELETE_ACCOUNT_PHRASE,
   type PremiumStatus,
@@ -39,6 +42,7 @@ export function DeleteAccountPage() {
   const [cleanupWarning, setCleanupWarning] = React.useState<string | null>(
     null,
   );
+  const showSkeleton = useDelayedLoading(loading);
   const confirmed = isDeleteAccountConfirmed(confirmation);
 
   React.useEffect(() => {
@@ -109,13 +113,13 @@ export function DeleteAccountPage() {
   }
 
   if (loading) {
+    if (!showSkeleton) {
+      return <div className="h-full" aria-busy="true" />;
+    }
     return (
-      <div className="grid h-full place-items-center px-6">
-        <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
-          Loading account…
-        </div>
-      </div>
+      <PageSkeleton label="Loading account" scroll>
+        <DeleteAccountSkeleton />
+      </PageSkeleton>
     );
   }
 
@@ -312,10 +316,47 @@ function DeleteAccountShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="h-full overflow-y-auto">
+    <PageSurface scroll>
       <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8 lg:py-10">
         <AccountSettingsHeading title="Delete account" description={description} />
         {children}
+      </div>
+    </PageSurface>
+  );
+}
+
+function DeleteAccountSkeleton() {
+  return (
+    <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8 lg:py-10">
+      <div>
+        <Skeleton className="h-2.5 w-28" />
+        <Skeleton className="mt-2 h-8 w-48" />
+        <Skeleton className="mt-3 h-3.5 w-full max-w-xl" />
+      </div>
+
+      <div className="mt-6 rounded-xl border border-border/70 bg-card p-5 shadow-soft">
+        <div className="flex items-center gap-2">
+          <Skeleton className="size-8 rounded-lg" />
+          <Skeleton className="h-4 w-48 max-w-full" />
+        </div>
+        <div className="mt-4 space-y-2">
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-5/6" />
+          <Skeleton className="h-3 w-3/4" />
+        </div>
+        <div className="mt-4 rounded-lg border border-border/60 bg-muted/20 p-3">
+          <Skeleton className="h-3 w-2/5" />
+          <Skeleton className="mt-2 h-2.5 w-3/4" />
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-xl border border-border/70 bg-card p-5 shadow-soft">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="mt-4 h-9 w-full rounded-lg" />
+        <div className="mt-4 flex justify-end gap-2">
+          <Skeleton className="h-8 w-24 rounded-lg" />
+          <Skeleton className="h-8 w-40 rounded-lg" />
+        </div>
       </div>
     </div>
   );

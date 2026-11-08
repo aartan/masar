@@ -64,7 +64,7 @@ function WeekDayColumn({
       className={cn(
         "flex min-h-[92px] flex-col overflow-hidden rounded-xl border border-border/70 bg-card shadow-soft transition-colors md:min-h-0",
         today && "border-primary/30",
-        isOver && "bg-primary/[0.06] ring-2 ring-primary/35 ring-inset",
+        isOver && "bg-primary/[0.06] ring-2 ring-primary/60 ring-inset",
       )}
     >
       <div className="flex shrink-0 items-center gap-1.5 border-b border-border/60 px-2.5 py-2">
@@ -72,12 +72,12 @@ function WeekDayColumn({
           type="button"
           onClick={() => onOpenDay(date)}
           aria-label={`Open ${format(date, "EEEE, MMMM d, yyyy")}`}
-          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span
             className={cn(
               "text-[10px] font-semibold tracking-[0.08em] uppercase",
-              today ? "text-primary" : "text-muted-foreground/65",
+              today ? "text-primary" : "text-muted-foreground",
             )}
           >
             {format(date, "EEE")}
@@ -93,7 +93,7 @@ function WeekDayColumn({
             {format(date, "d")}
           </span>
         </button>
-        <span className="rounded-full bg-muted/70 px-1.5 py-px text-[9.5px] tabular-nums text-muted-foreground/70">
+        <span className="rounded-full bg-muted/70 px-1.5 py-px text-[10px] tabular-nums text-muted-foreground">
           {tasks.length}
         </span>
       </div>
@@ -108,7 +108,7 @@ function WeekDayColumn({
           />
         ))}
         {tasks.length === 0 && (
-          <div className="grid flex-1 place-items-center px-2 py-4 text-center text-[10px] text-muted-foreground/40">
+          <div className="grid flex-1 place-items-center px-2 py-4 text-center text-[10px] text-muted-foreground">
             Drop a task here
           </div>
         )}

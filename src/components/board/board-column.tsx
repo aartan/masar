@@ -134,16 +134,16 @@ export function BoardColumn({
       data-column-id={column.id}
       aria-label={`${column.name} column`}
       className={cn(
-        "flex h-full w-[84vw] max-w-[316px] shrink-0 snap-start flex-col rounded-2xl border border-border/60 bg-muted/35 transition-[box-shadow,opacity] sm:w-[300px]",
+        "flex h-full w-[84vw] max-w-[316px] shrink-0 snap-start flex-col rounded-2xl border border-border/60 bg-muted/35 dark:border-border dark:bg-muted/20 transition-[box-shadow,opacity] sm:w-[300px]",
         isDragging && "z-20 opacity-60 shadow-float",
-        isOver && "ring-2 ring-primary/20",
+        isOver && "ring-2 ring-primary/60",
       )}
     >
       <header className="flex items-center gap-1 px-2.5 pt-2.5 pb-1.5">
         <button
           type="button"
           className={cn(
-            "grid size-5 shrink-0 cursor-grab place-items-center rounded text-muted-foreground/30 opacity-0 transition-opacity group-hover/column:opacity-100 hover:bg-accent hover:text-muted-foreground focus-visible:opacity-100 active:cursor-grabbing sm:group-hover/column:opacity-100",
+            "grid size-5 shrink-0 cursor-grab place-items-center rounded text-muted-foreground opacity-0 transition-opacity group-hover/column:opacity-100 hover:bg-accent hover:text-muted-foreground focus-visible:opacity-100 active:cursor-grabbing sm:group-hover/column:opacity-100",
             dragDisabled && "cursor-not-allowed",
           )}
           aria-label={`Reorder ${column.name} column`}
@@ -174,7 +174,7 @@ export function BoardColumn({
             <button
               type="button"
               onClick={() => onOpenNewTask(column.id)}
-              className="grid size-6 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+              className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               aria-label={`Add task to ${column.name}`}
             >
               <Plus className="size-3.5" />
@@ -183,7 +183,7 @@ export function BoardColumn({
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="grid size-6 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                  className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   aria-label={`Column actions for ${column.name}`}
                 >
                   <MoreHorizontal className="size-3.5" />
@@ -234,7 +234,7 @@ export function BoardColumn({
         ref={setDropRef}
         className={cn(
           "scrollbar-thin min-h-0 flex-1 overflow-y-auto px-2 pt-1 transition-colors",
-          isOver && "bg-primary/[0.025]",
+          isOver && "bg-primary/10",
         )}
       >
         <SortableContext
@@ -264,7 +264,7 @@ export function BoardColumn({
               <div className="flex flex-1 flex-col items-center justify-center px-3 py-8 text-center">
                 {filtersActive && totalTaskCount > 0 ? (
                   <>
-                    <ListFilter className="size-4 text-muted-foreground/40" />
+                    <ListFilter className="size-4 text-muted-foreground" />
                     <p className="mt-2 text-[11.5px] text-muted-foreground">
                       No tasks match the current filters.
                     </p>
@@ -278,7 +278,7 @@ export function BoardColumn({
                   </>
                 ) : (
                   <>
-                    <p className="text-[11.5px] text-muted-foreground/70">
+                    <p className="text-[11.5px] text-muted-foreground">
                       No tasks yet.
                     </p>
                     {!readOnly && (
@@ -319,7 +319,7 @@ export function BoardColumn({
               placeholder="Write a task and press Enter…"
               rows={2}
               maxLength={200}
-              className="w-full resize-none bg-transparent px-1 py-1 text-[12.5px] leading-relaxed outline-none placeholder:text-muted-foreground/50"
+              className="w-full resize-none bg-transparent px-1 py-1 text-[12.5px] leading-relaxed outline-none placeholder:text-muted-foreground"
             />
             <div className="mt-1 flex items-center justify-end gap-1.5">
               <button
@@ -347,7 +347,7 @@ export function BoardColumn({
           <button
             type="button"
             onClick={() => setComposing(true)}
-            className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-muted-foreground/70 transition-colors hover:bg-accent/60 hover:text-foreground"
+            className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
           >
             <Plus className="size-3.5" />
             Add task

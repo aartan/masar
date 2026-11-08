@@ -28,11 +28,15 @@ import { useTheme } from "@/components/theme-provider";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, apiBlob, ClientApiError, errorMessage } from "@/lib/client-api";
+import { api, apiBlob, errorMessage } from "@/lib/client-api";
 import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardSummary, WhiteboardScene } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {
+  WhiteboardSaveLoop,
+  type WhiteboardSaveStatus,
+} from "@/lib/whiteboard-save-loop";
 import {
   imageReferenceId,
   sceneImageReferences,
@@ -41,13 +45,7 @@ import {
 
 const SAVE_DEBOUNCE_MS = 1_200;
 
-type SaveStatus =
-  | { phase: "idle" }
-  | { phase: "unsaved" }
-  | { phase: "saving" }
-  | { phase: "saved"; at: number }
-  | { phase: "error"; message: string }
-  | { phase: "too_large" };
+type SaveStatus = WhiteboardSaveStatus;
 
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -126,18 +124,44 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
   const [status, setStatus] = React.useState<SaveStatus>({ phase: "idle" });
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  /** Tracks the board id for the save loop even if the prop is swapped. */
+  const boardIdRef = React.useRef(board.id);
 
   React.useEffect(() => {
     setBoard(initialBoard);
+    boardIdRef.current = initialBoard.id;
   }, [initialBoard]);
 
   const apiRef = React.useRef<ExcalidrawImperativeAPI | null>(null);
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSavedRef = React.useRef<string>("");
-  const pendingRef = React.useRef<string | null>(null);
   const applyingRemoteRef = React.useRef(false);
   /** fileId → stored image id for files loaded from (or saved to) R2. */
   const externalImagesRef = React.useRef<Map<string, string>>(new Map());
+  /**
+   * Owns dirty-state tracking and serializes saves so slow image uploads can
+   * never produce overlapping PUTs or stale canonical scenes.
+   */
+  const loopRef = React.useRef<WhiteboardSaveLoop | null>(null);
+  if (loopRef.current === null) {
+    loopRef.current = new WhiteboardSaveLoop({
+      save: async (serialized) => {
+        const result = await api<{ scene: WhiteboardScene }>(
+          `/api/boards/${boardIdRef.current}/scene`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ scene: serialized }),
+          },
+        );
+        const saved = result.scene.scene || "{}";
+        // The server may have replaced embedded images with references, so the
+        // canonical saved scene (not the request body) is what we compare
+        // against next time.
+        externalImagesRef.current = sceneImageReferences(saved);
+        return saved;
+      },
+      onStatus: (next) => setStatus(next),
+    });
+  }
 
   // Load the persisted scene once.
   React.useEffect(() => {
@@ -152,7 +176,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
           (parsed?.files ?? {}) as Record<string, unknown>,
         );
         if (!active) return;
-        lastSavedRef.current = raw;
+        loopRef.current!.setSavedScene(raw);
         externalImagesRef.current = hydrated.references;
         setInitialData(
           parsed
@@ -175,44 +199,14 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
     };
   }, [board.id]);
 
-  const persist = React.useCallback(
-    async (serialized: string) => {
-      if (serialized === lastSavedRef.current) return;
-      pendingRef.current = serialized;
-      setStatus({ phase: "saving" });
-      try {
-        const result = await api<{ scene: WhiteboardScene }>(
-          `/api/boards/${board.id}/scene`,
-          {
-            method: "PUT",
-            body: JSON.stringify({ scene: serialized }),
-          },
-        );
-        const saved = result.scene.scene || "{}";
-        // The server may have replaced embedded images with references, so the
-        // canonical saved scene (not the request body) is what we compare
-        // against next time.
-        lastSavedRef.current = saved;
-        externalImagesRef.current = sceneImageReferences(saved);
-        if (pendingRef.current === serialized) pendingRef.current = null;
-        setStatus({ phase: "saved", at: Date.now() });
-      } catch (error) {
-        if (error instanceof ClientApiError && error.status === 413) {
-          setStatus({ phase: "too_large" });
-        } else {
-          setStatus({ phase: "error", message: errorMessage(error) });
-        }
-      }
-    },
-    [board.id],
-  );
-
   const refreshFromSync = React.useCallback(async () => {
     // Never replace a canvas with pending or in-flight local edits.
     const excalidraw = apiRef.current;
+    const loop = loopRef.current;
     if (
       initialData === null ||
-      pendingRef.current !== null ||
+      !loop ||
+      loop.pendingScene !== null ||
       !excalidraw
     ) {
       return;
@@ -222,7 +216,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         `/api/boards/${board.id}/scene`,
       );
       const remote = result.scene.scene || "{}";
-      if (remote === lastSavedRef.current) return;
+      if (remote === loop.lastSavedScene) return;
       const parsed = parseScene(remote);
       if (!parsed) return;
 
@@ -230,9 +224,9 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         (parsed.files ?? {}) as Record<string, unknown>,
       );
       // A local edit may have started while the scene was loading.
-      if (pendingRef.current !== null) return;
+      if (loop.pendingScene !== null) return;
 
-      lastSavedRef.current = remote;
+      loop.setSavedScene(remote);
       externalImagesRef.current = hydrated.references;
       applyingRemoteRef.current = true;
       window.setTimeout(() => {
@@ -269,27 +263,47 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         },
         externalImagesRef.current,
       );
-      if (serialized === lastSavedRef.current) return;
-      pendingRef.current = serialized;
+      const loop = loopRef.current;
+      if (!loop) return;
+      loop.change(serialized);
+      if (loop.isContentSaved(serialized)) {
+        if (!loop.saving) {
+          // The canvas matches what is persisted (for example an edit was
+          // undone back to the saved state). Normalize the indicator instead
+          // of leaving it stuck at "Unsaved changes".
+          setStatus((current) =>
+            current.phase === "saved"
+              ? current
+              : { phase: "saved", at: Date.now() },
+          );
+        }
+        // While a save is in flight the loop has queued this state and emits
+        // the final status when the drain finishes.
+        return;
+      }
       setStatus((current) =>
         current.phase === "unsaved" ? current : { phase: "unsaved" },
       );
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         debounceRef.current = null;
-        void persist(serialized);
+        loopRef.current?.flush();
       }, SAVE_DEBOUNCE_MS);
     },
-    [persist, readOnly],
+    [readOnly],
   );
 
   // Flush an outstanding edit on unmount so navigating away never loses work.
   React.useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      const pending = pendingRef.current;
-      if (pending && pending !== lastSavedRef.current) {
-        // Fire-and-forget: the component is going away.
+      const loop = loopRef.current;
+      if (!loop) return;
+      const pending = loop.pendingScene;
+      if (pending && !loop.isContentSaved(pending) && !loop.saving) {
+        // Fire-and-forget: the component is going away. When a save is still
+        // in flight the loop drains this pending state itself after unmount,
+        // so the flush must not race it.
         void api(`/api/boards/${board.id}/scene`, {
           method: "PUT",
           body: JSON.stringify({ scene: pending }),
@@ -299,8 +313,8 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
   }, [board.id]);
 
   function retry() {
-    const pending = pendingRef.current;
-    if (pending) void persist(pending);
+    const loop = loopRef.current;
+    if (loop && loop.pendingScene !== null) loop.flush();
   }
 
   async function deleteBoard() {

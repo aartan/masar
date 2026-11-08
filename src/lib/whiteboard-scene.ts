@@ -143,3 +143,47 @@ export function sceneImageReferences(raw: string): Map<string, string> {
   }
   return references;
 }
+
+/**
+ * True when two serialized scenes represent the same canvas content even
+ * though their files reference images differently. `masar://` ids can differ
+ * between saves (an image uploaded twice gets two ids), and a file may be
+ * embedded in one scene while its stored counterpart is a reference. File ids
+ * are content hashes, so a file present under the same id in both scenes
+ * holds the same bytes; only the referencing style differs.
+ */
+export function sameSceneContent(a: string, b: string): boolean {
+  if (a === b) return true;
+  const docA = parseSceneDocument(a);
+  const docB = parseSceneDocument(b);
+  if (!docA || !docB) return false;
+
+  const filesA = docA.files;
+  const filesB = docB.files;
+  const keysA = Object.keys(filesA);
+  const keysB = Object.keys(filesB);
+  if (keysA.length !== keysB.length) return false;
+  if (keysA.some((key) => !Object.prototype.hasOwnProperty.call(filesB, key))) {
+    return false;
+  }
+
+  const normalizeFile = (file: SceneFileRecord): Record<string, unknown> => {
+    const { dataURL: _dataURL, ...rest } = file;
+    return { ...rest, dataURL: "_" };
+  };
+
+  for (const key of keysA) {
+    if (
+      JSON.stringify(normalizeFile(filesA[key]!)) !==
+      JSON.stringify(normalizeFile(filesB[key]!))
+    ) {
+      return false;
+    }
+  }
+
+  return (
+    JSON.stringify(docA.root.elements) ===
+      JSON.stringify(docB.root.elements) &&
+    JSON.stringify(docA.root.appState) === JSON.stringify(docB.root.appState)
+  );
+}

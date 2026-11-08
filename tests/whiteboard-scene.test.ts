@@ -6,6 +6,7 @@ import {
   imageReferenceId,
   parseSceneDocument,
   referencedFileIds,
+  sameSceneContent,
   sceneImageReferences,
   serializeWhiteboardScene,
 } from "@/lib/whiteboard-scene";
@@ -111,5 +112,80 @@ describe("whiteboard scene image references", () => {
         null,
       ])],
     ).toEqual(["a"]);
+  });
+});
+
+describe("sameSceneContent", () => {
+  function scene(files: Record<string, string>, elements: unknown[] = []) {
+    return JSON.stringify({
+      elements,
+      appState: { scrollX: 1 },
+      files: Object.fromEntries(
+        Object.entries(files).map(([fileId, dataURL]) => [
+          fileId,
+          { id: fileId, mimeType: "image/png", dataURL, created: 1 },
+        ]),
+      ),
+    });
+  }
+
+  const ELEMENTS = [{ id: "el", type: "image", fileId: "a" }];
+
+  it("treats scenes with different image reference ids as the same content", () => {
+    expect(
+      sameSceneContent(
+        scene({ a: "masar://img-1" }, ELEMENTS),
+        scene({ a: "masar://img-2" }, ELEMENTS),
+      ),
+    ).toBe(true);
+  });
+
+  it("treats an embedded file and a stored reference as the same content", () => {
+    expect(
+      sameSceneContent(
+        scene({ a: "data:image/png;base64,cG5n" }, ELEMENTS),
+        scene({ a: "masar://img-2" }, ELEMENTS),
+      ),
+    ).toBe(true);
+  });
+
+  it("distinguishes scenes with different file sets", () => {
+    expect(
+      sameSceneContent(
+        scene({ a: "masar://img-1" }, ELEMENTS),
+        scene({ a: "masar://img-1", b: "masar://img-2" }, ELEMENTS),
+      ),
+    ).toBe(false);
+  });
+
+  it("distinguishes scenes with different elements or app state", () => {
+    const base = scene({ a: "masar://img-1" }, ELEMENTS);
+    const moved = scene({ a: "masar://img-2" }, [
+      { id: "el", type: "image", fileId: "a", x: 10 },
+    ]);
+    expect(sameSceneContent(base, moved)).toBe(false);
+
+    const otherState = JSON.stringify({
+      elements: ELEMENTS,
+      appState: { scrollX: 2 },
+      files: { a: { id: "a", mimeType: "image/png", dataURL: "masar://img-2", created: 1 } },
+    });
+    expect(sameSceneContent(base, otherState)).toBe(false);
+  });
+
+  it("distinguishes scenes with different file metadata", () => {
+    const first = scene({ a: "masar://img-1" }, ELEMENTS);
+    const second = JSON.stringify({
+      elements: ELEMENTS,
+      appState: { scrollX: 1 },
+      files: { a: { id: "a", mimeType: "image/jpeg", dataURL: "masar://img-2", created: 1 } },
+    });
+    expect(sameSceneContent(first, second)).toBe(false);
+  });
+
+  it("falls back to strict inequality for malformed scenes", () => {
+    expect(sameSceneContent("not json", "not json")).toBe(true);
+    expect(sameSceneContent("not json", "other")).toBe(false);
+    expect(sameSceneContent("{}", "{\"elements\":\"nope\"}")).toBe(false);
   });
 });

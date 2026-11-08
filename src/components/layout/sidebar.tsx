@@ -31,6 +31,8 @@ import {
   LayoutDashboard,
   LayoutGrid,
   Palette,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   PenLine,
   Plus,
@@ -82,6 +84,8 @@ interface SidebarContentProps {
   boards: BoardSummary[];
   conflictCount: number;
   user: { name: string; email: string };
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
   onOpenSearch: () => void;
   onCreateBoard: (projectId: string | null) => void;
   onOpenShortcuts: () => void;
@@ -103,6 +107,8 @@ export function SidebarContent({
   boards,
   conflictCount,
   user,
+  collapsed = false,
+  onToggleCollapse,
   onOpenSearch,
   onCreateBoard,
   onOpenShortcuts,
@@ -123,6 +129,29 @@ export function SidebarContent({
   const [createProjectOpen, setCreateProjectOpen] = React.useState(false);
   const [renameProject, setRenameProject] = React.useState<ProjectSummary | null>(null);
   const [deleteProject, setDeleteProject] = React.useState<ProjectSummary | null>(null);
+  const [collapsedProjects, setCollapsedProjects] = React.useState<Set<string>>(
+    () => new Set(),
+  );
+
+  const activeProjectId = React.useMemo(() => {
+    if (pathname.startsWith("/projects/")) {
+      return pathname.slice("/projects/".length);
+    }
+    if (pathname.startsWith("/boards/")) {
+      const boardId = pathname.slice("/boards/".length);
+      return boards.find((board) => board.id === boardId)?.projectId ?? null;
+    }
+    return null;
+  }, [boards, pathname]);
+
+  function toggleProject(projectId: string) {
+    setCollapsedProjects((current) => {
+      const next = new Set(current);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      return next;
+    });
+  }
 
   const active = React.useMemo(
     () => projects.filter((project) => !project.archived),
@@ -261,9 +290,14 @@ export function SidebarContent({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground">
-      <div className="flex items-center justify-between px-4 pt-5 pb-4">
-        <Logo />
-        {showClose && (
+      <div
+        className={cn(
+          "flex items-center justify-between pt-5 pb-4",
+          collapsed ? "px-2" : "px-4",
+        )}
+      >
+        <Logo compact={collapsed} showTagline={!collapsed} />
+        {showClose ? (
           <div className="flex items-center gap-1">
             <ThemeToggle showTooltip={false} />
             <Button
@@ -275,84 +309,150 @@ export function SidebarContent({
               <X className="size-4" />
             </Button>
           </div>
+        ) : (
+          onToggleCollapse && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size={collapsed ? "icon-xs" : "icon-sm"}
+                  onClick={onToggleCollapse}
+                  aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                  aria-controls="workspace-sidebar"
+                  aria-expanded={!collapsed}
+                >
+                  {collapsed ? (
+                    <PanelLeftOpen className="size-4" />
+                  ) : (
+                    <PanelLeftClose className="size-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              </TooltipContent>
+            </Tooltip>
+          )
         )}
       </div>
 
       <div className="px-3 pb-3">
-        <button
-          type="button"
-          onClick={onOpenSearch}
-          className="group flex h-9 w-full items-center gap-2 rounded-lg border border-sidebar-border bg-background/50 px-2.5 text-[13px] text-muted-foreground shadow-[0_1px_0_oklch(1_0_0/0.4)_inset] transition-colors hover:border-sidebar-border/80 hover:bg-background/80 hover:text-foreground"
-        >
-          <Search className="size-3.5 opacity-70" />
-          <span>Search</span>
-          <span className="ml-auto flex items-center gap-0.5">
-            <Kbd className="h-[18px] min-w-[18px] border-sidebar-border bg-sidebar text-[9px]">
-              ⌘
-            </Kbd>
-            <Kbd className="h-[18px] min-w-[18px] border-sidebar-border bg-sidebar text-[9px]">
-              K
-            </Kbd>
-          </span>
-        </button>
+        {collapsed ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onOpenSearch}
+                aria-label="Search"
+                className="mx-auto flex size-9 items-center justify-center rounded-lg border border-sidebar-border bg-background/50 text-muted-foreground shadow-[0_1px_0_oklch(1_0_0/0.4)_inset] transition-colors hover:border-sidebar-border/80 hover:bg-background/80 hover:text-foreground"
+              >
+                <Search className="size-4 opacity-70" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Search (⌘K)</TooltipContent>
+          </Tooltip>
+        ) : (
+          <button
+            type="button"
+            onClick={onOpenSearch}
+            className="group flex h-9 w-full items-center gap-2 rounded-lg border border-sidebar-border bg-background/50 px-2.5 text-[13px] text-muted-foreground shadow-[0_1px_0_oklch(1_0_0/0.4)_inset] transition-colors hover:border-sidebar-border/80 hover:bg-background/80 hover:text-foreground"
+          >
+            <Search className="size-3.5 opacity-70" />
+            <span>Search</span>
+            <span className="ml-auto flex items-center gap-0.5">
+              <Kbd className="h-[18px] min-w-[18px] border-sidebar-border bg-sidebar text-[9px]">
+                ⌘
+              </Kbd>
+              <Kbd className="h-[18px] min-w-[18px] border-sidebar-border bg-sidebar text-[9px]">
+                K
+              </Kbd>
+            </span>
+          </button>
+        )}
       </div>
 
-      <nav className="px-3" aria-label="Workspace">
+      <nav className={cn("px-3", collapsed && "space-y-1")} aria-label="Workspace">
         <SidebarLink
           href="/"
           icon={LayoutDashboard}
           active={pathname === "/"}
+          label="Overview"
+          collapsed={collapsed}
           onClick={onNavigate}
-        >
-          Overview
-        </SidebarLink>
+        />
         <SidebarLink
           href="/calendar"
           icon={CalendarDays}
           active={pathname === "/calendar"}
+          label="Calendar"
+          collapsed={collapsed}
           onClick={onNavigate}
-        >
-          Calendar
-        </SidebarLink>
+        />
         {conflictCount > 0 && (
           <SidebarLink
             href="/conflicts"
             icon={TriangleAlert}
             active={pathname === "/conflicts"}
+            label="Sync conflicts"
+            badge={conflictCount}
+            collapsed={collapsed}
             onClick={onNavigate}
-          >
-            <span className="flex min-w-0 flex-1 items-center gap-2">
-              <span className="truncate">Sync conflicts</span>
-              <span className="ml-auto rounded-full bg-warning/10 px-1.5 py-px text-[10px] font-semibold tabular-nums text-warning">
-                {conflictCount}
-              </span>
-            </span>
-          </SidebarLink>
+          />
         )}
       </nav>
 
-      <div className="mt-5 flex min-h-0 flex-1 flex-col">
-        <div className="flex items-center justify-between px-5 pb-1.5">
-          <span className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-            Projects
-          </span>
+      <div className={cn("flex min-h-0 flex-1 flex-col", collapsed ? "mt-4" : "mt-5")}>
+        <div
+          className={cn(
+            "flex items-center",
+            collapsed
+              ? "justify-center pb-2"
+              : "justify-between px-5 pb-1.5",
+          )}
+        >
+          {!collapsed && (
+            <span className="text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+              Projects
+            </span>
+          )}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 type="button"
                 onClick={() => setCreateProjectOpen(true)}
-                className="grid size-5 place-items-center rounded text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                className={cn(
+                  "grid place-items-center text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                  collapsed ? "size-8 rounded-lg" : "size-5 rounded",
+                )}
                 aria-label="Create project"
               >
-                <FolderPlus className="size-3.5" />
+                <FolderPlus className={collapsed ? "size-4" : "size-3.5"} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">New project</TooltipContent>
           </Tooltip>
         </div>
 
-        <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-          {active.length === 0 && archived.length === 0 ? (
+        <div
+          className={cn(
+            "scrollbar-thin min-h-0 flex-1 overflow-y-auto pb-3",
+            collapsed ? "px-2" : "px-3",
+          )}
+        >
+          {collapsed ? (
+            active.length > 0 && (
+              <ul className="space-y-1">
+                {active.map((project) => (
+                  <CompactProjectLink
+                    key={project.id}
+                    project={project}
+                    active={activeProjectId === project.id}
+                    onNavigate={onNavigate}
+                  />
+                ))}
+              </ul>
+            )
+          ) : active.length === 0 && archived.length === 0 ? (
             <div className="mx-2 rounded-lg border border-dashed border-sidebar-border px-3 py-4 text-center">
               <p className="text-[11.5px] leading-relaxed text-muted-foreground">
                 No projects yet.
@@ -385,8 +485,10 @@ export function SidebarContent({
                       project={project}
                       boards={boardsByProject.get(project.id) ?? []}
                       pathname={pathname}
+                      expanded={!collapsedProjects.has(project.id)}
                       draggingBoard={activeType === "board"}
                       onNavigate={onNavigate}
+                      onToggleExpanded={() => toggleProject(project.id)}
                       onCreateBoard={() => onCreateBoard(project.id)}
                       onOpenProject={() => {
                         onNavigate?.();
@@ -401,7 +503,7 @@ export function SidebarContent({
             </DndContext>
           )}
 
-          {archived.length > 0 && (
+          {!collapsed && archived.length > 0 && (
             <ArchivedSection
               projects={archived}
               onOpen={(project) => {
@@ -415,27 +517,54 @@ export function SidebarContent({
         </div>
       </div>
 
-      <div className="mt-auto border-t border-sidebar-border/80 px-3 py-3">
+      <div
+        className={cn(
+          "mt-auto border-t border-sidebar-border/80 py-3",
+          collapsed ? "px-2" : "px-3",
+        )}
+      >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent/60"
-              aria-label="Account menu"
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg text-left transition-colors hover:bg-sidebar-accent/60",
+                collapsed ? "justify-center px-0 py-2" : "px-2 py-1.5",
+              )}
+              aria-label={
+                collapsed ? `Account menu for ${user.name}` : "Account menu"
+              }
+              title={collapsed ? `${user.name} — ${syncLabel}` : undefined}
             >
-              <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+              <span
+                className={cn(
+                  "relative grid shrink-0 place-items-center rounded-full bg-primary/10 font-semibold text-primary",
+                  collapsed ? "size-9 text-[11px]" : "size-7 text-[10px]",
+                )}
+              >
                 {initial}
+                {collapsed && sync?.phase === "error" && (
+                  <span className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full bg-warning ring-2 ring-sidebar" />
+                )}
               </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[12px] font-medium">{user.name}</p>
-                <p className="truncate text-[10px] text-muted-foreground">
-                  {syncLabel}
-                </p>
-              </div>
-              <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+              {!collapsed && (
+                <>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12px] font-medium">{user.name}</p>
+                    <p className="truncate text-[10px] text-muted-foreground">
+                      {syncLabel}
+                    </p>
+                  </div>
+                  <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+                </>
+              )}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="start" className="w-[248px]">
+          <DropdownMenuContent
+            side={collapsed ? "right" : "top"}
+            align={collapsed ? "end" : "start"}
+            className="w-[248px]"
+          >
             <DropdownMenuLabel>Settings</DropdownMenuLabel>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
@@ -511,8 +640,10 @@ function SortableProjectGroup({
   project,
   boards,
   pathname,
+  expanded,
   draggingBoard,
   onNavigate,
+  onToggleExpanded,
   onCreateBoard,
   onOpenProject,
   onRename,
@@ -521,14 +652,15 @@ function SortableProjectGroup({
   project: ProjectSummary;
   boards: BoardSummary[];
   pathname: string;
+  expanded: boolean;
   draggingBoard: boolean;
   onNavigate?: () => void;
+  onToggleExpanded: () => void;
   onCreateBoard: () => void;
   onOpenProject: () => void;
   onRename: () => void;
   onArchive: () => void;
 }) {
-  const [expanded, setExpanded] = React.useState(true);
   const {
     attributes,
     listeners,
@@ -565,7 +697,7 @@ function SortableProjectGroup({
       >
         <button
           type="button"
-          onClick={() => setExpanded((value) => !value)}
+          onClick={onToggleExpanded}
           className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-sidebar-foreground"
           aria-label={expanded ? "Collapse project" : "Expand project"}
           aria-expanded={expanded}
@@ -762,6 +894,45 @@ function ArchivedSection({
   );
 }
 
+function CompactProjectLink({
+  project,
+  active,
+  onNavigate,
+}: {
+  project: ProjectSummary;
+  active: boolean;
+  onNavigate?: () => void;
+}) {
+  const initial = (project.name.trim()[0] ?? "•").toUpperCase();
+  return (
+    <li>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Link
+            to={`/projects/${project.id}`}
+            onClick={onNavigate}
+            aria-label={project.name}
+            className={cn(
+              "mx-auto grid size-9 place-items-center rounded-lg text-[11px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+              active
+                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                : "bg-sidebar-accent/35 text-sidebar-foreground/75 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground",
+            )}
+          >
+            {initial}
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent side="right">
+          {project.name}
+          <span className="ml-1 text-background/60">
+            {project.boardCount} {project.boardCount === 1 ? "board" : "boards"}
+          </span>
+        </TooltipContent>
+      </Tooltip>
+    </li>
+  );
+}
+
 function SortableBoardLink({
   board,
   active,
@@ -859,15 +1030,49 @@ function SidebarLink({
   href,
   icon: Icon,
   active,
-  children,
+  label,
+  badge,
+  collapsed,
   onClick,
 }: {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   active: boolean;
-  children: React.ReactNode;
+  label: string;
+  badge?: number;
+  collapsed: boolean;
   onClick?: () => void;
 }) {
+  if (collapsed) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Link
+            to={href}
+            onClick={onClick}
+            aria-label={badge ? `${label} (${badge})` : label}
+            className={cn(
+              "relative mx-auto flex size-9 items-center justify-center rounded-lg transition-colors",
+              active
+                ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+            )}
+          >
+            <Icon className="size-4 opacity-80" />
+            {badge ? (
+              <span className="absolute -top-0.5 -right-0.5 grid min-w-3.5 place-items-center rounded-full bg-warning px-1 text-[9px] font-semibold tabular-nums text-background ring-2 ring-sidebar">
+                {badge}
+              </span>
+            ) : null}
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent side="right">
+          {badge ? `${label} (${badge})` : label}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
   return (
     <Link
       to={href}
@@ -880,7 +1085,12 @@ function SidebarLink({
       )}
     >
       <Icon className="size-4 opacity-70" />
-      {children}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {badge ? (
+        <span className="ml-auto rounded-full bg-warning/10 px-1.5 py-px text-[10px] font-semibold tabular-nums text-warning">
+          {badge}
+        </span>
+      ) : null}
     </Link>
   );
 }

@@ -74,6 +74,45 @@ test("reorders boards within a project by dragging and persists the order", asyn
   }
 });
 
+test("collapses and expands the navigation rail", async ({ page }) => {
+  const errors = collectPageErrors(page);
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+  const sidebar = page.locator("aside#workspace-sidebar");
+  const main = page.getByRole("main");
+  const sidebarWidth = () =>
+    sidebar.evaluate((element) => element.getBoundingClientRect().width);
+  const mainWidth = async () => (await main.boundingBox())?.width ?? 0;
+
+  await expect(sidebar).toHaveAttribute("data-state", "expanded");
+  const expandedMainWidth = await mainWidth();
+
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+  await expect.poll(sidebarWidth).toBeLessThan(100);
+  await expect(page.getByRole("button", { name: "Expand sidebar" })).toBeVisible();
+  const collapsedMainWidth = await mainWidth();
+  expect(collapsedMainWidth).toBeGreaterThan(expandedMainWidth);
+
+  // Navigation keeps the chosen rail state.
+  await sidebar.getByRole("link", { name: "Calendar", exact: true }).click();
+  await expect(page).toHaveURL(/\/calendar$/);
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+
+  // The rail state survives a full reload.
+  await page.reload({ waitUntil: "networkidle" });
+  await expect(sidebar).toHaveAttribute("data-state", "collapsed");
+
+  await page.getByRole("button", { name: "Expand sidebar" }).click();
+  await expect(sidebar).toHaveAttribute("data-state", "expanded");
+  await expect.poll(sidebarWidth).toBeGreaterThan(263);
+  await expect.poll(mainWidth).toBeCloseTo(expandedMainWidth, 0);
+
+  expect(errors).toEqual([]);
+});
+
 test("project overview shows description, board mix, tasks, and activity", async ({
   page,
 }) => {

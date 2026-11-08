@@ -17,6 +17,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useSidebarPreference } from "@/lib/use-sidebar-preference";
+import { cn } from "@/lib/utils";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const {
@@ -31,6 +33,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     moveBoards,
   } = useWorkspace();
   const location = useLocation();
+  const {
+    collapsed: sidebarCollapsed,
+    toggleCollapsed: toggleSidebarCollapsed,
+  } = useSidebarPreference();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
@@ -87,10 +93,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
-      <aside className="hidden w-[264px] shrink-0 border-r border-sidebar-border bg-sidebar lg:flex">
-        <div className="w-full">
+      <aside
+        id="workspace-sidebar"
+        aria-label="Workspace navigation"
+        data-state={sidebarCollapsed ? "collapsed" : "expanded"}
+        className={cn(
+          "hidden shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar transition-[width] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] lg:flex",
+          sidebarCollapsed ? "w-20" : "w-[264px]",
+        )}
+      >
+        <div className="h-full w-full min-w-0">
           {loading ? (
-            <SidebarSkeleton />
+            <SidebarSkeleton collapsed={sidebarCollapsed} />
           ) : (
             <div className="h-full animate-fade">
               <SidebarContent
@@ -98,6 +112,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 boards={boards}
                 conflictCount={conflictCount}
                 user={user}
+                collapsed={sidebarCollapsed}
+                onToggleCollapse={toggleSidebarCollapsed}
                 onOpenSearch={() => setSearchOpen(true)}
                 onCreateBoard={openCreateBoard}
                 onOpenShortcuts={() => setShortcutsOpen(true)}
@@ -220,7 +236,48 @@ export function AppShell({ children }: { children: React.ReactNode }) {
  * Mirrors the real sidebar's structure and spacing so the workspace boot does
  * not shift the shell when project data arrives.
  */
-function SidebarSkeleton() {
+function SidebarSkeleton({ collapsed = false }: { collapsed?: boolean }) {
+  if (collapsed) {
+    return (
+      <div
+        className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+      >
+        <span className="sr-only">Loading workspace navigation</span>
+        <div className="flex flex-col items-center gap-3 px-2 pt-4 pb-3">
+          <Skeleton className="size-8 rounded-[10px]" />
+          <div className="flex items-center gap-1">
+            <Skeleton className="size-7 rounded-md" />
+            <Skeleton className="size-7 rounded-md" />
+          </div>
+        </div>
+
+        <div className="flex justify-center px-3 pb-3">
+          <Skeleton className="size-9 rounded-lg" />
+        </div>
+
+        <div className="flex flex-col items-center gap-2 px-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Skeleton key={index} className="size-9 rounded-lg" />
+          ))}
+        </div>
+
+        <div className="mt-5 flex min-h-0 flex-1 flex-col items-center gap-2 px-3">
+          <Skeleton className="size-8 rounded-lg" />
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} className="size-9 rounded-lg" />
+          ))}
+        </div>
+
+        <div className="mt-auto flex justify-center border-t border-sidebar-border/80 px-2 py-3">
+          <Skeleton className="size-9 rounded-full" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground"

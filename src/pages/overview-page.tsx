@@ -16,12 +16,16 @@ import { format } from "date-fns";
 
 import { api } from "@/lib/client-api";
 import { PRIORITY_META, type Priority } from "@/lib/constants";
+import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import { completionPercent } from "@/lib/task-utils";
 import { cn } from "@/lib/utils";
 import type { DashboardData } from "@/lib/types";
+import { PageSkeleton, PageSurface } from "@/components/layout/page-surface";
+import { useWorkspace } from "@/components/layout/workspace-provider";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DueDateChip, PriorityBars } from "@/components/shared/task-meta";
 import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 import { EmptyState, PageSectionTitle } from "@/components/shared/empty-state";
@@ -43,8 +47,10 @@ function greeting(): string {
 }
 
 export default function OverviewPage() {
+  const { projects, boards } = useWorkspace();
   const [data, setData] = React.useState<DashboardData | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const showSkeleton = useDelayedLoading(!data);
 
   React.useEffect(() => {
     let active = true;
@@ -74,13 +80,28 @@ export default function OverviewPage() {
   });
 
   if (!data) {
+    if (error) {
+      return (
+        <PageSurface className="grid h-full place-items-center px-6 text-center">
+          <div>
+            <p className="text-[13px] font-medium">Could not load the overview</p>
+            <p className="mt-1 text-[12px] text-muted-foreground">{error}</p>
+          </div>
+        </PageSurface>
+      );
+    }
+
+    if (!showSkeleton) {
+      return <div className="h-full" aria-busy="true" />;
+    }
+
     return (
-      <div className="grid h-full place-items-center px-6 text-center">
-        <div>
-          <p className="text-[13px] font-medium">{error ? "Could not load the overview" : "Loading your workspace…"}</p>
-          {error && <p className="mt-1 text-[12px] text-muted-foreground">{error}</p>}
-        </div>
-      </div>
+      <PageSkeleton label="Loading overview" scroll>
+        <OverviewSkeleton
+          projectCount={projects.length}
+          boardCount={boards.length}
+        />
+      </PageSkeleton>
     );
   }
 
@@ -95,7 +116,7 @@ function OverviewContent({ data }: { data: DashboardData }) {
   );
 
   return (
-    <div className="h-full overflow-y-auto">
+    <PageSurface scroll>
       <div className="mx-auto w-full max-w-[1220px] px-5 py-8 sm:px-8 lg:py-10">
         <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="animate-rise">
@@ -476,6 +497,123 @@ function OverviewContent({ data }: { data: DashboardData }) {
             </div>
           </>
         )}
+      </div>
+    </PageSurface>
+  );
+}
+
+function OverviewSkeleton({
+  projectCount,
+  boardCount,
+}: {
+  projectCount: number;
+  boardCount: number;
+}) {
+  const empty = projectCount === 0 && boardCount === 0;
+
+  return (
+    <div className="mx-auto w-full max-w-[1220px] px-5 py-8 sm:px-8 lg:py-10">
+      <header>
+        <Skeleton className="h-3 w-36" />
+        <Skeleton className="mt-3 h-8 w-52 max-w-full" />
+        <Skeleton className="mt-3 h-3.5 w-80 max-w-full" />
+      </header>
+
+      {empty ? (
+        <section className="mt-10">
+          <div className="rounded-2xl border border-border/80 bg-card px-6 py-16 shadow-soft sm:px-12">
+            <div className="mx-auto flex max-w-xl flex-col items-center text-center">
+              <Skeleton className="size-14 rounded-2xl" />
+              <Skeleton className="mt-5 h-7 w-80 max-w-full" />
+              <Skeleton className="mt-3 h-3.5 w-full max-w-md" />
+              <Skeleton className="mt-2 h-3.5 w-3/4 max-w-sm" />
+              <Skeleton className="mt-6 h-9 w-48 rounded-lg" />
+            </div>
+          </div>
+        </section>
+      ) : (
+        <>
+          <section className="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className="rounded-xl border border-border/70 bg-card p-5 shadow-soft"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <Skeleton className="h-2.5 w-20" />
+                  <Skeleton className="size-7 rounded-lg" />
+                </div>
+                <Skeleton className="mt-3 h-7 w-12" />
+                <Skeleton className="mt-3 h-2.5 w-32 max-w-full" />
+              </div>
+            ))}
+          </section>
+
+          {projectCount > 0 && (
+            <section className="mt-5">
+              <Skeleton className="h-3.5 w-24" />
+              <Skeleton className="mt-2 h-2.5 w-64 max-w-full" />
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: projectCount }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="rounded-xl border border-border/70 bg-card p-4 shadow-soft"
+                  >
+                    <div className="flex items-start gap-2">
+                      <Skeleton className="size-8 shrink-0 rounded-lg" />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <Skeleton className="h-3.5 w-2/5" />
+                        <Skeleton className="h-2.5 w-3/5" />
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <Skeleton className="h-2.5 w-16" />
+                      <Skeleton className="h-2.5 w-20" />
+                      <Skeleton className="ml-auto h-2.5 w-8" />
+                    </div>
+                    <Skeleton className="mt-2 h-1.5 w-full rounded-full" />
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+            <OverviewCardSkeleton rows={3} />
+            <OverviewCardSkeleton rows={Math.max(1, boardCount)} />
+          </div>
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-2">
+            <OverviewCardSkeleton rows={4} />
+            <OverviewCardSkeleton rows={4} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function OverviewCardSkeleton({ rows }: { rows: number }) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-card p-5 shadow-soft">
+      <div className="flex items-end justify-between gap-3">
+        <div className="space-y-2">
+          <Skeleton className="h-3.5 w-28" />
+          <Skeleton className="h-2.5 w-48 max-w-full" />
+        </div>
+        <Skeleton className="h-5 w-16 rounded-full" />
+      </div>
+      <div className="mt-4 space-y-2">
+        {Array.from({ length: rows }).map((_, index) => (
+          <div key={index} className="flex items-center gap-3 py-1.5">
+            <Skeleton className="size-2 rounded-full" />
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <Skeleton className="h-3 w-3/5" />
+              <Skeleton className="h-2.5 w-2/5" />
+            </div>
+            <Skeleton className="h-2.5 w-10" />
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -37,6 +37,7 @@ import {
 import { CalendarWeekView } from "@/components/calendar/calendar-week-view";
 import { UnscheduledPanel } from "@/components/calendar/unscheduled-panel";
 import { TaskDetailSheet } from "@/components/board/task-detail-sheet";
+import { PageSurface } from "@/components/layout/page-surface";
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -328,7 +329,7 @@ export function CalendarView({ initialData }: { initialData: CalendarData }) {
     : false;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-canvas">
+    <PageSurface className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 border-b border-border/60 bg-background/65 backdrop-blur">
         <div className="px-4 pt-4 sm:px-6 sm:pt-5">
           <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground">
@@ -526,7 +527,7 @@ export function CalendarView({ initialData }: { initialData: CalendarData }) {
         onTaskDuplicated={handleTaskDuplicated}
         onLabelCreated={handleLabelCreated}
       />
-    </div>
+    </PageSurface>
   );
 }
 

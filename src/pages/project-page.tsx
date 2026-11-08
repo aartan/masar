@@ -2,21 +2,25 @@ import * as React from "react";
 import { Link, useParams } from "react-router-dom";
 import { FolderKanban } from "lucide-react";
 
+import { PageSkeleton, PageSurface } from "@/components/layout/page-surface";
 import { ProjectView } from "@/components/project/project-view";
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/client-api";
+import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { ProjectDetail } from "@/lib/types";
 
 export function ProjectPage() {
   const { projectId = "" } = useParams();
-  const { refresh: refreshWorkspace } = useWorkspace();
+  const { projects, refresh: refreshWorkspace } = useWorkspace();
+  const projectSummary = projects.find((project) => project.id === projectId);
   const [data, setData] = React.useState<ProjectDetail | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [attempt, setAttempt] = React.useState(0);
+  const showSkeleton = useDelayedLoading(loading);
 
   React.useEffect(() => {
     let active = true;
@@ -58,25 +62,19 @@ export function ProjectPage() {
   });
 
   if (loading) {
+    if (!showSkeleton) {
+      return <div className="h-full" aria-busy="true" />;
+    }
     return (
-      <div className="h-full overflow-y-auto bg-canvas">
-        <div className="mx-auto w-full max-w-[1220px] px-5 py-8">
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="mt-3 h-8 w-56" />
-          <Skeleton className="mt-2 h-3 w-72" />
-          <div className="mt-7 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <Skeleton key={index} className="h-28 rounded-xl" />
-            ))}
-          </div>
-        </div>
-      </div>
+      <PageSkeleton label="Loading project" scroll>
+        <ProjectSkeleton boardCount={projectSummary?.boardCount ?? 3} />
+      </PageSkeleton>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="grid h-full place-items-center px-6">
+      <PageSurface className="grid h-full place-items-center px-6">
         <div className="max-w-sm text-center">
           <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-primary/10 text-primary">
             <FolderKanban className="size-5" />
@@ -94,7 +92,7 @@ export function ProjectPage() {
             </Button>
           </div>
         </div>
-      </div>
+      </PageSurface>
     );
   }
 
@@ -104,5 +102,75 @@ export function ProjectPage() {
       initialData={data}
       onChanged={reload}
     />
+  );
+}
+
+function ProjectSkeleton({ boardCount }: { boardCount: number }) {
+  return (
+    <div className="mx-auto w-full max-w-[1220px] px-5 py-8">
+      <header>
+        <Skeleton className="h-3 w-20" />
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <Skeleton className="h-8 w-56 max-w-full" />
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-8 w-32 rounded-lg" />
+            <Skeleton className="h-8 w-24 rounded-lg" />
+            <Skeleton className="h-8 w-24 rounded-lg" />
+          </div>
+        </div>
+        <Skeleton className="mt-3 h-3 w-80 max-w-full" />
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+          <Skeleton className="h-2.5 w-16" />
+          <Skeleton className="h-2.5 w-20" />
+          <Skeleton className="h-2.5 w-14" />
+          <Skeleton className="h-2.5 w-20" />
+        </div>
+      </header>
+
+      <section className="mt-7 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: Math.max(1, boardCount) }).map((_, index) => (
+          <div
+            key={index}
+            className="rounded-xl border border-border/70 bg-card p-4 shadow-soft"
+          >
+            <div className="flex items-center gap-2">
+              <Skeleton className="size-2.5 rounded-full" />
+              <Skeleton className="size-4 rounded" />
+              <Skeleton className="h-3.5 w-2/5" />
+            </div>
+            <Skeleton className="mt-3 h-1.5 w-full rounded-full" />
+            <Skeleton className="mt-2.5 h-2.5 w-3/5" />
+          </div>
+        ))}
+      </section>
+
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, index) => (
+          <div
+            key={index}
+            className="rounded-xl border border-border/70 bg-card shadow-soft"
+          >
+            <div className="flex items-center gap-2 border-b border-border/60 px-5 py-4">
+              <Skeleton className="size-4 rounded" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-2.5 w-48 max-w-full" />
+              </div>
+            </div>
+            <div className="space-y-2 p-4">
+              {Array.from({ length: 3 }).map((_, row) => (
+                <div key={row} className="flex items-center gap-3 py-1.5">
+                  <div className="flex-1 space-y-1.5">
+                    <Skeleton className="h-3 w-3/5" />
+                    <Skeleton className="h-2.5 w-2/5" />
+                  </div>
+                  <Skeleton className="h-2.5 w-12" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

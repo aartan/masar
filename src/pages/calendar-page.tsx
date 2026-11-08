@@ -3,9 +3,11 @@ import { Link } from "react-router-dom";
 import { CalendarDays } from "lucide-react";
 
 import { CalendarView } from "@/components/calendar/calendar-view";
+import { PageSkeleton, PageSurface } from "@/components/layout/page-surface";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/client-api";
+import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { CalendarData } from "@/lib/types";
 
@@ -14,6 +16,7 @@ export function CalendarPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [attempt, setAttempt] = React.useState(0);
+  const showSkeleton = useDelayedLoading(loading);
 
   React.useEffect(() => {
     let active = true;
@@ -52,33 +55,19 @@ export function CalendarPage() {
   });
 
   if (loading) {
+    if (!showSkeleton) {
+      return <div className="h-full" aria-busy="true" />;
+    }
     return (
-      <div className="flex h-full flex-col bg-canvas">
-        <div className="border-b border-border/60 bg-background/65 px-4 py-5 sm:px-6">
-          <Skeleton className="h-3 w-28" />
-          <div className="mt-3 flex items-center gap-3">
-            <Skeleton className="size-9 rounded-xl" />
-            <div>
-              <Skeleton className="h-7 w-40" />
-              <Skeleton className="mt-2 h-3 w-52" />
-            </div>
-          </div>
-          <div className="mt-4 flex gap-2">
-            <Skeleton className="h-7 w-24" />
-            <Skeleton className="h-7 w-16" />
-          </div>
-        </div>
-        <div className="flex min-h-0 flex-1 gap-4 p-4 sm:p-6">
-          <Skeleton className="h-full min-h-[420px] flex-1 rounded-xl" />
-          <Skeleton className="hidden h-full w-[292px] rounded-xl lg:block" />
-        </div>
-      </div>
+      <PageSkeleton label="Loading calendar">
+        <CalendarSkeleton />
+      </PageSkeleton>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="grid h-full place-items-center px-6">
+      <PageSurface className="grid h-full place-items-center px-6">
         <div className="max-w-sm text-center">
           <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-primary/10 text-primary">
             <CalendarDays className="size-5" />
@@ -98,9 +87,85 @@ export function CalendarPage() {
             </Button>
           </div>
         </div>
-      </div>
+      </PageSurface>
     );
   }
 
   return <CalendarView initialData={data} />;
+}
+
+function CalendarSkeleton() {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 border-b border-border/60 bg-background/65">
+        <div className="px-4 pt-4 sm:px-6 sm:pt-5">
+          <div className="flex min-h-4 items-center gap-1.5">
+            <Skeleton className="h-2.5 w-16" />
+            <Skeleton className="h-2.5 w-2" />
+            <Skeleton className="h-2.5 w-16" />
+          </div>
+
+          <div className="mt-2 flex min-h-[55px] flex-wrap items-start gap-x-3 gap-y-3">
+            <Skeleton className="size-9 shrink-0 rounded-xl" />
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-7 w-36" />
+              <Skeleton className="mt-2 h-3 w-48 max-w-full" />
+            </div>
+            <Skeleton className="ml-auto h-8 w-44 rounded-lg" />
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 pb-3">
+            <div className="flex items-center gap-1">
+              <Skeleton className="size-7 rounded-lg" />
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="size-7 rounded-lg" />
+              <Skeleton className="ml-1 h-7 w-14 rounded-lg" />
+            </div>
+            <div className="ml-auto hidden items-center gap-3 sm:flex">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="flex items-center gap-1">
+                  <Skeleton className="size-1.5 rounded-full" />
+                  <Skeleton className="h-2.5 w-12" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col p-4 sm:p-6">
+          <div className="grid min-h-[420px] flex-1 grid-cols-7 overflow-hidden rounded-xl border border-border/70 bg-card">
+            {Array.from({ length: 35 }).map((_, index) => (
+              <div
+                key={index}
+                className="border-r border-b border-border/55 p-1.5 last:border-r-0"
+              >
+                <Skeleton className="size-5 rounded-full" />
+                {index % 4 === 0 && (
+                  <Skeleton className="mt-1.5 h-3 w-full rounded" />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <aside className="hidden shrink-0 border-l border-border/60 p-4 lg:block lg:w-[292px]">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="mt-2 h-3 w-44" />
+          <div className="mt-4 space-y-2">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div
+                key={index}
+                className="rounded-lg border border-border/65 bg-card p-2.5"
+              >
+                <Skeleton className="h-3 w-4/5" />
+                <Skeleton className="mt-2 h-2.5 w-1/2" />
+              </div>
+            ))}
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
 }

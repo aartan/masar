@@ -10,9 +10,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { PageSurface } from "@/components/layout/page-surface";
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
 import { api, errorMessage } from "@/lib/client-api";
 import {
@@ -22,6 +24,7 @@ import {
   type ConflictLookup,
 } from "@/lib/conflict-diff";
 import { formatDateTime } from "@/lib/dates";
+import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardDetail, SyncConflictView } from "@/lib/types";
 
@@ -50,6 +53,7 @@ export function ConflictsPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [bulkBusy, setBulkBusy] = React.useState<Choice | null>(null);
+  const showSkeleton = useDelayedLoading(loading);
 
   const load = React.useCallback(async (silent = false) => {
     if (!silent) {
@@ -194,7 +198,7 @@ export function ConflictsPage() {
       toast.success(
         choice === "cloud" ? "Cloud version kept" : "This device’s version kept",
       );
-      await Promise.all([load(), refresh()]);
+      await Promise.all([load(true), refresh()]);
     } catch (caught) {
       toast.error("Could not resolve conflict", {
         description: errorMessage(caught),
@@ -205,9 +209,9 @@ export function ConflictsPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-canvas">
+    <PageSurface scroll>
       <div className="mx-auto w-full max-w-[1000px] px-5 py-8 sm:px-8">
-        <header className="animate-rise">
+        <header>
           <p className="text-[10.5px] font-semibold tracking-[0.16em] text-muted-foreground uppercase">
             Sync
           </p>
@@ -260,9 +264,11 @@ export function ConflictsPage() {
         )}
 
         {loading ? (
-          <div className="mt-8 grid place-items-center rounded-xl border border-border/70 bg-card py-20 text-muted-foreground">
-            <Loader2 className="size-5 animate-spin" />
-          </div>
+          showSkeleton ? (
+            <ConflictsSkeleton />
+          ) : (
+            <div className="mt-8 h-40" aria-busy="true" />
+          )
         ) : error ? (
           <div className="mt-8 rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-6">
             <p className="text-[13px] font-medium text-destructive">
@@ -282,7 +288,7 @@ export function ConflictsPage() {
             />
           </div>
         ) : (
-          <div className="mt-7 space-y-4">
+          <div className="mt-7 space-y-4 animate-fade">
             {conflicts.map((conflict) => (
               <ConflictCard
                 key={conflict.id}
@@ -295,6 +301,61 @@ export function ConflictsPage() {
           </div>
         )}
       </div>
+    </PageSurface>
+  );
+}
+
+function ConflictsSkeleton() {
+  return (
+    <div
+      className="mt-7 space-y-4"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <span className="sr-only">Loading sync conflicts</span>
+      {Array.from({ length: 2 }).map((_, index) => (
+        <Card key={index} className="overflow-hidden border-border/75">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 bg-muted/20 px-5 py-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-4 w-16 rounded-full" />
+                <Skeleton className="h-2.5 w-32" />
+              </div>
+              <Skeleton className="mt-2.5 h-4 w-2/5" />
+              <Skeleton className="mt-2 h-2.5 w-56 max-w-full" />
+            </div>
+            <Skeleton className="size-4 rounded" />
+          </div>
+          <div className="space-y-3 p-4 sm:p-5">
+            <Skeleton className="h-2.5 w-24" />
+            <div className="overflow-hidden rounded-lg border border-border/60">
+              {Array.from({ length: 3 }).map((_, row) => (
+                <div
+                  key={row}
+                  className="grid grid-cols-[minmax(80px,0.7fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-border/40 px-3 py-2 last:border-b-0"
+                >
+                  <Skeleton className="h-2.5 w-16" />
+                  <Skeleton className="h-2.5 w-full" />
+                  <Skeleton className="h-2.5 w-full" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="grid border-t border-border/60 bg-background/35 sm:grid-cols-2">
+            {Array.from({ length: 2 }).map((_, side) => (
+              <div
+                key={side}
+                className="flex flex-col gap-3 border-b border-border/60 p-4 last:border-b-0 sm:border-r sm:border-b-0 sm:last:border-r-0"
+              >
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-2.5 w-32" />
+                <Skeleton className="h-8 w-36 rounded-lg" />
+              </div>
+            ))}
+          </div>
+        </Card>
+      ))}
     </div>
   );
 }

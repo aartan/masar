@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Menu, Search, TriangleAlert } from "lucide-react";
 
 import { Logo } from "@/components/brand/logo";
@@ -30,6 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     reorderProjects,
     moveBoards,
   } = useWorkspace();
+  const location = useLocation();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
@@ -68,28 +69,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setCreateBoard({ open: true, projectId });
   }
 
-  if (loading) {
-    return (
-      <div className="flex h-dvh overflow-hidden bg-background">
-        <aside className="hidden w-[264px] shrink-0 border-r border-sidebar-border p-4 lg:block">
-          <Skeleton className="h-8 w-28" />
-          <Skeleton className="mt-8 h-9 w-full" />
-          <div className="mt-6 space-y-2">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <Skeleton key={index} className="h-7 w-full" />
-            ))}
-          </div>
-        </aside>
-        <main className="flex min-w-0 flex-1 items-center justify-center">
-          <div className="w-full max-w-md px-6">
-            <Skeleton className="h-6 w-40" />
-            <Skeleton className="mt-3 h-3.5 w-72 max-w-full" />
-          </div>
-        </main>
-      </div>
-    );
-  }
-
   if (error) {
     return (
       <div className="grid h-dvh place-items-center bg-background px-6">
@@ -108,20 +87,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
-      <aside className="hidden w-[264px] shrink-0 border-r border-sidebar-border lg:flex">
+      <aside className="hidden w-[264px] shrink-0 border-r border-sidebar-border bg-sidebar lg:flex">
         <div className="w-full">
-          <SidebarContent
-            projects={projects}
-            boards={boards}
-            conflictCount={conflictCount}
-            user={user}
-            onOpenSearch={() => setSearchOpen(true)}
-            onCreateBoard={openCreateBoard}
-            onOpenShortcuts={() => setShortcutsOpen(true)}
-            onReorderProjects={reorderProjects}
-            onMoveBoards={moveBoards}
-            onRefresh={refresh}
-          />
+          {loading ? (
+            <SidebarSkeleton />
+          ) : (
+            <div className="h-full animate-fade">
+              <SidebarContent
+                projects={projects}
+                boards={boards}
+                conflictCount={conflictCount}
+                user={user}
+                onOpenSearch={() => setSearchOpen(true)}
+                onCreateBoard={openCreateBoard}
+                onOpenShortcuts={() => setShortcutsOpen(true)}
+                onReorderProjects={reorderProjects}
+                onMoveBoards={moveBoards}
+                onRefresh={refresh}
+              />
+            </div>
+          )}
         </div>
       </aside>
 
@@ -133,27 +118,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               Workspace navigation and board list
             </SheetDescription>
           </SheetHeader>
-          <SidebarContent
-            projects={projects}
-            boards={boards}
-            conflictCount={conflictCount}
-            user={user}
-            onOpenSearch={() => {
-              setMobileOpen(false);
-              setSearchOpen(true);
-            }}
-            onCreateBoard={openCreateBoard}
-            onOpenShortcuts={() => {
-              setMobileOpen(false);
-              setShortcutsOpen(true);
-            }}
-            onNavigate={() => setMobileOpen(false)}
-            showClose
-            onClose={() => setMobileOpen(false)}
-            onReorderProjects={reorderProjects}
-            onMoveBoards={moveBoards}
-            onRefresh={refresh}
-          />
+          {loading ? (
+            <SidebarSkeleton />
+          ) : (
+            <div className="h-full animate-fade">
+              <SidebarContent
+                projects={projects}
+                boards={boards}
+                conflictCount={conflictCount}
+                user={user}
+                onOpenSearch={() => {
+                  setMobileOpen(false);
+                  setSearchOpen(true);
+                }}
+                onCreateBoard={openCreateBoard}
+                onOpenShortcuts={() => {
+                  setMobileOpen(false);
+                  setShortcutsOpen(true);
+                }}
+                onNavigate={() => setMobileOpen(false)}
+                showClose
+                onClose={() => setMobileOpen(false)}
+                onReorderProjects={reorderProjects}
+                onMoveBoards={moveBoards}
+                onRefresh={refresh}
+              />
+            </div>
+          )}
         </SheetContent>
       </Sheet>
 
@@ -200,7 +191,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
 
-        <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
+        <main className="min-h-0 flex-1 overflow-hidden bg-background">
+          <div key={location.pathname} className="h-full">
+            {children}
+          </div>
+        </main>
       </div>
 
       <CommandPalette
@@ -217,6 +212,63 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         }
         onCreated={() => void refresh()}
       />
+    </div>
+  );
+}
+
+/**
+ * Mirrors the real sidebar's structure and spacing so the workspace boot does
+ * not shift the shell when project data arrives.
+ */
+function SidebarSkeleton() {
+  return (
+    <div
+      className="flex h-full min-h-0 flex-col bg-sidebar text-sidebar-foreground"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <span className="sr-only">Loading workspace navigation</span>
+      <div className="flex items-center justify-between px-4 pt-5 pb-4">
+        <Logo />
+      </div>
+
+      <div className="px-3 pb-3">
+        <Skeleton className="h-9 w-full rounded-lg" />
+      </div>
+
+      <div className="space-y-1 px-3">
+        <Skeleton className="h-8 w-full rounded-lg" />
+        <Skeleton className="h-8 w-full rounded-lg" />
+      </div>
+
+      <div className="mt-5 flex min-h-0 flex-1 flex-col">
+        <div className="flex items-center justify-between px-5 pb-1.5">
+          <Skeleton className="h-2.5 w-16" />
+          <Skeleton className="size-4 rounded" />
+        </div>
+        <div className="space-y-1.5 px-3 pt-1.5">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton
+              key={index}
+              className={
+                index === 0 ? "h-7 w-full rounded-lg" : "h-6 w-[88%] rounded-lg"
+              }
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-auto border-t border-sidebar-border/80 px-3 py-3">
+        <div className="flex items-center gap-2 px-2 py-1.5">
+          <Skeleton className="size-7 rounded-full" />
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-2.5 w-24" />
+            <Skeleton className="h-2 w-32" />
+          </div>
+          <Skeleton className="size-3.5 rounded" />
+        </div>
+      </div>
     </div>
   );
 }

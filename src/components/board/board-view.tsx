@@ -46,6 +46,7 @@ import {
   PriorityBars,
 } from "@/components/shared/task-meta";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { PageSurface } from "@/components/layout/page-surface";
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 import { Button } from "@/components/ui/button";
@@ -734,7 +735,7 @@ export function BoardView({
     : undefined;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-canvas">
+    <PageSurface className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 border-b border-border/60 bg-background/65 backdrop-blur">
         <div className="px-4 pt-4 sm:px-6 sm:pt-5">
           <div className="flex items-center gap-1.5 text-[10.5px] text-muted-foreground">
@@ -1115,7 +1116,7 @@ export function BoardView({
         confirmLabel="Delete board"
         onConfirm={deleteBoard}
       />
-    </div>
+    </PageSurface>
   );
 }
 

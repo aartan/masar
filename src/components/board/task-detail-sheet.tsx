@@ -41,6 +41,7 @@ import {
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { LabelManagerPopover } from "@/components/shared/label-manager-popover";
@@ -675,16 +676,14 @@ export function TaskDetailSheet({
           </div>
 
           {loading && (!detail || detail.id !== taskId) ? (
-            <div className="space-y-5 p-6">
-              <div className="h-7 w-3/4 animate-pulse rounded-md bg-muted" />
-              <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
-              <div className="h-24 animate-pulse rounded-lg bg-muted" />
+            <div className="space-y-5 p-6" role="status" aria-busy="true">
+              <span className="sr-only">Loading task</span>
+              <Skeleton className="h-7 w-3/4" />
+              <Skeleton className="h-3 w-1/3" />
+              <Skeleton className="h-24 rounded-lg" />
               <div className="grid grid-cols-2 gap-4">
                 {Array.from({ length: 4 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="h-12 animate-pulse rounded-lg bg-muted"
-                  />
+                  <Skeleton key={index} className="h-12 rounded-lg" />
                 ))}
               </div>
             </div>

@@ -22,11 +22,14 @@ import "@excalidraw/excalidraw/index.css";
 import "./whiteboard-theme.css";
 
 import { BoardSettingsDialog } from "@/components/board/board-dialogs";
+import { PageSurface } from "@/components/layout/page-surface";
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { useTheme } from "@/components/theme-provider";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api, errorMessage } from "@/lib/client-api";
+import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardSummary, WhiteboardScene } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -88,6 +91,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
 
   const [initialData, setInitialData] =
     React.useState<ExcalidrawInitialDataState | null>(null);
+  const showSceneLoading = useDelayedLoading(initialData === null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<SaveStatus>({ phase: "idle" });
   const [settingsOpen, setSettingsOpen] = React.useState(false);
@@ -270,7 +274,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
 
   return (
     <>
-    <div className="flex h-full flex-col bg-canvas">
+    <PageSurface className="flex h-full flex-col">
       <div className="flex items-center gap-3 border-b border-border/60 bg-background/65 px-4 py-3 sm:px-6">
         <PenLine className="size-4 text-muted-foreground" />
         <h1 className="truncate font-display text-[15px] font-semibold">
@@ -307,9 +311,20 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         }}
       >
         {initialData === null ? (
-          <div className="grid h-full place-items-center text-muted-foreground">
-            <Loader2 className="size-5 animate-spin" />
-          </div>
+          showSceneLoading ? (
+            <div
+              className="grid h-full place-items-center text-muted-foreground"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex items-center gap-2 text-[12.5px]">
+                <Skeleton className="size-5 rounded-full" />
+                Loading whiteboard…
+              </div>
+            </div>
+          ) : (
+            <div className="h-full" aria-busy="true" />
+          )
         ) : (
           <Excalidraw
             excalidrawAPI={(instance) => (apiRef.current = instance)}
@@ -321,7 +336,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
           />
         )}
       </div>
-    </div>
+    </PageSurface>
     <BoardSettingsDialog
       open={settingsOpen}
       onOpenChange={setSettingsOpen}

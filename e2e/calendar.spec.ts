@@ -124,8 +124,11 @@ test.describe("calendar view", () => {
       await expect(
         page.getByRole("button", { name: "Week", exact: true }),
       ).toHaveAttribute("aria-pressed", "true");
+      // The week view is anchored to tomorrow after drilling into "+2 more";
+      // assert a task on that day rather than one that may fall in the
+      // previous week depending on which weekday the suite runs.
       await expect(
-        page.getByRole("button", { name: "Open task: Calendar overdue" }),
+        page.getByRole("button", { name: "Open task: Calendar upcoming A" }),
       ).toBeVisible();
 
       await page.getByRole("button", { name: "Month", exact: true }).click();

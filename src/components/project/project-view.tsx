@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 
 import { CreateBoardDialog } from "@/components/board/create-board-dialog";
+import { PageSurface } from "@/components/layout/page-surface";
 import { RenameProjectDialog } from "@/components/project/project-dialogs";
 import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 import { Button } from "@/components/ui/button";
@@ -53,7 +54,7 @@ export function ProjectView({
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-canvas">
+    <PageSurface scroll>
       <div className="mx-auto w-full max-w-[1220px] px-5 py-8">
         <header className="animate-rise">
           <p className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
@@ -303,7 +304,7 @@ export function ProjectView({
         onDone={() => onChanged?.()}
       />
       <ProjectBackLink />
-    </div>
+    </PageSurface>
   );
 }
 

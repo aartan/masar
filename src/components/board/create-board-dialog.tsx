@@ -155,38 +155,38 @@ function CreateBoardForm({
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div
-          className="grid grid-cols-2 gap-2"
+          className="grid grid-cols-3 gap-2"
           role="radiogroup"
           aria-label="Space type"
         >
           {TYPE_OPTIONS.map((option) => {
             const Icon = option.icon;
             const selected = type === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                onClick={() => setType(option.value)}
-                disabled={loading}
-                className={cn(
-                  "flex flex-col gap-1 rounded-lg border p-3 text-left transition-colors",
-                  selected
-                    ? "border-primary/50 bg-primary/5 ring-1 ring-primary/30"
-                    : "border-border hover:bg-accent/60",
-                )}
-              >
-                <span className="flex items-center gap-2 text-[13px] font-medium">
-                  <Icon className="size-4 opacity-80" />
-                  {option.label}
-                </span>
-                <span className="text-[11.5px] leading-snug text-muted-foreground">
-                  {option.hint}
-                </span>
-              </button>
-            );
-          })}
+    return (
+      <button
+        key={option.value}
+        type="button"
+        role="radio"
+        aria-checked={selected}
+        onClick={() => setType(option.value)}
+        disabled={loading}
+        className={cn(
+          "flex min-w-0 flex-col gap-2 rounded-lg border p-3 text-left transition-colors",
+          selected
+            ? "border-primary/50 bg-primary/5 ring-1 ring-primary/30"
+            : "border-border hover:bg-accent/60",
+        )}
+      >
+        <span className="flex items-center gap-1.5 text-[13px] font-medium">
+          <Icon className="size-4 shrink-0 opacity-80" />
+          {option.label}
+        </span>
+        <span className="text-[11px] leading-snug text-muted-foreground">
+          {option.hint}
+        </span>
+      </button>
+    );
+  })}
         </div>
 
         <div className="space-y-2">

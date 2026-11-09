@@ -230,23 +230,21 @@ function CreateBoardForm({
             autoFocus
           />
         </div>
-        {type === "kanban" && (
-          <div className="space-y-2">
-            <Label htmlFor="board-description">
-              Description{" "}
-              <span className="font-normal text-muted-foreground">optional</span>
-            </Label>
-            <Textarea
-              id="board-description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="What is this space for?"
-              maxLength={400}
-              rows={2}
-              disabled={loading}
-            />
-          </div>
-        )}
+        <div className="space-y-2">
+          <Label htmlFor="board-description">
+            Description{" "}
+            <span className="font-normal text-muted-foreground">optional</span>
+          </Label>
+          <Textarea
+            id="board-description"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="What is this space for?"
+            maxLength={400}
+            rows={2}
+            disabled={loading}
+          />
+        </div>
         <DialogFooter>
           <Button
             type="button"

@@ -13,6 +13,7 @@ test.describe("note workflows", () => {
   }) => {
     const errors = collectPageErrors(page);
     const noteName = uniqueName("E2E Note");
+    const noteDescription = uniqueName("E2E Note description");
     let boardId: string | undefined;
 
     try {
@@ -29,6 +30,7 @@ test.describe("note workflows", () => {
         .click();
       await page.getByRole("radio", { name: /Note/ }).click();
       await page.getByLabel("Space name").fill(noteName);
+      await page.getByLabel(/Description/).fill(noteDescription);
       await page.getByRole("button", { name: /Create space/ }).click();
       await expect(page).toHaveURL(/\/boards\/[0-9a-f-]+$/);
       boardId = page.url().split("/boards/")[1];
@@ -37,6 +39,9 @@ test.describe("note workflows", () => {
       // itself starts blank.
       await expect(
         page.getByRole("heading", { level: 1, name: noteName }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(noteDescription, { exact: true }),
       ).toBeVisible();
 
       // Type into the BlockNote editor and let the debounced autosave land.
@@ -58,6 +63,9 @@ test.describe("note workflows", () => {
       await expect(page.locator(".masar-note .bn-editor")).toContainText(
         "Hello from the note",
       );
+      await expect(
+        page.getByText(noteDescription, { exact: true }),
+      ).toBeVisible();
 
       // Rename through the settings dialog.
       const renamed = `${noteName} renamed`;

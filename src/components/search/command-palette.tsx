@@ -5,15 +5,17 @@ import { useNavigate } from "react-router-dom";
 import {
   ArrowRight,
   CornerDownLeft,
+  FileText,
   LayoutDashboard,
+  LayoutGrid,
   Loader2,
+  PenLine,
   Search,
   SearchX,
 } from "lucide-react";
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { PriorityBars, DueDateChip } from "@/components/shared/task-meta";
-import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 import { Kbd } from "@/components/shared/empty-state";
 import type { BoardSummary, SearchResult } from "@/lib/types";
 import { api } from "@/lib/client-api";
@@ -25,9 +27,20 @@ type NavItem = {
   title: string;
   subtitle: string;
   href: string;
-  boardColor?: BoardSummary["color"];
+  boardType?: BoardSummary["type"];
   isOverview?: boolean;
 };
+
+const BOARD_TYPE_ICON = {
+  kanban: LayoutGrid,
+  whiteboard: PenLine,
+  note: FileText,
+} as const;
+
+function BoardTypeIcon({ type }: { type: BoardSummary["type"] }) {
+  const Icon = BOARD_TYPE_ICON[type] ?? LayoutGrid;
+  return <Icon className="size-3.5 text-muted-foreground" />;
+}
 
 type TaskItem = {
   kind: "task";
@@ -112,7 +125,7 @@ export function CommandPalette({
         title: board.name,
         subtitle: `${board.taskCount} ${board.taskCount === 1 ? "task" : "tasks"}`,
         href: `/boards/${board.id}`,
-        boardColor: board.color,
+        boardType: board.type,
       });
     }
 
@@ -249,17 +262,9 @@ export function CommandPalette({
                       <span className="grid size-7 shrink-0 place-items-center rounded-md border border-border/60 bg-card">
                         {item.isOverview ? (
                           <LayoutDashboard className="size-3.5 text-muted-foreground" />
-                        ) : (
-                          <span
-                            className={cn(
-                              "size-2.5 rounded-full",
-                              item.boardColor
-                                ? BOARD_COLOR_CLASS[item.boardColor]
-                                : "",
-                              "board-dot",
-                            )}
-                          />
-                        )}
+                        ) : item.boardType ? (
+                          <BoardTypeIcon type={item.boardType} />
+                        ) : null}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13px] font-medium">
@@ -354,13 +359,6 @@ function TaskRow({
         active ? "bg-accent text-accent-foreground" : "text-foreground",
       )}
     >
-      <span
-        className={cn(
-          "size-2.5 shrink-0 rounded-full",
-          BOARD_COLOR_CLASS[task.boardColor],
-          "board-dot",
-        )}
-      />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-medium">
           {task.title}

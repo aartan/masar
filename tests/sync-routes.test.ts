@@ -125,7 +125,6 @@ describe("sync route workspace scoping", () => {
               id: "remote-board-1",
               name: "Remote board",
               description: null,
-              color: "sage",
               position: 0,
               created_at: now,
               updated_at: now,
@@ -171,7 +170,6 @@ describe("sync route workspace scoping", () => {
               id: "conflict-board",
               name: "Cloud original",
               description: null,
-              color: "sage",
               position: 0,
               created_at: now,
               updated_at: now,
@@ -223,7 +221,6 @@ describe("sync route workspace scoping", () => {
               id: "conflict-board",
               name: "Cloud resolved",
               description: null,
-              color: "sage",
               position: 0,
               created_at: now,
               updated_at: now + 2_000,
@@ -314,8 +311,8 @@ describe("import local workspace", () => {
       });
       await source.client.batch(
         [
-          `INSERT INTO boards (id, owner_id, name, description, color, position, created_at, updated_at)
-             VALUES ('local-board-1', 'local-user', 'Local board', NULL, 'sage', 0, ${timestamp}, ${timestamp})`,
+          `INSERT INTO boards (id, owner_id, name, description, position, created_at, updated_at)
+             VALUES ('local-board-1', 'local-user', 'Local board', NULL, 0, ${timestamp}, ${timestamp})`,
           `INSERT INTO columns (id, board_id, name, position, is_done, created_at, updated_at)
              VALUES ('local-column-1', 'local-board-1', 'To Do', 0, 0, ${timestamp}, ${timestamp})`,
           `INSERT INTO tasks (id, board_id, column_id, title, priority, position, created_at, updated_at)
@@ -382,8 +379,8 @@ describe("import local workspace", () => {
         args: [timestamp, timestamp],
       });
       await source.client.execute({
-        sql: `INSERT INTO boards (id, owner_id, name, color, position, created_at, updated_at)
-               VALUES ('local-board-2', 'local-user', 'Twice', 'rose', 0, ?, ?)`,
+        sql: `INSERT INTO boards (id, owner_id, name, position, created_at, updated_at)
+               VALUES ('local-board-2', 'local-user', 'Twice', 0, ?, ?)`,
         args: [timestamp, timestamp],
       });
       process.env.MASAR_LOCAL_DB_URL = source.url;

@@ -40,7 +40,6 @@ export async function addDemoWorkspace(
       name: "Welcome to Masar",
       description:
         "A small sample space for exploring columns, tasks, labels, and keyboard shortcuts.",
-      color: "sage",
     },
     ownerId,
     database,

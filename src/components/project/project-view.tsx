@@ -16,7 +16,6 @@ import { toast } from "sonner";
 import { CreateBoardDialog } from "@/components/board/create-board-dialog";
 import { PageSurface } from "@/components/layout/page-surface";
 import { RenameProjectDialog } from "@/components/project/project-dialogs";
-import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api, errorMessage } from "@/lib/client-api";
@@ -166,10 +165,6 @@ export function ProjectView({
                     className="group animate-rise rounded-xl border border-border/70 bg-card p-4 text-left transition-colors hover:border-border hover:bg-accent/40"
                   >
                     <div className="flex items-center gap-2">
-                      <span
-                        className={cnDot(board.color)}
-                        aria-hidden
-                      />
                       <Icon className="size-4 text-muted-foreground" />
                       <span className="truncate text-[14px] font-medium">
                         {board.name}
@@ -326,8 +321,4 @@ function ProjectBackLink() {
       </Link>
     </div>
   );
-}
-
-function cnDot(color: string): string {
-  return `size-2.5 shrink-0 rounded-full board-dot ${BOARD_COLOR_CLASS[color as keyof typeof BOARD_COLOR_CLASS] ?? ""}`;
 }

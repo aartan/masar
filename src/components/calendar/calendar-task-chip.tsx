@@ -3,7 +3,6 @@
 import { useDraggable } from "@dnd-kit/core";
 import { AlertTriangle, GripVertical } from "lucide-react";
 
-import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 import { PriorityBars } from "@/components/shared/task-meta";
 import {
   getCalendarTaskStatus,
@@ -79,16 +78,6 @@ export function CalendarTaskChip({
       {...attributes}
       {...listeners}
     >
-      {layout !== "detailed" && (
-        <span
-          className={cn(
-            "size-1.5 shrink-0 rounded-full",
-            BOARD_COLOR_CLASS[task.boardColor],
-            "board-dot",
-            card ? "mt-[5px]" : "mt-0",
-          )}
-        />
-      )}
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-1">
           <span
@@ -130,13 +119,6 @@ export function CalendarTaskDragOverlay({ task }: { task: CalendarTask }) {
   return (
     <div className="w-[250px] rotate-[1deg] cursor-grabbing rounded-xl border border-border/80 bg-card p-2.5 shadow-float">
       <div className="flex items-center gap-1.5">
-        <span
-          className={cn(
-            "size-1.5 shrink-0 rounded-full",
-            BOARD_COLOR_CLASS[task.boardColor],
-            "board-dot",
-          )}
-        />
         <span className="truncate text-[12px] font-medium">{task.title}</span>
       </div>
       <div className="mt-1.5 flex items-center gap-2 pl-3 text-[10px] text-muted-foreground">

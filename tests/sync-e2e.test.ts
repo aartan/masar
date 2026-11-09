@@ -700,7 +700,6 @@ describe("cross-device premium sync lifecycle", () => {
         type: board!.type,
         name: "Cloud edit",
         description: null,
-        color: board!.color,
         position: board!.position,
         created_at: board!.createdAt.getTime(),
         updated_at: Date.now(),

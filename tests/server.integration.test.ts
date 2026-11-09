@@ -141,21 +141,16 @@ describe("boards", () => {
   });
 
   it("lists boards in position order and updates metadata", async () => {
-    const first = await createBoard(
-      { name: "First", color: "sage" },
-      owner.id,
-      test.db,
-    );
-    await createBoard({ name: "Second", color: "sky" }, owner.id, test.db);
+    const first = await createBoard({ name: "First" }, owner.id, test.db);
+    await createBoard({ name: "Second" }, owner.id, test.db);
 
     const updated = await updateBoard(
       first.id,
-      { name: "Renamed", description: "A better description", color: "rose" },
+      { name: "Renamed", description: "A better description" },
       owner.id,
       test.db,
     );
     expect(updated.name).toBe("Renamed");
-    expect(updated.color).toBe("rose");
 
     const list = await listBoards(owner.id, test.db);
     expect(list.map((item) => item.name)).toEqual(["Renamed", "Second"]);

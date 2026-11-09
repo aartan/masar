@@ -167,7 +167,6 @@ export const boards = sqliteTable(
     type: text("type").notNull().default("kanban"),
     name: text("name").notNull(),
     description: text("description"),
-    color: text("color").notNull().default("sage"),
     position: integer("position").notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

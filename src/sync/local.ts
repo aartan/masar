@@ -240,7 +240,7 @@ async function bootstrapChanges(tx: Transaction): Promise<void> {
      select 'board', id, 0,
        json_object('id', id, 'owner_id', owner_id, 'project_id', project_id, 'type', type,
                    'name', name, 'description', description,
-                   'color', color, 'position', position, 'created_at', created_at, 'updated_at', updated_at),
+                   'position', position, 'created_at', created_at, 'updated_at', updated_at),
        coalesce(updated_at, unixepoch() * 1000)
      from boards
      order by position, created_at`,
@@ -1075,7 +1075,7 @@ async function queueCurrentEntity(
       select 'board', id, 0,
         json_object('id', id, 'owner_id', owner_id, 'project_id', project_id, 'type', type,
                     'name', name, 'description', description,
-                    'color', color, 'position', position, 'created_at', created_at, 'updated_at', updated_at),
+                    'position', position, 'created_at', created_at, 'updated_at', updated_at),
         coalesce(updated_at, unixepoch() * 1000)
       from boards where id = ?`,
     column: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
@@ -1289,19 +1289,18 @@ async function applyUpsert(
           ? projectId
           : await defaultProjectForTx(tx);
       await tx.execute({
-        sql: `insert into boards (id, owner_id, project_id, type, name, description, color, position, created_at, updated_at)
-              values (?, 'local-user', ?, ?, ?, ?, ?, ?, ?, ?)
+        sql: `insert into boards (id, owner_id, project_id, type, name, description, position, created_at, updated_at)
+              values (?, 'local-user', ?, ?, ?, ?, ?, ?, ?)
               on conflict(id) do update set
                 owner_id = 'local-user', project_id = excluded.project_id, type = excluded.type,
                 name = excluded.name, description = excluded.description,
-                color = excluded.color, position = excluded.position, updated_at = excluded.updated_at`,
+                position = excluded.position, updated_at = excluded.updated_at`,
         args: [
           change.entityId,
           resolvedProjectId,
           asString(data.type, "kanban"),
           asString(data.name, "Untitled space"),
           asNullableString(data.description),
-          asString(data.color, "sage"),
           asNumber(data.position),
           toMs(data.created_at, now),
           toMs(data.updated_at, now),

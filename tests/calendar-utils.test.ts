@@ -39,7 +39,6 @@ function calendarTask(
   return {
     ...task(overrides),
     boardName: "Board",
-    boardColor: "sage",
     columnName: "To Do",
     columnDone: false,
     ...overrides,

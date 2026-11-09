@@ -1,7 +1,6 @@
 import { z } from "zod";
 
 import {
-  BOARD_COLORS,
   BOARD_TYPES,
   DUE_FILTERS,
   IMAGE_KINDS,
@@ -39,7 +38,6 @@ export const dateOnlySchema = z
 export const boardCreateSchema = z.object({
   name: nameSchema(80, "Space name"),
   description: z.string().trim().max(400).nullish(),
-  color: z.enum(BOARD_COLORS).optional(),
   type: z.enum(BOARD_TYPES).optional(),
   projectId: idSchema.optional(),
 });
@@ -48,7 +46,6 @@ export const boardUpdateSchema = z
   .object({
     name: nameSchema(80, "Space name").optional(),
     description: z.string().trim().max(400).nullable().optional(),
-    color: z.enum(BOARD_COLORS).optional(),
     projectId: idSchema.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {

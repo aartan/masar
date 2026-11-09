@@ -48,7 +48,6 @@ import {
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { PageSurface } from "@/components/layout/page-surface";
 import { useWorkspace } from "@/components/layout/workspace-provider";
-import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -792,13 +791,6 @@ export function BoardView({
           </div>
 
           <div className="mt-2 flex flex-wrap items-start gap-x-3 gap-y-3">
-            <span
-              className={cn(
-                "mt-2 size-2.5 shrink-0 rounded-full",
-                BOARD_COLOR_CLASS[board.color],
-                "board-dot",
-              )}
-            />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="font-display truncate text-[24px] leading-tight font-semibold tracking-[-0.03em] sm:text-[27px]">

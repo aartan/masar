@@ -8,7 +8,6 @@ import {
 } from "date-fns";
 
 import { PRIORITY_META } from "@/lib/constants";
-import type { BoardColor } from "@/lib/constants";
 import { todayIso } from "@/lib/dates";
 import type { Task } from "@/lib/types";
 
@@ -23,7 +22,6 @@ export type CalendarTaskStatus =
 
 export interface CalendarTask extends Task {
   boardName: string;
-  boardColor: BoardColor;
   columnName: string;
   columnDone: boolean;
 }

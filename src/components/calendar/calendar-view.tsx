@@ -50,7 +50,6 @@ import {
   type CalendarViewMode,
 } from "@/lib/calendar";
 import { api, errorMessage } from "@/lib/client-api";
-import type { BoardColor } from "@/lib/constants";
 import { formatDueDate, todayIso } from "@/lib/dates";
 import type { CalendarData, Label, Task, TaskDetail } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -118,7 +117,6 @@ export function CalendarView({ initialData }: { initialData: CalendarData }) {
         return {
           ...task,
           boardName: board?.name ?? "Unknown space",
-          boardColor: (board?.color ?? "slate") as BoardColor,
           columnName: column?.name ?? "Unknown",
           columnDone: column?.isDone ?? false,
         };

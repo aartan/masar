@@ -26,10 +26,9 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api, errorMessage } from "@/lib/client-api";
-import { BOARD_COLORS, type BoardColor, type BoardType } from "@/lib/constants";
+import type { BoardType } from "@/lib/constants";
 import type { BoardSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 
 export function CreateBoardDialog({
   open,
@@ -104,7 +103,6 @@ function CreateBoardForm({
   const [type, setType] = React.useState<BoardType>("kanban");
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
-  const [color, setColor] = React.useState<BoardColor>("sage");
   const [selectedProjectId, setSelectedProjectId] = React.useState(
     projectId ?? activeProjects[0]?.id ?? "",
   );
@@ -120,7 +118,6 @@ function CreateBoardForm({
         body: JSON.stringify({
           name: name.trim(),
           description: description.trim() || null,
-          color,
           type,
           ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
         }),
@@ -250,39 +247,6 @@ function CreateBoardForm({
             />
           </div>
         )}
-        <div className="space-y-2">
-          <Label>Accent</Label>
-          <div
-            className="flex items-center gap-2"
-            role="radiogroup"
-            aria-label="Space accent"
-          >
-            {BOARD_COLORS.map((item) => (
-              <button
-                key={item}
-                type="button"
-                role="radio"
-                aria-checked={color === item}
-                aria-label={item}
-                onClick={() => setColor(item)}
-                className={cn(
-                  "grid size-8 place-items-center rounded-full border transition-all",
-                  color === item
-                    ? "border-foreground/40 bg-accent shadow-sm"
-                    : "border-transparent hover:bg-accent/60",
-                )}
-              >
-                <span
-                  className={cn(
-                    "size-3.5 rounded-full",
-                    BOARD_COLOR_CLASS[item],
-                    "board-dot",
-                  )}
-                />
-              </button>
-            ))}
-          </div>
-        </div>
         <DialogFooter>
           <Button
             type="button"

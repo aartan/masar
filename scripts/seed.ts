@@ -17,7 +17,7 @@ import {
   tasks,
   users,
 } from "../src/db/schema";
-import type { BoardColor, LabelColor, Priority } from "../src/lib/constants";
+import type { LabelColor, Priority } from "../src/lib/constants";
 
 interface SeedSubtask {
   title: string;
@@ -45,7 +45,6 @@ interface SeedTask {
 interface SeedBoard {
   name: string;
   description: string;
-  color: BoardColor;
   columns: Array<{ name: string; isDone?: boolean }>;
   labels: Array<{ name: string; color: LabelColor }>;
   tasks: SeedTask[];
@@ -63,7 +62,6 @@ const seedBoards: SeedBoard[] = [
   {
     name: "Masar launch",
     description: "Plan and ship the work that moves Masar forward.",
-    color: "sage",
     columns: [
       { name: "Backlog" },
       { name: "To Do" },
@@ -259,7 +257,6 @@ const seedBoards: SeedBoard[] = [
   {
     name: "Website refresh",
     description: "A faster, clearer home for the Masar story.",
-    color: "sky",
     columns: [
       { name: "Backlog" },
       { name: "To Do" },
@@ -409,7 +406,6 @@ async function main() {
         ownerId: owner.id,
         name: board.name,
         description: board.description,
-        color: board.color,
         position: boardIndex,
         createdAt,
         updatedAt: now,

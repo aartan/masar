@@ -13,7 +13,7 @@ import {
   whiteboards,
 } from "@/db/schema";
 import { ApiError } from "@/lib/api";
-import { DEFAULT_COLUMNS, type BoardColor, type BoardType } from "@/lib/constants";
+import { DEFAULT_COLUMNS, type BoardType } from "@/lib/constants";
 import { collectNoteImageIds } from "@/lib/note-document";
 import type { BoardDetail, BoardSummary } from "@/lib/types";
 import type {
@@ -209,7 +209,6 @@ export async function createBoard(
       type,
       name: input.name,
       description: input.description?.trim() || null,
-      color: (input.color ?? "sage") satisfies BoardColor,
       position,
       createdAt: now,
       updatedAt: now,
@@ -269,7 +268,6 @@ export async function updateBoard(
       ...(input.description !== undefined
         ? { description: input.description?.trim() || null }
         : {}),
-      ...(input.color !== undefined ? { color: input.color } : {}),
       ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
       ...(position !== undefined ? { position } : {}),
       updatedAt: new Date(),

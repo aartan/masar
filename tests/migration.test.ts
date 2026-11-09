@@ -137,16 +137,16 @@ async function migrateToLatest(): Promise<void> {
   await migrate(fixture.db, { migrationsFolder: fixture.migrationsFolder });
 
   // The previous deployment is still running during the rollout. It inserts a
-  // board without owner_id and this must keep succeeding after the migration.
+  // board without owner_id/project_id/type and this must keep succeeding after
+  // the migration.
   await fixture.client.execute({
-    sql: `INSERT INTO boards (id, name, description, color, position, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+    sql: `INSERT INTO boards (id, name, description, position, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
           ON CONFLICT (id) DO NOTHING`,
     args: [
       "rollout-board",
       "Created during rollout",
       null,
-      "amber",
       2,
       Date.now(),
       Date.now(),
@@ -188,6 +188,11 @@ describe("0001 auth and workspace ownership migration", () => {
       "PRAGMA foreign_key_check",
     ).then((result) => result.rows);
     expect(foreignKeyProblem).toBeUndefined();
+
+    const boardColumns = await fixture.client
+      .execute("PRAGMA table_info(boards)")
+      .then((result) => result.rows.map((row) => row.name));
+    expect(boardColumns).not.toContain("color");
 
     // Re-running migrations is a no-op.
     await migrate(fixture.db, { migrationsFolder: fixture.migrationsFolder });

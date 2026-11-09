@@ -12,6 +12,7 @@ import {
 import { getDb } from "@/db";
 import { getLocalUser } from "@/lib/server/desktop";
 import { createLocalApp } from "@/server/app";
+import { PNG_BYTES, PNG_DATA_URL, pngDataUrl } from "./helpers/image-fixtures";
 import { createTestDatabase, type TestDatabase } from "./helpers/test-db";
 
 /**
@@ -68,15 +69,15 @@ function request(path: string, init: RequestInit = {}) {
   return app.request(`http://localhost${path}`, init);
 }
 
-function uploadBody(): FormData {
+function uploadBody(
+  file = new File([new Uint8Array(PNG_BYTES)], "pixel.png", {
+    type: "image/png",
+  }),
+  kind = "whiteboard",
+): FormData {
   const form = new FormData();
-  form.append(
-    "file",
-    new File([new Uint8Array([1, 2, 3, 4])], "pixel.png", {
-      type: "image/png",
-    }),
-  );
-  form.append("kind", "whiteboard");
+  form.append("file", file);
+  form.append("kind", kind);
   return form;
 }
 
@@ -204,6 +205,64 @@ describe("image proxy routes", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("rejects non-image uploads before calling the premium API", async () => {
+    const fetchMock = stubFetch(() => Response.json({}));
+
+    const html = await request("/api/images", {
+      method: "POST",
+      body: uploadBody(
+        new File(["<html></html>"], "photo.png", {
+          type: "text/html",
+        }),
+      ),
+    });
+    expect(html.status).toBe(415);
+
+    const svg = await request("/api/images", {
+      method: "POST",
+      body: uploadBody(
+        new File(["<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"], "icon.svg", {
+          type: "image/svg+xml",
+        }),
+      ),
+    });
+    expect(svg.status).toBe(415);
+
+    const spoofed = await request("/api/images", {
+      method: "POST",
+      body: uploadBody(
+        new File(["not really a png"], "pixel.png", {
+          type: "image/png",
+        }),
+      ),
+    });
+    expect(spoofed.status).toBe(422);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the sniffed image type instead of the declared type", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    stubFetch((url, init) => {
+      calls.push({ url, init });
+      return Response.json({ image: IMAGE }, { status: 201 });
+    });
+
+    const gif = Buffer.from("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==", "base64");
+    const response = await request("/api/images", {
+      method: "POST",
+      body: uploadBody(
+        new File([new Uint8Array(gif)], "pixel.png", {
+          type: "image/png",
+        }),
+      ),
+    });
+
+    expect(response.status).toBe(201);
+    const forwarded = (calls[0]?.init.body as FormData).get("file");
+    expect(forwarded).toBeInstanceOf(File);
+    expect((forwarded as File).type).toBe("image/gif");
+  });
+
   it("surfaces premium API errors with their status", async () => {
     stubFetch(() =>
       Response.json(
@@ -236,7 +295,7 @@ describe("image cache routes", () => {
     return body.board.id;
   }
 
-  const DATA_URL = `data:image/png;base64,${Buffer.from("png-bytes").toString("base64")}`;
+  const DATA_URL = PNG_DATA_URL;
 
   it("caches, serves and confirms a whiteboard image", async () => {
     const boardId = await makeWhiteboard();
@@ -255,7 +314,7 @@ describe("image cache routes", () => {
     expect(get.status).toBe(200);
     expect(get.headers.get("content-type")).toBe("image/png");
     expect(new Uint8Array(await get.arrayBuffer())).toEqual(
-      new Uint8Array(Buffer.from("png-bytes")),
+      new Uint8Array(PNG_BYTES),
     );
 
     const remove = await request(
@@ -308,7 +367,7 @@ describe("image cache routes", () => {
     const get = await request(`/api/boards/${board.id}/images/image-1/cache`);
     expect(get.status).toBe(200);
     expect(new Uint8Array(await get.arrayBuffer())).toEqual(
-      new Uint8Array(Buffer.from("png-bytes")),
+      new Uint8Array(PNG_BYTES),
     );
   });
 
@@ -324,6 +383,42 @@ describe("image cache routes", () => {
       },
     );
     expect(invalid.status).toBe(422);
+
+    const nonImage = await request(
+      `/api/boards/${boardId}/images/file-a/cache`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          dataURL: "data:text/plain;base64,aGVsbG8=",
+        }),
+      },
+    );
+    expect(nonImage.status).toBe(415);
+
+    const spoofed = await request(
+      `/api/boards/${boardId}/images/file-a/cache`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          dataURL: `data:image/png;base64,${Buffer.from("not an image").toString("base64")}`,
+        }),
+      },
+    );
+    expect(spoofed.status).toBe(422);
+
+    const svg = await request(
+      `/api/boards/${boardId}/images/file-a/cache`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          dataURL: "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
+        }),
+      },
+    );
+    expect(svg.status).toBe(415);
 
     const unknownBoard = await request(
       `/api/boards/nope/images/file-a/cache`,
@@ -408,7 +503,7 @@ describe("task attachment routes", () => {
 
   it("attaches an embedded data URL in the free workspace", async () => {
     const { taskId } = await makeTask();
-    const dataURL = `data:image/png;base64,${Buffer.from("free-bytes").toString("base64")}`;
+    const dataURL = pngDataUrl();
 
     const attach = await request(`/api/tasks/${taskId}/images`, {
       method: "POST",
@@ -430,7 +525,7 @@ describe("task attachment routes", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         imageId: "image-1",
-        dataURL: "data:image/png;base64,AAAA",
+        dataURL: pngDataUrl(),
       }),
     });
     expect(both.status).toBe(422);
@@ -441,5 +536,22 @@ describe("task attachment routes", () => {
       body: JSON.stringify({}),
     });
     expect(none.status).toBe(422);
+  });
+
+  it("rejects non-image task attachment data URLs", async () => {
+    const { taskId } = await makeTask();
+
+    for (const [dataURL, status] of [
+      ["data:text/plain;base64,aGVsbG8=", 422],
+      ["data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=", 422],
+      [pngDataUrl(Buffer.from("not an image")), 422],
+    ] as const) {
+      const response = await request(`/api/tasks/${taskId}/images`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dataURL }),
+      });
+      expect(response.status).toBe(status);
+    }
   });
 });

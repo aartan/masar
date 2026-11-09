@@ -10,8 +10,12 @@ import {
   MAX_CACHED_IMAGE_BYTES,
   putCachedImage,
 } from "@/lib/server/image-cache";
-import { decodeDataUrl } from "@/lib/server/image-data";
+import {
+  decodeVerifiedImageDataUrl,
+  verifyImageBytes,
+} from "@/lib/server/image-data";
 import { imageStorageClientFromEnv } from "@/lib/server/images";
+import { MAX_IMAGE_UPLOAD_BYTES } from "@/lib/image-file";
 import { requireImageBoard } from "@/lib/server/whiteboards";
 import { imageCachePutSchema, imageUploadSchema } from "@/lib/validation";
 
@@ -54,14 +58,21 @@ imageRoutes.post("/images", async (c) => {
     if (!(file instanceof File)) {
       throw new ApiError('Attach the image as the "file" field.', 422);
     }
+    if (file.size === 0) {
+      throw new ApiError("The uploaded file is empty.", 422);
+    }
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      throw new ApiError("This image is too large to upload.", 413);
+    }
     const input = imageUploadSchema.parse({
       kind: form.get("kind") ?? undefined,
     });
     const bytes = new Uint8Array(await file.arrayBuffer());
+    const verified = verifyImageBytes(bytes, file.type);
 
     const image = await client.upload({
-      bytes,
-      contentType: file.type,
+      bytes: verified.bytes,
+      contentType: verified.contentType,
       filename: file.name,
       kind: input.kind,
     });
@@ -122,10 +133,7 @@ imageRoutes.put("/boards/:boardId/images/:fileId/cache", async (c) => {
     await requireImageBoard(getDb(), boardId, user.id);
 
     const input = await parseJsonBody(c.req.raw, imageCachePutSchema);
-    const decoded = decodeDataUrl(input.dataURL);
-    if (!decoded) {
-      throw new ApiError("The file is not a valid image data URL.", 422);
-    }
+    const decoded = decodeVerifiedImageDataUrl(input.dataURL);
     if (decoded.bytes.byteLength > MAX_CACHED_IMAGE_BYTES) {
       throw new ApiError("This image is too large to cache locally.", 413);
     }

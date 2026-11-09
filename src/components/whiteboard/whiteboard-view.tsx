@@ -5,6 +5,7 @@ import {
   PenLine,
   Settings2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Excalidraw } from "@excalidraw/excalidraw";
 import type {
   AppState,
@@ -26,6 +27,11 @@ import { SaveIndicator } from "@/components/shared/save-indicator";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, apiBlob, errorMessage } from "@/lib/client-api";
+import {
+  IMAGE_ACCEPT,
+  isSupportedImageMime,
+  SUPPORTED_IMAGE_FORMATS_LABEL,
+} from "@/lib/image-file";
 import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardSummary, WhiteboardScene } from "@/lib/types";
@@ -133,6 +139,14 @@ function parseScene(raw: string): ExcalidrawInitialDataState | null {
   }
 }
 
+function unsupportedUploadFiles(files: File[]): File[] {
+  return files.filter((file) => {
+    const declared = file.type.trim().toLowerCase();
+    if (!declared || declared === "application/octet-stream") return false;
+    return !isSupportedImageMime(declared);
+  });
+}
+
 export function WhiteboardView({ board: initialBoard }: { board: BoardSummary }) {
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
@@ -157,6 +171,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
   }, [initialBoard]);
 
   const apiRef = React.useRef<ExcalidrawImperativeAPI | null>(null);
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const applyingRemoteRef = React.useRef(false);
   /** True while the component is mounted (guards background image fills). */
@@ -343,6 +358,94 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
       mountedRef.current = false;
     };
   }, []);
+
+  /**
+   * Excalidraw owns its file input, paste handler, and drop handler. Block
+   * unsupported files in the capture phase so they never reach the canvas.
+   * The save endpoints validate again, but this gives immediate feedback.
+   */
+  React.useEffect(() => {
+    if (readOnly) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const within = (target: EventTarget | null): boolean =>
+      target instanceof Node && container.contains(target);
+
+    const reject = (files: File[]): boolean => {
+      const invalid = unsupportedUploadFiles(files);
+      if (invalid.length === 0) return false;
+
+      const names = invalid.map((file) => file.name).join(", ");
+      toast.error("Only image files can be added to whiteboards", {
+        description: `${names}: choose ${SUPPORTED_IMAGE_FORMATS_LABEL} images.`,
+      });
+      return true;
+    };
+
+    const handleDrop = (event: DragEvent) => {
+      if (!within(event.target)) return;
+      const files = Array.from(event.dataTransfer?.files ?? []);
+      if (!reject(files)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+
+    const handlePaste = (event: ClipboardEvent) => {
+      const target = event.target;
+      const active = document.activeElement;
+      if (!within(target) && !(active instanceof Node && container.contains(active))) {
+        return;
+      }
+      const files = Array.from(event.clipboardData?.items ?? [])
+        .filter((item) => item.kind === "file")
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => Boolean(file));
+      if (!reject(files)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+
+    const handleChange = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement) || target.type !== "file") {
+        return;
+      }
+      if (!container.contains(target)) return;
+      const files = Array.from(target.files ?? []);
+      if (!reject(files)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      target.value = "";
+    };
+
+    document.addEventListener("drop", handleDrop, true);
+    document.addEventListener("paste", handlePaste, true);
+    document.addEventListener("change", handleChange, true);
+
+    const applyAccept = () => {
+      container
+        .querySelectorAll<HTMLInputElement>('input[type="file"]')
+        .forEach((input) => {
+          if (input.accept !== IMAGE_ACCEPT) input.accept = IMAGE_ACCEPT;
+        });
+    };
+    applyAccept();
+    const observer = new MutationObserver(applyAccept);
+    observer.observe(container, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["accept", "type"],
+    });
+
+    return () => {
+      document.removeEventListener("drop", handleDrop, true);
+      document.removeEventListener("paste", handlePaste, true);
+      document.removeEventListener("change", handleChange, true);
+      observer.disconnect();
+    };
+  }, [readOnly]);
 
   const refreshFromSync = React.useCallback(async () => {
     // Never replace a canvas with pending or in-flight local edits.
@@ -561,6 +664,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         </div>
       </div>
       <div
+        ref={containerRef}
         className="masar-whiteboard min-h-0 flex-1"
         onKeyDownCapture={(event) => {
           // The help button is hidden; also swallow its "?" shortcut so the

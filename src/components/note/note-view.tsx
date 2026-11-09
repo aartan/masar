@@ -1,9 +1,21 @@
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, FileText, Settings2 } from "lucide-react";
-import { BlockNoteEditor, type PartialBlock } from "@blocknote/core";
+import { toast } from "sonner";
+import {
+  BlockNoteEditor,
+  filterSuggestionItems,
+  type PartialBlock,
+} from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/mantine";
-import { BlockNoteViewEditor, FormattingToolbar } from "@blocknote/react";
+import {
+  BlockNoteViewEditor,
+  FormattingToolbar,
+  getDefaultReactSlashMenuItems,
+  SuggestionMenuController,
+  blockTypeSelectItems as getBlockTypeSelectItems,
+  type DefaultReactSuggestionItem,
+} from "@blocknote/react";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import "./note-theme.css";
@@ -16,6 +28,12 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { SaveIndicator } from "@/components/shared/save-indicator";
 import { Button } from "@/components/ui/button";
 import { api, errorMessage } from "@/lib/client-api";
+import {
+  isImageStorageUnavailable,
+  uploadImageFile,
+  validateImageFile,
+} from "@/lib/client-image";
+import { IMAGE_ACCEPT } from "@/lib/image-file";
 import { blobToDataUrl } from "@/lib/whiteboard-image-hydration";
 import {
   apiNoteImageCacheReader,
@@ -36,6 +54,22 @@ import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardSummary, NoteDocument } from "@/lib/types";
 
 const SAVE_DEBOUNCE_MS = 1_200;
+
+/** Note blocks that upload a file which is not necessarily an image. */
+const NON_IMAGE_UPLOAD_BLOCKS = new Set(["audio", "file", "video"]);
+const NON_IMAGE_UPLOAD_KEYS = new Set(["audio", "file", "video"]);
+const NON_IMAGE_UPLOAD_TITLES = new Set(["audio", "file", "video"]);
+
+function isNonImageUploadItem(item: DefaultReactSuggestionItem): boolean {
+  // The runtime slash-menu item carries a `key`, although the public React
+  // type omits it. Fall back to the title so the filter keeps working if the
+  // type changes.
+  const key = (item as DefaultReactSuggestionItem & { key?: string }).key;
+  return (
+    (key ? NON_IMAGE_UPLOAD_KEYS.has(key) : false) ||
+    NON_IMAGE_UPLOAD_TITLES.has(item.title.toLowerCase())
+  );
+}
 
 function parseBlocks(raw: string): PartialBlock[] {
   try {
@@ -63,25 +97,23 @@ async function uploadNoteImage(
   boardId: string,
   file: File,
 ): Promise<string> {
-  const form = new FormData();
-  form.append("file", file);
-  form.append("kind", "note");
-  try {
-    const response = await fetch("/api/images", {
-      method: "POST",
-      body: form,
-      cache: "no-store",
+  const validation = await validateImageFile(file);
+  if (!validation.ok) {
+    toast.error("Only image files can be added to notes", {
+      description: `${file.name}: ${validation.message}`,
     });
-    if (!response.ok) throw new Error(`Image upload failed (${response.status}).`);
-    const payload = (await response.json()) as { image?: { id?: string } };
-    const imageId = payload.image?.id;
-    if (!imageId) throw new Error("Image upload returned no id.");
+    throw new Error(validation.message);
+  }
+  const validatedFile = validation.file;
+
+  try {
+    const { imageId } = await uploadImageFile(validatedFile, "note");
 
     // Retain the bytes locally, keyed by the image id, so the note can still
     // render this image when the remote copy is unreachable. Best-effort: the
     // URL alone is already durable once R2 accepted the upload.
     try {
-      const dataURL = await blobToDataUrl(file);
+      const dataURL = await blobToDataUrl(validatedFile);
       await api(
         `/api/boards/${boardId}/images/${encodeURIComponent(imageId)}/cache`,
         {
@@ -94,10 +126,16 @@ async function uploadNoteImage(
     }
 
     return `/api/images/${encodeURIComponent(imageId)}`;
-  } catch {
+  } catch (error) {
+    if (!isImageStorageUnavailable(error)) {
+      toast.error("Could not add image", {
+        description: errorMessage(error),
+      });
+      throw error;
+    }
     // Free workspace (or unavailable storage): embed the bytes instead of
     // losing the image. BlockNote renders data URLs natively.
-    return blobToDataUrl(file);
+    return blobToDataUrl(validatedFile);
   }
 }
 
@@ -125,6 +163,7 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
 
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const applyingRemoteRef = React.useRef(false);
+  const pageRef = React.useRef<HTMLDivElement | null>(null);
   /** True while the component is mounted (guards async loads). */
   const mountedRef = React.useRef(true);
   /** Discards responses from sync refreshes superseded by a newer one. */
@@ -163,17 +202,46 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
   }
 
   /** Stable upload handler for the BlockNote editor instance. */
-  const uploadFileRef = React.useRef<(file: File) => Promise<string>>(
-    async () => "",
+  const editorRef = React.useRef<BlockNoteEditor | null>(null);
+  const uploadFileRef = React.useRef<
+    (file: File, blockId?: string) => Promise<string>
+  >(async () => "");
+  uploadFileRef.current = async (file: File, blockId?: string) => {
+    try {
+      return await uploadNoteImage(boardIdRef.current, file);
+    } catch (error) {
+      // BlockNote inserts a file block before invoking the upload callback.
+      // Remove it when validation or storage rejects the file so the note is
+      // not left with an empty, unusable block.
+      if (blockId) {
+        window.setTimeout(() => {
+          const instance = editorRef.current;
+          if (instance?.getBlock(blockId)) instance.removeBlocks([blockId]);
+        }, 0);
+      }
+      throw error;
+    }
+  };
+
+  const getSlashMenuItems = React.useCallback(
+    async (query: string) => {
+      if (!editor) return [];
+      return filterSuggestionItems(
+        getDefaultReactSlashMenuItems(editor).filter(
+          (item) => !isNonImageUploadItem(item),
+        ),
+        query,
+      );
+    },
+    [editor],
   );
-  uploadFileRef.current = (file: File) =>
-    uploadNoteImage(boardIdRef.current, file);
 
   // Load the persisted document once, then create the editor.
   React.useEffect(() => {
     let active = true;
     setLoadError(null);
     setEditor(null);
+    editorRef.current = null;
     void api<{ document: NoteDocument }>(`/api/boards/${board.id}/document`)
       .then(async (result) => {
         if (!active) return;
@@ -197,6 +265,7 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
               : undefined,
           uploadFile: uploadFileRef.current,
         });
+        editorRef.current = instance;
         setEditor(instance);
         // Continue the interrupted save so the pending document reaches the
         // database.
@@ -219,6 +288,32 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
     return () => {
       mountedRef.current = false;
     };
+  }, []);
+
+  /**
+   * BlockNote's file block uses a wildcard in its hidden picker. The upload
+   * callback rejects non-images, but restricting the picker as well gives
+   * immediate feedback and keeps unsupported files out of the dialog.
+   */
+  React.useEffect(() => {
+    const container = pageRef.current;
+    if (!container) return;
+    const applyAccept = () => {
+      container
+        .querySelectorAll<HTMLInputElement>('input[type="file"]')
+        .forEach((input) => {
+          if (input.accept !== IMAGE_ACCEPT) input.accept = IMAGE_ACCEPT;
+        });
+    };
+    applyAccept();
+    const observer = new MutationObserver(applyAccept);
+    observer.observe(container, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["accept", "type"],
+    });
+    return () => observer.disconnect();
   }, []);
 
   const refreshFromSync = React.useCallback(async () => {
@@ -370,7 +465,7 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
 
   return (
     <>
-      <PageSurface className="masar-note flex h-full flex-col">
+      <PageSurface ref={pageRef} className="masar-note flex h-full flex-col">
         <div className="flex items-center gap-3 border-b border-border/60 bg-background/65 px-4 py-3 sm:px-6">
           <FileText className="size-4 text-muted-foreground" />
           <h1 className="truncate font-display text-[15px] font-semibold">
@@ -420,15 +515,28 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
             editable={!readOnly}
             onChange={handleChange}
             formattingToolbar={false}
+            slashMenu={false}
             renderEditor={false}
             className="flex min-h-0 flex-1 flex-col"
           >
             {!readOnly && (
-              <div className="masar-note-toolbar shrink-0 border-b border-border/60 bg-background/65">
-                <div className="mx-auto flex w-full max-w-[760px] items-center px-3 py-1.5 sm:px-5">
-                  <FormattingToolbar />
+              <>
+                <SuggestionMenuController
+                  triggerCharacter="/"
+                  getItems={getSlashMenuItems}
+                />
+                <div className="masar-note-toolbar shrink-0 border-b border-border/60 bg-background/65">
+                  <div className="mx-auto flex w-full max-w-[760px] items-center px-3 py-1.5 sm:px-5">
+                    <FormattingToolbar
+                      blockTypeSelectItems={getBlockTypeSelectItems(
+                        editor,
+                      ).filter(
+                        (item) => !NON_IMAGE_UPLOAD_BLOCKS.has(item.type),
+                      )}
+                    />
+                  </div>
                 </div>
-              </div>
+              </>
             )}
 
             <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">

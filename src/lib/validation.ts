@@ -8,6 +8,7 @@ import {
   PRIORITIES,
   TASK_SORTS,
 } from "@/lib/constants";
+import { isSupportedImageMime } from "@/lib/image-file";
 
 const idSchema = z.string().trim().min(1, "Invalid id").max(80);
 const nameSchema = (max: number, label: string) =>
@@ -158,6 +159,14 @@ export const reorderTasksSchema = z.object({
     .max(50),
 });
 
+function isSupportedImageDataUrl(value: string): boolean {
+  if (!value.startsWith("data:")) return false;
+  const comma = value.indexOf(",");
+  if (comma < 5) return false;
+  const metadata = value.slice(5, comma);
+  return isSupportedImageMime(metadata.split(";", 1)[0]);
+}
+
 /**
  * Add an image to a task. Premium uploads send the image id returned by
  * `POST /api/images`; the free/offline fallback sends the image as a data URL.
@@ -166,7 +175,15 @@ export const reorderTasksSchema = z.object({
 export const taskImageCreateSchema = z
   .object({
     imageId: z.string().trim().min(1).max(120).optional(),
-    dataURL: z.string().trim().min(5).max(3 * 1024 * 1024).optional(),
+    dataURL: z
+      .string()
+      .trim()
+      .min(5)
+      .max(3 * 1024 * 1024)
+      .refine((value) => isSupportedImageDataUrl(value), {
+        message: "Use a PNG, JPEG, GIF, WebP or AVIF image.",
+      })
+      .optional(),
     name: z.string().trim().max(255).nullish(),
   })
   .refine((value) => Boolean(value.imageId) !== Boolean(value.dataURL), {

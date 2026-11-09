@@ -32,6 +32,7 @@ import {
   taskImageUrlId,
 } from "@/lib/task-image";
 import { createTestDatabase, type TestDatabase } from "./helpers/test-db";
+import { pngDataUrl } from "./helpers/image-fixtures";
 
 let test: TestDatabase;
 
@@ -89,13 +90,13 @@ describe("task image attachments", () => {
 
     const first = await addTaskImage(
       task.id,
-      { dataURL: dataUrl(new Uint8Array([1, 2, 3])), name: "  before.png  " },
+      { dataURL: pngDataUrl(), name: "  before.png  " },
       LOCAL_USER_ID,
       test.db,
     );
     const second = await addTaskImage(
       task.id,
-      { dataURL: dataUrl(new Uint8Array([4, 5])), name: null },
+      { dataURL: pngDataUrl(), name: null },
       LOCAL_USER_ID,
       test.db,
     );
@@ -133,6 +134,24 @@ describe("task image attachments", () => {
         LOCAL_USER_ID,
         test.db,
       ),
+    ).rejects.toMatchObject({ status: 415 });
+
+    await expect(
+      addTaskImage(
+        task.id,
+        { dataURL: "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=" },
+        LOCAL_USER_ID,
+        test.db,
+      ),
+    ).rejects.toMatchObject({ status: 415 });
+
+    await expect(
+      addTaskImage(
+        task.id,
+        { dataURL: dataUrl(Buffer.from("not an image")) },
+        LOCAL_USER_ID,
+        test.db,
+      ),
     ).rejects.toMatchObject({ status: 422 });
 
     await expect(
@@ -163,7 +182,7 @@ describe("task image attachments", () => {
     await expect(
       addTaskImage(
         task.id,
-        { dataURL: dataUrl(new Uint8Array([1])) },
+        { dataURL: pngDataUrl() },
         LOCAL_USER_ID,
         test.db,
       ),

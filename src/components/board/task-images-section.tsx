@@ -19,11 +19,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { api, errorMessage } from "@/lib/client-api";
+import { api, ClientApiError, errorMessage } from "@/lib/client-api";
+import {
+  isImageStorageUnavailable,
+  uploadImageFile,
+  validateImageFile,
+} from "@/lib/client-image";
+import { IMAGE_ACCEPT } from "@/lib/image-file";
 import {
   MAX_EMBEDDED_TASK_IMAGE_BYTES,
   MAX_TASK_IMAGES,
-  TASK_IMAGE_ACCEPT,
   taskImageCacheUrl,
   taskImageThumbUrl,
   taskImageUrl,
@@ -114,25 +119,14 @@ function uploadTaskImage(
   file: File,
 ): Promise<{ image: TaskImage; embedded: boolean }> {
   return (async () => {
+    const validation = await validateImageFile(file);
+    if (!validation.ok) throw new Error(validation.message);
+    const validatedFile = validation.file;
+
     // Premium path: upload the bytes to R2 through the shared proxy, then
     // persist only the image id on the task.
     try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("kind", "task");
-      const response = await fetch("/api/images", {
-        method: "POST",
-        body: form,
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        throw new Error(`Image upload failed (${response.status}).`);
-      }
-      const payload = (await response.json()) as {
-        image?: { id?: string };
-      };
-      const imageId = payload.image?.id;
-      if (!imageId) throw new Error("Image upload returned no id.");
+      const { imageId } = await uploadImageFile(validatedFile, "task");
 
       let created: TaskImage;
       try {
@@ -140,7 +134,7 @@ function uploadTaskImage(
           `/api/tasks/${taskId}/images`,
           {
             method: "POST",
-            body: JSON.stringify({ imageId, name: file.name }),
+            body: JSON.stringify({ imageId, name: validatedFile.name }),
           },
         );
         created = result.image;
@@ -161,7 +155,7 @@ function uploadTaskImage(
       // Retain a local copy so the attachment still renders offline. The
       // remote copy already exists, so a cache failure is not fatal.
       try {
-        const dataURL = await blobToDataUrl(file);
+        const dataURL = await blobToDataUrl(validatedFile);
         await api(
           `/api/boards/${boardId}/images/${encodeURIComponent(imageId)}/cache`,
           {
@@ -175,24 +169,27 @@ function uploadTaskImage(
 
       return { image: created, embedded: false };
     } catch (error) {
-      if (file.size > MAX_EMBEDDED_TASK_IMAGE_BYTES) {
+      const canEmbed =
+        isImageStorageUnavailable(error) ||
+        (error instanceof ClientApiError &&
+          error.status === 413 &&
+          validatedFile.size <= MAX_EMBEDDED_TASK_IMAGE_BYTES);
+      if (!canEmbed) throw error;
+      if (validatedFile.size > MAX_EMBEDDED_TASK_IMAGE_BYTES) {
         throw new Error(
           "Image storage is unavailable and this file is too large to attach locally.",
         );
       }
-      if (!file.type.startsWith("image/")) {
-        throw new Error("Only image files can be attached.");
-      }
 
       // Free workspace (or unavailable storage): embed the image as a data
       // URL, the same fallback Notes uses.
-      const dataURL = await blobToDataUrl(file);
+      const dataURL = await blobToDataUrl(validatedFile);
       try {
         const result = await api<{ image: TaskImage }>(
           `/api/tasks/${taskId}/images`,
           {
             method: "POST",
-            body: JSON.stringify({ dataURL, name: file.name }),
+            body: JSON.stringify({ dataURL, name: validatedFile.name }),
           },
         );
         return { image: result.image, embedded: true };
@@ -243,9 +240,10 @@ export function TaskImagesSection({
     }
 
     for (const file of accepted) {
-      if (!file.type.startsWith("image/")) {
+      const validation = await validateImageFile(file);
+      if (!validation.ok) {
         toast.error("Only image files can be attached", {
-          description: file.name,
+          description: `${file.name}: ${validation.message}`,
         });
         continue;
       }
@@ -254,7 +252,7 @@ export function TaskImagesSection({
         const { image, embedded } = await uploadTaskImage(
           taskId,
           boardId,
-          file,
+          validation.file,
         );
         const next = [...imagesRef.current, image];
         imagesRef.current = next;
@@ -340,7 +338,7 @@ export function TaskImagesSection({
             <input
               ref={inputRef}
               type="file"
-              accept={TASK_IMAGE_ACCEPT}
+              accept={IMAGE_ACCEPT}
               multiple
               className="hidden"
               onChange={(event) =>

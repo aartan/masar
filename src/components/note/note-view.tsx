@@ -413,19 +413,14 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
             )
           ) : (
             <div className="mx-auto w-full max-w-[760px] px-5 py-8 sm:px-8 sm:py-12">
-              {/* The note title sits above the editor, as part of the
-                  writing surface. */}
-              <h2 className="font-display text-2xl font-semibold tracking-tight">
-                {board.name}
-              </h2>
-              <div className="mt-6">
-                <BlockNoteView
-                  editor={editor}
-                  theme={resolvedTheme === "dark" ? "dark" : "light"}
-                  editable={!readOnly}
-                  onChange={handleChange}
-                />
-              </div>
+              {/* The space name is shown in the header bar above; the note
+                  itself starts blank so the user owns every word in it. */}
+              <BlockNoteView
+                editor={editor}
+                theme={resolvedTheme === "dark" ? "dark" : "light"}
+                editable={!readOnly}
+                onChange={handleChange}
+              />
             </div>
           )}
         </div>

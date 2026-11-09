@@ -271,8 +271,7 @@ function NoteSkeleton() {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[760px] px-5 py-8 sm:px-8 sm:py-12">
-          <Skeleton className="h-8 w-56 max-w-full" />
-          <div className="mt-8 space-y-4">
+          <div className="space-y-4">
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-11/12" />
             <Skeleton className="h-4 w-4/5" />

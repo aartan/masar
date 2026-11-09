@@ -33,12 +33,10 @@ test.describe("note workflows", () => {
       await expect(page).toHaveURL(/\/boards\/[0-9a-f-]+$/);
       boardId = page.url().split("/boards/")[1];
 
-      // The title is displayed above the editor.
+      // The title is displayed in the header bar above the editor; the note
+      // itself starts blank.
       await expect(
         page.getByRole("heading", { level: 1, name: noteName }),
-      ).toBeVisible();
-      await expect(
-        page.getByRole("heading", { level: 2, name: noteName }),
       ).toBeVisible();
 
       // Type into the BlockNote editor and let the debounced autosave land.

@@ -40,20 +40,81 @@
   --bn-border-radius-small: var(--radius-sm);
 }
 
-/* Links and inline code use the app's accent and muted tokens. */
+/* Links and inline code use the app's accent and muted tokens. Inline code is
+   scoped to `:not(pre) > code` so the chip styling never leaks into the
+   `<pre><code>` markup of a code block. */
 .masar-note .bn-editor a {
   color: var(--primary);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-.masar-note .bn-editor code,
-.masar-note .bn-editor .bn-inline-code {
+.masar-note .bn-editor :not(pre) > code {
+  color: var(--foreground);
   font-family: var(--font-mono);
-  font-size: 0.9em;
+  font-size: 0.875em;
   background-color: var(--muted);
   border-radius: 4px;
-  padding: 0.1em 0.3em;
+  padding: 0.12em 0.32em;
+}
+
+/*
+ * BlockNote ships a hard-coded dark code panel with white text. Use the app's
+ * muted/border/foreground tokens instead so code blocks adapt to both themes,
+ * and reset the inner code element from the inline-code chip styling above.
+ */
+.masar-note .bn-editor .bn-block-content[data-content-type="codeBlock"] {
+  color: var(--foreground);
+  background-color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.masar-note .bn-editor .bn-block-content[data-content-type="codeBlock"] > pre {
+  margin: 0;
+  padding: 1.15rem 1.35rem;
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.68;
+  background-color: transparent;
+  tab-size: 2;
+  scrollbar-width: thin;
+  scrollbar-color: var(--input) transparent;
+}
+
+.masar-note
+  .bn-editor
+  .bn-block-content[data-content-type="codeBlock"]
+  > pre
+  > code {
+  padding: 0;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  background: transparent;
+  border-radius: 0;
+}
+
+/* Keep BlockNote's language picker readable when a schema exposes one. */
+.masar-note
+  .bn-editor
+  .bn-block-content[data-content-type="codeBlock"]
+  > div
+  > select {
+  color: var(--muted-foreground);
+}
+
+.masar-note
+  .bn-editor
+  .bn-block-content[data-content-type="codeBlock"]
+  > div
+  > select
+  > option {
+  color: var(--popover-foreground);
+  background-color: var(--popover);
 }
 
 /* Blocks render on the page surface; keep their spacing writing-focused. */

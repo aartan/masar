@@ -26,6 +26,7 @@ import { useWorkspace } from "@/components/layout/workspace-provider";
 import { useTheme } from "@/components/theme-provider";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { SaveIndicator } from "@/components/shared/save-indicator";
+import { SpaceDescription } from "@/components/shared/space-description";
 import { Button } from "@/components/ui/button";
 import { api, errorMessage } from "@/lib/client-api";
 import {
@@ -467,16 +468,21 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
     <>
       <PageSurface ref={pageRef} className="masar-note flex h-full flex-col">
         <div className="flex items-center gap-3 border-b border-border/60 bg-background/65 px-4 py-3 sm:px-6">
-          <FileText className="size-4 text-muted-foreground" />
-          <h1 className="truncate font-display text-[15px] font-semibold">
-            {board.name}
-          </h1>
-          {readOnly && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-              Read-only (archived)
-            </span>
-          )}
-          <div className="ml-auto flex items-center gap-2">
+          <FileText className="size-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate font-display text-[15px] font-semibold">
+                {board.name}
+              </h1>
+              {readOnly && (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  Read-only (archived)
+                </span>
+              )}
+            </div>
+            <SpaceDescription description={board.description} />
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
             <SaveIndicator status={status} onRetry={retry} />
             {!readOnly && (
               <Button

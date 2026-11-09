@@ -5,6 +5,7 @@ export const E2E_ORIGIN = "http://127.0.0.1:3100";
 export interface ApiBoard {
   id: string;
   name: string;
+  description: string | null;
   projectId: string | null;
   type: "kanban" | "whiteboard" | "note";
 }
@@ -57,7 +58,11 @@ export async function deleteProject(
 export async function createBoard(
   request: APIRequestContext,
   name: string,
-  options: { projectId?: string; type?: "kanban" | "whiteboard" | "note" } = {},
+  options: {
+    projectId?: string;
+    type?: "kanban" | "whiteboard" | "note";
+    description?: string;
+  } = {},
 ): Promise<ApiBoard> {
   const response = await request.post("/api/boards", {
     data: { name, ...options },

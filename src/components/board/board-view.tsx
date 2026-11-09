@@ -46,6 +46,7 @@ import {
   PriorityBars,
 } from "@/components/shared/task-meta";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { SpaceDescription } from "@/components/shared/space-description";
 import { PageSurface } from "@/components/layout/page-surface";
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { Button } from "@/components/ui/button";
@@ -802,11 +803,7 @@ export function BoardView({
                   </span>
                 )}
               </div>
-              {board.description && (
-                <p className="mt-1 max-w-2xl truncate text-[12px] text-muted-foreground">
-                  {board.description}
-                </p>
-              )}
+              <SpaceDescription description={board.description} />
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10.5px] text-muted-foreground">
                 <span>
                   {tasks.length} {tasks.length === 1 ? "task" : "tasks"}

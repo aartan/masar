@@ -195,6 +195,7 @@ test("shows distinct icons for kanban and whiteboard boards and opens the whiteb
   const project = await createProject(page.request, uniqueName("Mixed project"));
   const kanbanName = uniqueName("Plan");
   const whiteboardName = uniqueName("Canvas");
+  const whiteboardDescription = uniqueName("Whiteboard description");
 
   try {
     const kanban = await createBoard(page.request, kanbanName, {
@@ -204,6 +205,7 @@ test("shows distinct icons for kanban and whiteboard boards and opens the whiteb
     const whiteboard = await createBoard(page.request, whiteboardName, {
       projectId: project.id,
       type: "whiteboard",
+      description: whiteboardDescription,
     });
 
     await page.goto("/");
@@ -222,6 +224,9 @@ test("shows distinct icons for kanban and whiteboard boards and opens the whiteb
     await whiteboardLink.click();
     await expect(page).toHaveURL(new RegExp(`/boards/${whiteboard.id}$`));
     await expect(page.locator(".excalidraw")).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByText(whiteboardDescription, { exact: true }),
+    ).toBeVisible();
 
     // Draw a rectangle and let the debounced autosave persist it.
     const canvas = page.locator(".excalidraw canvas.interactive").first();
@@ -251,6 +256,9 @@ test("shows distinct icons for kanban and whiteboard boards and opens the whiteb
 
     await page.reload({ waitUntil: "networkidle" });
     await expect(page.locator(".excalidraw")).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByText(whiteboardDescription, { exact: true }),
+    ).toBeVisible();
 
     const renamed = `${whiteboardName} renamed`;
     await page

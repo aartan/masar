@@ -156,6 +156,34 @@ describe("boards", () => {
     expect(list.map((item) => item.name)).toEqual(["Renamed", "Second"]);
   });
 
+  it("stores descriptions for every space type and clears empty ones", async () => {
+    const spaces = [
+      ["kanban", "Plan the launch"],
+      ["whiteboard", "Sketch the flow"],
+      ["note", "Capture the meeting"],
+    ] as const;
+
+    for (const [type, description] of spaces) {
+      const board = await createBoard(
+        { name: `${type} space`, type, description },
+        owner.id,
+        test.db,
+      );
+      expect(board.description).toBe(description);
+
+      const detail = await getBoardDetail(board.id, owner.id, test.db);
+      expect(detail.board.description).toBe(description);
+
+      const cleared = await updateBoard(
+        board.id,
+        { description: "   " },
+        owner.id,
+        test.db,
+      );
+      expect(cleared.description).toBeNull();
+    }
+  });
+
   it("reorders boards and rejects incomplete or duplicate orders", async () => {
     const first = await createBoard({ name: "First" }, owner.id, test.db);
     const second = await createBoard({ name: "Second" }, owner.id, test.db);

@@ -121,6 +121,26 @@ describe("task schemas", () => {
     ).toBe(false);
   });
 
+  it("accepts T-shirt-size complexity estimates and rejects unknown sizes", () => {
+    expect(
+      taskCreateSchema.parse({
+        columnId: "col-1",
+        title: "Ship",
+        complexity: "XL",
+      }).complexity,
+    ).toBe("XL");
+    expect(taskUpdateSchema.parse({ complexity: null })).toEqual({
+      complexity: null,
+    });
+    expect(
+      taskCreateSchema.safeParse({
+        columnId: "col-1",
+        title: "Ship",
+        complexity: "XXL",
+      }).success,
+    ).toBe(false);
+  });
+
   it("allows clearing nullable fields on update", () => {
     expect(
       taskUpdateSchema.parse({

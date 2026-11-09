@@ -28,6 +28,7 @@ function task(overrides: Partial<Task> & Pick<Task, "id">): Task {
     title: `Task ${overrides.id}`,
     description: null,
     priority: "none",
+    complexity: null,
     dueDate: null,
     position: 0,
     completedAt: null,

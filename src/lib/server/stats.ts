@@ -2,7 +2,12 @@ import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 
 import { getDb, type AppDatabase } from "@/db";
 import { boards, columns, notes, tasks, whiteboards } from "@/db/schema";
-import type { Priority } from "@/lib/constants";
+import {
+  TASK_COMPLEXITIES,
+  TASK_COMPLEXITY_META,
+  type Priority,
+  type TaskComplexity,
+} from "@/lib/constants";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import type {
   ActivityItem,
@@ -105,6 +110,27 @@ export async function getDashboardData(
     urgent: 0,
   };
   for (const task of allTasks) priorityCounts[task.priority] += 1;
+
+  const sizeCounts = Object.fromEntries(
+    TASK_COMPLEXITIES.map((complexity) => [complexity, 0]),
+  ) as Record<TaskComplexity, number>;
+  const effortPointsBySize = Object.fromEntries(
+    TASK_COMPLEXITIES.map((complexity) => [complexity, 0]),
+  ) as Record<TaskComplexity, number>;
+  let totalEffort = 0;
+  let unestimatedTasks = 0;
+  for (const task of allTasks) {
+    const complexity = task.complexity;
+    const meta = complexity ? TASK_COMPLEXITY_META[complexity] : null;
+    if (!complexity || !meta) {
+      unestimatedTasks += 1;
+      continue;
+    }
+    const effortPoints = meta.effortPoints;
+    sizeCounts[complexity] += 1;
+    effortPointsBySize[complexity] += effortPoints;
+    totalEffort += effortPoints;
+  }
 
   const boardStats: BoardStats[] = boardSummaries.map((board) => {
     const boardTasks = allTasks.filter((task) => task.boardId === board.id);
@@ -225,8 +251,12 @@ export async function getDashboardData(
         (board) => board.type === "whiteboard",
       ).length,
       notes: boardSummaries.filter((board) => board.type === "note").length,
+      totalEffort,
+      unestimatedTasks,
     },
     priorityCounts,
+    sizeCounts,
+    effortPointsBySize,
     boardStats,
     projects: projectSummaries,
     activity: activity.slice(0, 10),

@@ -76,6 +76,7 @@ export async function addDemoWorkspace(
       description:
         "Write down the outcome you want, then break it into a few tasks. Drag cards between columns as work moves forward.",
       priority: "medium",
+      complexity: "M",
       labelIds: [research.id],
     },
     ownerId,
@@ -90,6 +91,7 @@ export async function addDemoWorkspace(
       description:
         "Use the filter bar to focus on priority, labels, due dates, or the current column. Switch between Kanban and list views from the toolbar.",
       priority: "high",
+      complexity: "S",
       labelIds: [design.id, engineering.id],
     },
     ownerId,
@@ -104,6 +106,7 @@ export async function addDemoWorkspace(
       description:
         "Press ? for the shortcut guide, or Cmd/Ctrl+K to search every space and task.",
       priority: "urgent",
+      complexity: "L",
       labelIds: [design.id],
     },
     ownerId,
@@ -118,6 +121,7 @@ export async function addDemoWorkspace(
       description:
         "Your account is ready. Every space you create belongs only to you.",
       priority: "low",
+      complexity: "XS",
     },
     ownerId,
     database,

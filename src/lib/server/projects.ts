@@ -204,6 +204,7 @@ export async function getProjectDetail(
       open: dashboard.totals.open,
       overdue: dashboard.totals.overdue,
       dueSoon: dashboard.totals.dueSoon,
+      totalEffort: dashboard.totals.totalEffort,
     },
     upcoming: dashboard.upcoming,
     activity: dashboard.activity,

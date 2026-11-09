@@ -1,4 +1,9 @@
-import type { BoardType, LabelColor, Priority } from "@/lib/constants";
+import type {
+  BoardType,
+  LabelColor,
+  Priority,
+  TaskComplexity,
+} from "@/lib/constants";
 
 export interface ProjectSummary {
   id: string;
@@ -48,6 +53,7 @@ export interface Task {
   title: string;
   description: string | null;
   priority: Priority;
+  complexity: TaskComplexity | null;
   dueDate: string | null;
   position: number;
   completedAt: string | null;
@@ -180,6 +186,7 @@ export interface ProjectDetail {
     open: number;
     overdue: number;
     dueSoon: number;
+    totalEffort: number;
   };
   upcoming: DashboardTask[];
   activity: ActivityItem[];
@@ -231,8 +238,12 @@ export interface DashboardData {
     projects: number;
     whiteboards: number;
     notes: number;
+    totalEffort: number;
+    unestimatedTasks: number;
   };
   priorityCounts: Record<Priority, number>;
+  sizeCounts: Record<TaskComplexity, number>;
+  effortPointsBySize: Record<TaskComplexity, number>;
   boardStats: BoardStats[];
   projects: ProjectSummary[];
   activity: ActivityItem[];

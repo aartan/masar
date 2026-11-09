@@ -6,6 +6,7 @@ import {
   IMAGE_KINDS,
   LABEL_COLORS,
   PRIORITIES,
+  TASK_COMPLEXITIES,
   TASK_SORTS,
 } from "@/lib/constants";
 import { isSupportedImageMime } from "@/lib/image-file";
@@ -130,6 +131,7 @@ export const taskCreateSchema = z.object({
   title: nameSchema(200, "Title"),
   description: z.string().trim().max(5000).nullish(),
   priority: z.enum(PRIORITIES).optional(),
+  complexity: z.enum(TASK_COMPLEXITIES).nullish(),
   dueDate: dateOnlySchema.nullish(),
   labelIds: z.array(idSchema).max(20).optional(),
 });
@@ -139,6 +141,7 @@ export const taskUpdateSchema = z
     title: nameSchema(200, "Title").optional(),
     description: z.string().trim().max(5000).nullable().optional(),
     priority: z.enum(PRIORITIES).optional(),
+    complexity: z.enum(TASK_COMPLEXITIES).nullable().optional(),
     dueDate: dateOnlySchema.nullable().optional(),
     labelIds: z.array(idSchema).max(20).optional(),
     columnId: idSchema.optional(),

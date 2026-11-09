@@ -30,6 +30,7 @@ function conflict(overrides: Partial<SyncConflictView> = {}): SyncConflictView {
       title: "Write release notes",
       description: "Local description",
       priority: "high",
+      complexity: "XL",
       due_date: "2026-06-12",
       completed_at: 1_780_000_000_000,
       position: 2,
@@ -44,6 +45,7 @@ function conflict(overrides: Partial<SyncConflictView> = {}): SyncConflictView {
       title: "Write release notes",
       description: "Cloud description",
       priority: "low",
+      complexity: "S",
       due_date: "2026-06-10",
       completed_at: null,
       position: 1,
@@ -75,6 +77,11 @@ describe("conflict diff", () => {
       label: "Priority",
       local: "High",
       cloud: "Low",
+    });
+    expect(changed.get("complexity")).toMatchObject({
+      label: "Size",
+      local: "Extra large",
+      cloud: "Small",
     });
     expect(changed.get("due_date")).toMatchObject({
       local: "Jun 12, 2026",

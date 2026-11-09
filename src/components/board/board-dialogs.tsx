@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PrioritySelect } from "@/components/shared/priority-select";
+import { SizeSelect } from "@/components/shared/size-select";
 import { LabelChip } from "@/components/shared/task-meta";
 import { api, errorMessage } from "@/lib/client-api";
 import type {
@@ -35,7 +36,7 @@ import type {
   Label as BoardLabel,
   Task,
 } from "@/lib/types";
-import type { Priority } from "@/lib/constants";
+import type { Priority, TaskComplexity } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export function NewTaskDialog({
@@ -92,6 +93,7 @@ function NewTaskForm({
     defaultColumnId ?? columns[0]?.id ?? "",
   );
   const [priority, setPriority] = React.useState<Priority>("none");
+  const [size, setSize] = React.useState<TaskComplexity | null>(null);
   const [dueDate, setDueDate] = React.useState("");
   const [labelIds, setLabelIds] = React.useState<string[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -118,6 +120,7 @@ function NewTaskForm({
             description: description.trim() || null,
             columnId,
             priority,
+            complexity: size,
             dueDate: dueDate || null,
             labelIds,
           }),
@@ -203,7 +206,16 @@ function NewTaskForm({
               className="h-9"
             />
           </div>
-          <div className="space-y-2 sm:col-span-2">
+          <div className="space-y-2">
+            <Label>Size</Label>
+            <SizeSelect
+              value={size}
+              onChange={setSize}
+              disabled={loading}
+              className="h-9"
+            />
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="new-task-due">Due date</Label>
             <Input
               id="new-task-due"

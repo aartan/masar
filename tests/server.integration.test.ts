@@ -269,6 +269,7 @@ describe("projects", () => {
       {
         columnId: detail.columns[0]!.id,
         title: "Write release notes",
+        complexity: "M",
         dueDate: addDaysIso(todayIso(), 2),
       },
       owner.id,
@@ -286,6 +287,7 @@ describe("projects", () => {
       boards: 2,
       tasks: 1,
       open: 1,
+      totalEffort: 3,
     });
     expect(projectDetail.upcoming.map((item) => item.id)).toContain(task.id);
     expect(projectDetail.activity.some((item) => item.title === task.title)).toBe(
@@ -664,6 +666,37 @@ describe("tasks", () => {
       "First",
       "Second",
     ]);
+  });
+
+  it("persists and clears size estimates and copies them when duplicating", async () => {
+    const { board, todo } = await makeBoard();
+
+    const task = await createTask(
+      board.id,
+      { columnId: todo.id, title: "Estimated task", complexity: "L" },
+      owner.id,
+      test.db,
+    );
+    expect(task.complexity).toBe("L");
+
+    const updated = await updateTask(
+      task.id,
+      { complexity: "XS" },
+      owner.id,
+      test.db,
+    );
+    expect(updated.complexity).toBe("XS");
+
+    const copy = await duplicateTask(task.id, owner.id, test.db);
+    expect(copy.complexity).toBe("XS");
+
+    const cleared = await updateTask(
+      task.id,
+      { complexity: null },
+      owner.id,
+      test.db,
+    );
+    expect(cleared.complexity).toBeNull();
   });
 
   it("marks tasks complete when created in a done column", async () => {
@@ -1088,24 +1121,26 @@ describe("board deletion and dashboard stats", () => {
     const yesterday = addDaysIso(today, -1);
     const tomorrow = addDaysIso(today, 1);
 
-    await createTask(
+    const overdueTask = await createTask(
       board.id,
       {
         columnId: todo.id,
         title: "Overdue",
         dueDate: yesterday,
         priority: "urgent",
+        complexity: "XS",
       },
       owner.id,
       test.db,
     );
-    await createTask(
+    const dueSoonTask = await createTask(
       board.id,
       {
         columnId: todo.id,
         title: "Due soon",
         dueDate: tomorrow,
         priority: "high",
+        complexity: "M",
       },
       owner.id,
       test.db,
@@ -1126,8 +1161,25 @@ describe("board deletion and dashboard stats", () => {
       dueSoon: 1,
       completedLast7Days: 1,
       boards: 1,
+      totalEffort: 4,
+      unestimatedTasks: 1,
     });
     expect(stats.priorityCounts).toMatchObject({ urgent: 1, high: 1, low: 1 });
+    expect(stats.sizeCounts).toMatchObject({ XS: 1, S: 0, M: 1, L: 0, XL: 0 });
+    expect(stats.effortPointsBySize).toMatchObject({ XS: 1, S: 0, M: 3, L: 0, XL: 0 });
+
+    // Updates and deletions are reflected on the next dashboard read.
+    await updateTask(dueSoonTask.id, { complexity: "XL" }, owner.id, test.db);
+    const afterUpdate = await getDashboardData(owner.id, test.db);
+    expect(afterUpdate.totals.totalEffort).toBe(9);
+    expect(afterUpdate.sizeCounts).toMatchObject({ XS: 1, XL: 1 });
+
+    await deleteTask(overdueTask.id, owner.id, test.db);
+    const afterDelete = await getDashboardData(owner.id, test.db);
+    expect(afterDelete.totals.totalEffort).toBe(8);
+    expect(afterDelete.totals.unestimatedTasks).toBe(1);
+    expect(afterDelete.sizeCounts).toMatchObject({ XS: 0, XL: 1 });
+
     expect(stats.boardStats[0]).toMatchObject({
       total: 3,
       open: 2,

@@ -1,6 +1,6 @@
 import { format, parseISO } from "date-fns";
 
-import { PRIORITY_META } from "@/lib/constants";
+import { PRIORITY_META, TASK_COMPLEXITY_META } from "@/lib/constants";
 import type { SyncConflictView } from "@/lib/types";
 
 export interface ConflictLookup {
@@ -63,6 +63,7 @@ const TASK_FIELDS: FieldDefinition[] = [
   { key: "description", label: "Description", kind: "longText" },
   { key: "column_id", label: "Column" },
   { key: "priority", label: "Priority" },
+  { key: "complexity", label: "Size" },
   { key: "due_date", label: "Due date", kind: "date" },
   { key: "completed_at", label: "Completed", kind: "timestamp" },
   { key: "assignee", label: "Assignee" },
@@ -191,6 +192,12 @@ function formatValue(
     return (
       PRIORITY_META[value as keyof typeof PRIORITY_META]?.label ??
       capitalize(value)
+    );
+  }
+  if (key === "complexity" && typeof value === "string") {
+    return (
+      TASK_COMPLEXITY_META[value as keyof typeof TASK_COMPLEXITY_META]?.label ??
+      value
     );
   }
   if (key === "color" && typeof value === "string") {

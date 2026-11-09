@@ -3,10 +3,18 @@ import { AlertTriangle, CalendarDays, CircleDashed } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Label, Task } from "@/lib/types";
 import { formatDueDate, todayIso } from "@/lib/dates";
-import { PRIORITY_META, type Priority } from "@/lib/constants";
+import {
+  PRIORITY_META,
+  TASK_COMPLEXITY_META,
+  type Priority,
+  type TaskComplexity,
+} from "@/lib/constants";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { initials } from "@/lib/utils";
-import { LABEL_COLOR_CLASS } from "@/components/shared/colors";
+import {
+  SIZE_BADGE_CLASS,
+  LABEL_COLOR_CLASS,
+} from "@/components/shared/colors";
 
 const AVATAR_STYLES = [
   "bg-[oklch(0.9_0.045_150)] text-[oklch(0.35_0.06_152)] dark:bg-[oklch(0.3_0.04_152)] dark:text-[oklch(0.85_0.07_152)]",
@@ -65,6 +73,33 @@ export function LabelChip({
     >
       {dot && <span className="label-dot size-1.5 shrink-0 rounded-full" />}
       <span className="truncate">{label.name}</span>
+    </span>
+  );
+}
+
+export function SizeBadge({
+  size,
+  className,
+}: {
+  size: TaskComplexity | null | undefined;
+  className?: string;
+}) {
+  if (!size) return null;
+  const meta = TASK_COMPLEXITY_META[size];
+  if (!meta) return null;
+  const effortLabel =
+    meta.effortPoints === 1 ? "Effort Point" : "Effort Points";
+  return (
+    <span
+      className={cn(
+        "inline-flex h-[18px] shrink-0 items-center rounded-md border px-1.5 text-[10px] font-semibold tracking-wide",
+        SIZE_BADGE_CLASS[size],
+        className,
+      )}
+      title={`${meta.label} · ${meta.effortPoints} ${effortLabel}`}
+      aria-label={`${meta.label}, ${meta.effortPoints} ${effortLabel}`}
+    >
+      {size}
     </span>
   );
 }

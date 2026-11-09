@@ -47,10 +47,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { LabelManagerPopover } from "@/components/shared/label-manager-popover";
 import { PrioritySelect } from "@/components/shared/priority-select";
-import {
-  AuthorAvatar,
-  LabelChip,
-} from "@/components/shared/task-meta";
+import { SizeSelect } from "@/components/shared/size-select";
+import { AuthorAvatar, LabelChip } from "@/components/shared/task-meta";
 import { api, errorMessage } from "@/lib/client-api";
 import { formatDateTime, formatRelative } from "@/lib/dates";
 import type { Priority } from "@/lib/constants";
@@ -787,7 +785,14 @@ export function TaskDetailSheet({
                       }
                     />
                   </MetaField>
-                  <MetaField label="Due date" className="sm:col-span-2">
+                  <MetaField label="Size">
+                    <SizeSelect
+                      value={detail.complexity}
+                      disabled={readOnly}
+                      onChange={(size) => void patchTask({ complexity: size })}
+                    />
+                  </MetaField>
+                  <MetaField label="Due date">
                     <div className="flex items-center gap-1">
                       <div className="relative flex-1">
                         <CalendarDays className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />

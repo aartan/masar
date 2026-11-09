@@ -16,7 +16,12 @@ import {
 import { format } from "date-fns";
 
 import { api } from "@/lib/client-api";
-import { PRIORITY_META, type Priority } from "@/lib/constants";
+import {
+  PRIORITY_META,
+  TASK_COMPLEXITIES,
+  TASK_COMPLEXITY_META,
+  type Priority,
+} from "@/lib/constants";
 import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import { completionPercent } from "@/lib/task-utils";
@@ -27,7 +32,12 @@ import { useWorkspace } from "@/components/layout/workspace-provider";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DueDateChip, PriorityBars } from "@/components/shared/task-meta";
+import {
+  SizeBadge,
+  DueDateChip,
+  PriorityBars,
+} from "@/components/shared/task-meta";
+import { SIZE_BAR_CLASS } from "@/components/shared/colors";
 import { EmptyState, PageSectionTitle } from "@/components/shared/empty-state";
 import { NewBoardButton } from "@/components/board/new-board-button";
 
@@ -213,6 +223,8 @@ function OverviewContent({ data }: { data: DashboardData }) {
                 delay={3}
               />
             </section>
+
+            <EffortBreakdownCard data={data} />
 
             {data.projects.length > 0 && (
               <section className="mt-5 animate-rise" style={{ animationDelay: "160ms" }}>
@@ -494,6 +506,102 @@ function OverviewContent({ data }: { data: DashboardData }) {
   );
 }
 
+function EffortBreakdownCard({ data }: { data: DashboardData }) {
+  const totalEffort = data.totals.totalEffort;
+  const estimatedTasks = TASK_COMPLEXITIES.reduce(
+    (sum, size) => sum + data.sizeCounts[size],
+    0,
+  );
+
+  return (
+    <section className="mt-5 animate-rise" style={{ animationDelay: "80ms" }}>
+      <Card>
+        <CardHeader className="pb-1">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <PageSectionTitle>Effort Breakdown</PageSectionTitle>
+              <p className="-mt-2 text-[12px] text-muted-foreground">
+                Effort Points across all tasks, including completed work.
+              </p>
+            </div>
+            <Badge variant="muted" className="shrink-0 tabular-nums">
+              {totalEffort}{" "}
+              {totalEffort === 1 ? "Effort Point" : "Effort Points"}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-6 pt-4 lg:grid-cols-[minmax(0,210px)_minmax(0,1fr)]">
+          <div>
+            <p className="font-display text-[34px] leading-none font-semibold tabular-nums">
+              {totalEffort}
+            </p>
+            <p className="mt-1.5 text-[11.5px] text-muted-foreground">
+              Total Effort
+            </p>
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              {estimatedTasks} estimated · {data.totals.unestimatedTasks}{" "}
+              unestimated
+            </p>
+          </div>
+
+          <div className="min-w-0">
+            <div
+              className="flex h-2.5 overflow-hidden rounded-full bg-muted"
+              role="img"
+              aria-label={
+                totalEffort > 0
+                  ? `Effort Breakdown: ${TASK_COMPLEXITIES.map(
+                      (size) =>
+                        `${size} ${data.effortPointsBySize[size]} ${data.effortPointsBySize[size] === 1 ? "Effort Point" : "Effort Points"}`,
+                    ).join(", ")}`
+                  : "No estimated tasks yet"
+              }
+            >
+              {totalEffort > 0 &&
+                TASK_COMPLEXITIES.map((size) => {
+                  const effortPoints = data.effortPointsBySize[size];
+                  if (effortPoints === 0) return null;
+                  return (
+                    <span
+                      key={size}
+                      className={cn("h-full", SIZE_BAR_CLASS[size])}
+                      style={{ width: `${(effortPoints / totalEffort) * 100}%` }}
+                      title={`${size} · ${effortPoints} ${effortPoints === 1 ? "Effort Point" : "Effort Points"}`}
+                    />
+                  );
+                })}
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {TASK_COMPLEXITIES.map((size) => {
+                const meta = TASK_COMPLEXITY_META[size];
+                const count = data.sizeCounts[size];
+                const effortPoints = data.effortPointsBySize[size];
+                return (
+                  <div
+                    key={size}
+                    className="rounded-lg border border-border/60 bg-background/45 px-3 py-2"
+                    title={`${meta.label}: ${count} ${count === 1 ? "task" : "tasks"}, ${effortPoints} ${effortPoints === 1 ? "Effort Point" : "Effort Points"}`}
+                  >
+                    <SizeBadge size={size} />
+                    <p className="mt-1.5 text-[11px] font-medium tabular-nums">
+                      {count} {count === 1 ? "task" : "tasks"}
+                    </p>
+                    <p className="mt-0.5 text-[10px] leading-tight tabular-nums text-muted-foreground">
+                      {effortPoints}{" "}
+                      {effortPoints === 1 ? "Effort Point" : "Effort Points"}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
 function OverviewSkeleton({
   projectCount,
   boardCount,
@@ -541,6 +649,8 @@ function OverviewSkeleton({
             ))}
           </section>
 
+          <EffortBreakdownSkeleton />
+
           {projectCount > 0 && (
             <section className="mt-5">
               <Skeleton className="h-3.5 w-24" />
@@ -582,6 +692,37 @@ function OverviewSkeleton({
         </>
       )}
     </div>
+  );
+}
+
+function EffortBreakdownSkeleton() {
+  return (
+    <section className="mt-5">
+      <div className="rounded-xl border border-border/70 bg-card p-5 shadow-soft">
+        <div className="flex items-end justify-between gap-3">
+          <div className="space-y-2">
+            <Skeleton className="h-3.5 w-24" />
+            <Skeleton className="h-2.5 w-64 max-w-full" />
+          </div>
+          <Skeleton className="h-5 w-14 rounded-full" />
+        </div>
+        <div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,210px)_minmax(0,1fr)]">
+          <div>
+            <Skeleton className="h-9 w-16" />
+            <Skeleton className="mt-2 h-2.5 w-28" />
+            <Skeleton className="mt-3 h-2.5 w-36" />
+          </div>
+          <div>
+            <Skeleton className="h-2.5 w-full rounded-full" />
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <Skeleton key={index} className="h-[62px] rounded-lg" />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

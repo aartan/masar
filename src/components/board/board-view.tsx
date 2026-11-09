@@ -41,6 +41,7 @@ import {
   NewTaskDialog,
 } from "@/components/board/board-dialogs";
 import {
+  SizeBadge,
   DueDateChip,
   LabelChip,
   PriorityBars,
@@ -1181,6 +1182,7 @@ function TaskDragOverlay({
       </h4>
       <div className="mt-2.5 flex items-center gap-2">
         <PriorityBars priority={task.priority} />
+        <SizeBadge size={task.complexity} />
         <DueDateChip task={task} columnDone={column?.isDone} />
       </div>
     </div>

@@ -107,6 +107,12 @@ const COMMENT_FIELDS: FieldDefinition[] = [{ key: "body", label: "Comment", kind
 
 const TASK_LABEL_FIELDS: FieldDefinition[] = [];
 
+/** Never render the URL itself: embedded images may be megabytes of base64. */
+const TASK_IMAGE_FIELDS: FieldDefinition[] = [
+  { key: "name", label: "File name" },
+  { key: "position", label: "Order" },
+];
+
 function fieldDefinitions(type: SyncConflictView["entityType"]): FieldDefinition[] {
   switch (type) {
     case "task":
@@ -129,6 +135,8 @@ function fieldDefinitions(type: SyncConflictView["entityType"]): FieldDefinition
       return [];
     case "note":
       return [];
+    case "task_image":
+      return TASK_IMAGE_FIELDS;
   }
 }
 

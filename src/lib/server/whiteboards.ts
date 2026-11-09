@@ -37,8 +37,9 @@ import { assertProjectWritable } from "./queries";
 export const MAX_SCENE_BYTES = 2 * 1024 * 1024;
 
 /**
- * Resolve a board that may carry images (a whiteboard or a note) owned by the
- * caller, or throw 404. The image-cache routes serve both space types.
+ * Resolve a board that may carry images (a whiteboard, note or kanban board
+ * with task attachments) owned by the caller, or throw 404. The image-cache
+ * routes serve all space types.
  */
 export async function requireImageBoard(
   database: AppDatabase,
@@ -51,7 +52,11 @@ export async function requireImageBoard(
     .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)))
     .limit(1);
   if (!row) throw new ApiError("Space not found.", 404);
-  if (row.board.type !== "whiteboard" && row.board.type !== "note") {
+  if (
+    row.board.type !== "whiteboard" &&
+    row.board.type !== "note" &&
+    row.board.type !== "kanban"
+  ) {
     throw new ApiError("This space does not hold images.", 400);
   }
   return row.board;

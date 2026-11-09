@@ -13,6 +13,10 @@ import {
   updateSubtask,
 } from "@/lib/server/subtasks";
 import {
+  addTaskImage,
+  deleteTaskImage,
+} from "@/lib/server/task-images";
+import {
   deleteTask,
   duplicateTask,
   getTaskDetail,
@@ -23,6 +27,7 @@ import {
   searchQuerySchema,
   subtaskCreateSchema,
   subtaskUpdateSchema,
+  taskImageCreateSchema,
   taskUpdateSchema,
 } from "@/lib/validation";
 
@@ -94,6 +99,39 @@ taskRoutes.post("/tasks/:taskId/duplicate", async (c) => {
       { task: await duplicateTask(c.req.param("taskId"), user.id) },
       201,
     );
+  } catch (error) {
+    return handleRouteError(error);
+  }
+});
+
+taskRoutes.post("/tasks/:taskId/images", async (c) => {
+  try {
+    const user = await requireApiUser();
+    const input = await parseJsonBody(c.req.raw, taskImageCreateSchema);
+    return jsonOk(
+      {
+        image: await addTaskImage(
+          c.req.param("taskId"),
+          input,
+          user.id,
+        ),
+      },
+      201,
+    );
+  } catch (error) {
+    return handleRouteError(error);
+  }
+});
+
+taskRoutes.delete("/tasks/:taskId/images/:attachmentId", async (c) => {
+  try {
+    const user = await requireApiUser();
+    await deleteTaskImage(
+      c.req.param("taskId"),
+      c.req.param("attachmentId"),
+      user.id,
+    );
+    return jsonOk({ ok: true });
   } catch (error) {
     return handleRouteError(error);
   }

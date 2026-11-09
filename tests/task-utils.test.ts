@@ -37,6 +37,7 @@ function task(overrides: Partial<Task> & Pick<Task, "id">): Task {
     subtaskCount: 0,
     subtaskDoneCount: 0,
     commentCount: 0,
+    imageCount: 0,
     ...overrides,
   };
 }

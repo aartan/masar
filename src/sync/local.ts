@@ -13,7 +13,8 @@ export type SyncEntityType =
   | "subtask"
   | "comment"
   | "whiteboard"
-  | "note";
+  | "note"
+  | "task_image";
 
 export interface LocalSyncChange {
   id: number;
@@ -89,6 +90,7 @@ const ENTITY_TYPES = new Set<SyncEntityType>([
   "comment",
   "whiteboard",
   "note",
+  "task_image",
 ]);
 
 function assertEntityType(value: string): SyncEntityType {
@@ -294,6 +296,13 @@ async function bootstrapChanges(tx: Transaction): Promise<void> {
        json_object('id', board_id, 'board_id', board_id, 'document', document, 'updated_at', updated_at),
        coalesce(updated_at, unixepoch() * 1000)
      from notes`,
+    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+     select 'task_image', id, 0,
+       json_object('id', id, 'task_id', task_id, 'url', url, 'name', name,
+                   'position', position, 'created_at', created_at, 'updated_at', updated_at),
+       coalesce(updated_at, created_at, unixepoch() * 1000)
+     from task_images
+     order by task_id, position`,
   ];
   for (const sql of statements) await tx.execute(sql);
 }
@@ -679,6 +688,24 @@ async function conflictContext(
       const context = await taskContext(asString(data.task_id));
       return { ...context, entityLabel: asNullableString(data.body) };
     }
+    case "task_image": {
+      const taskId = asString(data.task_id, "");
+      if (taskId) {
+        const context = await taskContext(taskId);
+        return {
+          ...context,
+          entityLabel: asNullableString(data.name) ?? "Task image",
+        };
+      }
+      const result = await tx.execute({
+        sql: "select task_id from task_images where id = ? limit 1",
+        args: [entityId],
+      });
+      const fallback = result.rows[0]?.task_id;
+      const context =
+        typeof fallback === "string" ? await taskContext(fallback) : empty;
+      return { ...context, entityLabel: "Task image" };
+    }
   }
 }
 
@@ -931,16 +958,18 @@ function dependencyRank(type: SyncEntityType): number {
       return 3;
     case "task":
       return 4;
-    case "task_label":
+    case "task_image":
       return 5;
-    case "subtask":
+    case "task_label":
       return 6;
-    case "comment":
+    case "subtask":
       return 7;
-    case "whiteboard":
+    case "comment":
       return 8;
-    case "note":
+    case "whiteboard":
       return 9;
+    case "note":
+      return 10;
     default:
       return 99;
   }
@@ -961,6 +990,7 @@ async function localTimestamp(
     comment: "select coalesce(updated_at, created_at) as value from comments where id = ?",
     whiteboard: "select updated_at as value from whiteboards where board_id = ?",
     note: "select updated_at as value from notes where board_id = ?",
+    task_image: "select updated_at as value from task_images where id = ?",
   };
   if (entityType === "task_label") return null;
   const result = await tx.execute({ sql: queries[entityType], args: [entityId] });
@@ -1090,6 +1120,12 @@ async function queueCurrentEntity(
         json_object('id', board_id, 'board_id', board_id, 'document', document, 'updated_at', updated_at),
         coalesce(updated_at, unixepoch() * 1000)
       from notes where board_id = ?`,
+    task_image: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+      select 'task_image', id, 0,
+        json_object('id', id, 'task_id', task_id, 'url', url, 'name', name,
+                    'position', position, 'created_at', created_at, 'updated_at', updated_at),
+        coalesce(updated_at, created_at, unixepoch() * 1000)
+      from task_images where id = ?`,
   };
   await tx.execute({ sql: statements[entityType], args: [entityId] });
 }
@@ -1199,6 +1235,12 @@ async function deleteEntity(tx: Transaction, change: RemoteSyncChange): Promise<
     case "note":
       await tx.execute({
         sql: "delete from notes where board_id = ?",
+        args: [change.entityId],
+      });
+      break;
+    case "task_image":
+      await tx.execute({
+        sql: "delete from task_images where id = ?",
         args: [change.entityId],
       });
       break;
@@ -1420,6 +1462,27 @@ async function applyUpsert(
         args: [
           boardId,
           asString(data.document, "[]"),
+          toMs(data.updated_at, now),
+        ],
+      });
+      return null;
+    }
+    case "task_image": {
+      const taskId = asString(data.task_id);
+      if (!(await exists(tx, "tasks", taskId))) return "Parent task no longer exists";
+      await tx.execute({
+        sql: `insert into task_images (id, task_id, url, name, position, created_at, updated_at)
+              values (?, ?, ?, ?, ?, ?, ?)
+              on conflict(id) do update set
+                task_id = excluded.task_id, url = excluded.url, name = excluded.name,
+                position = excluded.position, updated_at = excluded.updated_at`,
+        args: [
+          change.entityId,
+          taskId,
+          asString(data.url, ""),
+          asNullableString(data.name),
+          asNumber(data.position),
+          toMs(data.created_at, now),
           toMs(data.updated_at, now),
         ],
       });

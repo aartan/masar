@@ -24,6 +24,7 @@ import {
   type SceneImageStorage,
 } from "./images";
 import { deleteBoardsCache } from "./image-cache";
+import { taskImageIdsForBoards } from "./task-images";
 import { assertProjectWritable,
   fetchBoardSummaries,
   fetchProjectSummaries,
@@ -281,6 +282,9 @@ export async function deleteProject(
       .from(imagesTable)
       .where(inArray(imagesTable.boardId, boardIds));
     for (const row of stored) imageIds.add(row.id);
+    for (const id of await taskImageIdsForBoards(database, boardIds)) {
+      imageIds.add(id);
+    }
   }
 
   // Local image copies must not outlive the project.

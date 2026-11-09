@@ -41,6 +41,7 @@ import {
 } from "./images";
 import { deleteBoardCache } from "./image-cache";
 import { ensureDefaultProject } from "./projects";
+import { taskImageIdsForBoards } from "./task-images";
 import { DEFAULT_PROJECT_NAME } from "@/lib/constants";
 
 export async function listBoards(
@@ -311,6 +312,9 @@ export async function deleteBoard(
   const imageIds = sceneImageIds(sceneRow?.scene);
   for (const id of collectNoteImageIds(noteRow?.document)) imageIds.add(id);
   for (const row of stored) imageIds.add(row.id);
+  for (const id of await taskImageIdsForBoards(database, [boardId])) {
+    imageIds.add(id);
+  }
 
   // Local image copies must not outlive the board (the FK also cascades, but
   // foreign keys are not always enforced on every connection).

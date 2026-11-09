@@ -289,6 +289,29 @@ describe("image cache routes", () => {
     expect(get.status).toBe(404);
   });
 
+  it("caches images for a kanban board carrying task attachments", async () => {
+    const created = await request("/api/boards", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Task space" }),
+    });
+    expect(created.status).toBe(201);
+    const { board } = (await created.json()) as { board: { id: string } };
+
+    const put = await request(`/api/boards/${board.id}/images/image-1/cache`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dataURL: DATA_URL }),
+    });
+    expect(put.status).toBe(201);
+
+    const get = await request(`/api/boards/${board.id}/images/image-1/cache`);
+    expect(get.status).toBe(200);
+    expect(new Uint8Array(await get.arrayBuffer())).toEqual(
+      new Uint8Array(Buffer.from("png-bytes")),
+    );
+  });
+
   it("rejects malformed payloads and unknown boards", async () => {
     const boardId = await makeWhiteboard();
 
@@ -311,5 +334,112 @@ describe("image cache routes", () => {
       },
     );
     expect(unknownBoard.status).toBe(404);
+  });
+});
+
+describe("task attachment routes", () => {
+  async function makeTask(): Promise<{ taskId: string; boardId: string }> {
+    const created = await request("/api/boards", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Attachment space" }),
+    });
+    expect(created.status).toBe(201);
+    const { board } = (await created.json()) as { board: { id: string } };
+
+    const detailResponse = await request(`/api/boards/${board.id}`);
+    expect(detailResponse.status).toBe(200);
+    const detail = (await detailResponse.json()) as {
+      board: { columns: Array<{ id: string }> };
+    };
+
+    const taskResponse = await request(`/api/boards/${board.id}/tasks`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        columnId: detail.board.columns[0]!.id,
+        title: "Task with images",
+      }),
+    });
+    expect(taskResponse.status).toBe(201);
+    const { task } = (await taskResponse.json()) as { task: { id: string } };
+    return { taskId: task.id, boardId: board.id };
+  }
+
+  it("attaches an uploaded premium image and removes it", async () => {
+    const { taskId } = await makeTask();
+
+    const attach = await request(`/api/tasks/${taskId}/images`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ imageId: "image-1", name: "shot.png" }),
+    });
+    expect(attach.status).toBe(201);
+    const attached = (await attach.json()) as {
+      image: { id: string; url: string; name: string; position: number };
+    };
+    expect(attached.image).toMatchObject({
+      url: "/api/images/image-1",
+      name: "shot.png",
+      position: 0,
+    });
+
+    const detail = await request(`/api/tasks/${taskId}`);
+    const body = (await detail.json()) as {
+      task: { imageCount: number; images: Array<{ id: string }> };
+    };
+    expect(body.task.imageCount).toBe(1);
+    expect(body.task.images).toHaveLength(1);
+
+    const remove = await request(
+      `/api/tasks/${taskId}/images/${attached.image.id}`,
+      { method: "DELETE" },
+    );
+    expect(remove.status).toBe(200);
+    expect(await remove.json()).toEqual({ ok: true });
+
+    const after = await request(`/api/tasks/${taskId}`);
+    const afterBody = (await after.json()) as {
+      task: { imageCount: number; images: unknown[] };
+    };
+    expect(afterBody.task.imageCount).toBe(0);
+    expect(afterBody.task.images).toHaveLength(0);
+  });
+
+  it("attaches an embedded data URL in the free workspace", async () => {
+    const { taskId } = await makeTask();
+    const dataURL = `data:image/png;base64,${Buffer.from("free-bytes").toString("base64")}`;
+
+    const attach = await request(`/api/tasks/${taskId}/images`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dataURL, name: "free.png" }),
+    });
+    expect(attach.status).toBe(201);
+    const attached = (await attach.json()) as {
+      image: { url: string; name: string };
+    };
+    expect(attached.image).toMatchObject({ url: dataURL, name: "free.png" });
+  });
+
+  it("rejects conflicting or invalid image sources", async () => {
+    const { taskId } = await makeTask();
+
+    const both = await request(`/api/tasks/${taskId}/images`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        imageId: "image-1",
+        dataURL: "data:image/png;base64,AAAA",
+      }),
+    });
+    expect(both.status).toBe(422);
+
+    const none = await request(`/api/tasks/${taskId}/images`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(none.status).toBe(422);
   });
 });

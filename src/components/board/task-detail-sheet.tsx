@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { TaskImagesSection } from "@/components/board/task-images-section";
 import {
   CalendarDays,
   CheckCircle2,
@@ -61,6 +62,7 @@ import type {
   Subtask,
   Task,
   TaskDetail,
+  TaskImage,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -254,6 +256,15 @@ export function TaskDetailSheet({
     descriptionRef.current = updated.description ?? "";
     setDescription(updated.description ?? "");
   }
+
+  const handleImagesChange = React.useCallback(
+    (images: TaskImage[]) => {
+      const latest = detailRef.current;
+      if (!latest) return;
+      commitDetail({ ...latest, images, imageCount: images.length });
+    },
+    [commitDetail],
+  );
 
   async function changeColumn(columnId: string) {
     const current = detailRef.current;
@@ -870,6 +881,14 @@ export function TaskDetailSheet({
                     className="mt-1.5 w-full resize-y rounded-lg border border-transparent bg-transparent px-2.5 py-2 text-[12.5px] leading-relaxed text-foreground/90 outline-none transition-colors placeholder:text-muted-foreground hover:border-border/60 hover:bg-muted/20 focus:border-ring focus:bg-muted/20 focus:ring-2 focus:ring-ring"
                   />
                 </div>
+
+                <TaskImagesSection
+                  taskId={detail.id}
+                  boardId={detail.boardId}
+                  images={detail.images}
+                  readOnly={readOnly}
+                  onImagesChange={handleImagesChange}
+                />
 
                 <section className="mt-6 border-t border-border/60 pt-5">
                   <div className="flex items-center justify-between">

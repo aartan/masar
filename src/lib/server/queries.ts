@@ -8,6 +8,7 @@ import {
   labels,
   projects,
   subtasks,
+  taskImages,
   taskLabels,
   tasks,
   type BoardRow,
@@ -123,6 +124,7 @@ export function serializeTask(
     subtaskCount: number;
     subtaskDoneCount: number;
     commentCount: number;
+    imageCount: number;
   },
 ): Task {
   return {
@@ -141,6 +143,7 @@ export function serializeTask(
     subtaskCount: counts.subtaskCount,
     subtaskDoneCount: counts.subtaskDoneCount,
     commentCount: counts.commentCount,
+    imageCount: counts.imageCount,
   };
 }
 
@@ -281,7 +284,7 @@ export async function fetchTasks(
   if (rows.length === 0) return [];
   const ids = rows.map((row) => row.id);
 
-  const [labelRows, subtaskRows, commentRows] = await Promise.all([
+  const [labelRows, subtaskRows, commentRows, imageRows] = await Promise.all([
     database
       .select({ taskId: taskLabels.taskId, labelId: taskLabels.labelId })
       .from(taskLabels)
@@ -302,6 +305,11 @@ export async function fetchTasks(
       .from(comments)
       .where(inArray(comments.taskId, ids))
       .groupBy(comments.taskId),
+    database
+      .select({ taskId: taskImages.taskId, total: count() })
+      .from(taskImages)
+      .where(inArray(taskImages.taskId, ids))
+      .groupBy(taskImages.taskId),
   ]);
 
   const labelsByTask = new Map<string, string[]>();
@@ -312,6 +320,7 @@ export async function fetchTasks(
   }
   const subtaskMap = new Map(subtaskRows.map((row) => [row.taskId, row]));
   const commentMap = new Map(commentRows.map((row) => [row.taskId, row.total]));
+  const imageMap = new Map(imageRows.map((row) => [row.taskId, row.total]));
 
   return rows.map((row) => {
     const subtask = subtaskMap.get(row.id);
@@ -319,6 +328,7 @@ export async function fetchTasks(
       subtaskCount: subtask?.total ?? 0,
       subtaskDoneCount: subtask?.done ?? 0,
       commentCount: commentMap.get(row.id) ?? 0,
+      imageCount: imageMap.get(row.id) ?? 0,
     });
   });
 }

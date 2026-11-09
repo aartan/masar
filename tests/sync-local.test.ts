@@ -8,6 +8,7 @@ import { getLocalUser, LOCAL_USER_ID } from "@/lib/server/desktop";
 import { createBoard, getBoardDetail } from "@/lib/server/boards";
 import { saveWhiteboardScene } from "@/lib/server/whiteboards";
 import { saveNoteDocument } from "@/lib/server/notes";
+import { addTaskImage } from "@/lib/server/task-images";
 import { createTask, reorderTasks } from "@/lib/server/tasks";
 import { updateBoard } from "@/lib/server/boards";
 import {
@@ -647,6 +648,172 @@ describe("local sync outbox", () => {
       args: ["remote-note-board"],
     });
     expect(Number(rows.rows[0]?.count)).toBe(0);
+  });
+
+  it("queues only the task_image entity when an attachment is added", async () => {
+    await prepareSync("remote-user-a");
+    const { board, detail } = await makeBoard("Attachments");
+    const task = await createTask(
+      board.id,
+      { columnId: detail.columns[0]!.id, title: "Has image" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+    await getClient().execute("delete from sync_changes");
+
+    const image = await addTaskImage(
+      task.id,
+      {
+        dataURL: `data:image/png;base64,${Buffer.from("png-bytes").toString("base64")}`,
+        name: "shot.png",
+      },
+      LOCAL_USER_ID,
+      test.db,
+      null,
+    );
+
+    const pending = await listPendingChanges(0, 500);
+    expect(pending.map((change) => change.entityType)).toEqual(["task_image"]);
+    expect(pending[0]).toMatchObject({
+      entityId: image.id,
+      data: {
+        id: image.id,
+        task_id: task.id,
+        name: "shot.png",
+        position: 0,
+      },
+    });
+  });
+
+  it("applies task_image entities and records their revisions", async () => {
+    await prepareSync("remote-user-a");
+    const { board, detail } = await makeBoard("Attachments");
+    const task = await createTask(
+      board.id,
+      { columnId: detail.columns[0]!.id, title: "Has image" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+    const now = Date.now();
+
+    const result = await applyRemoteChanges(5, [
+      {
+        entityType: "task_image",
+        entityId: "remote-image",
+        deleted: false,
+        data: {
+          id: "remote-image",
+          task_id: task.id,
+          url: "/api/images/image-remote",
+          name: "remote.png",
+          position: 0,
+          created_at: now,
+          updated_at: now,
+        },
+        updatedAt: new Date(now).toISOString(),
+        revision: 5,
+      },
+    ]);
+
+    expect(result.applied).toBe(1);
+    expect(result.skipped).toEqual([]);
+
+    const images = await getClient().execute({
+      sql: "select task_id, url, name from task_images where id = ?",
+      args: ["remote-image"],
+    });
+    expect(images.rows[0]).toMatchObject({
+      task_id: task.id,
+      url: "/api/images/image-remote",
+      name: "remote.png",
+    });
+
+    const revisions = await getClient().execute({
+      sql: "select revision from sync_entity_revisions where entity_type = 'task_image' and entity_id = ?",
+      args: ["remote-image"],
+    });
+    expect(Number(revisions.rows[0]?.revision)).toBe(5);
+  });
+
+  it("applies a task_image tombstone and deletes the attachment row", async () => {
+    await prepareSync("remote-user-a");
+    const { board, detail } = await makeBoard("Attachments");
+    const task = await createTask(
+      board.id,
+      { columnId: detail.columns[0]!.id, title: "Has image" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+    const now = Date.now();
+    await applyRemoteChanges(1, [
+      {
+        entityType: "task_image",
+        entityId: "remote-image",
+        deleted: false,
+        data: {
+          id: "remote-image",
+          task_id: task.id,
+          url: "/api/images/image-remote",
+          name: null,
+          position: 0,
+          created_at: now,
+          updated_at: now,
+        },
+        updatedAt: new Date(now).toISOString(),
+        revision: 1,
+      },
+    ]);
+
+    const result = await applyRemoteChanges(2, [
+      {
+        entityType: "task_image",
+        entityId: "remote-image",
+        deleted: true,
+        data: {},
+        updatedAt: new Date(now + 1).toISOString(),
+        revision: 2,
+      },
+    ]);
+    expect(result.applied).toBe(1);
+
+    const rows = await getClient().execute({
+      sql: "select count(*) as count from task_images where id = ?",
+      args: ["remote-image"],
+    });
+    expect(Number(rows.rows[0]?.count)).toBe(0);
+  });
+
+  it("skips a task_image whose parent task is missing", async () => {
+    await prepareSync("remote-user-a");
+    const now = Date.now();
+
+    const result = await applyRemoteChanges(1, [
+      {
+        entityType: "task_image",
+        entityId: "orphan-image",
+        deleted: false,
+        data: {
+          id: "orphan-image",
+          task_id: "missing-task",
+          url: "/api/images/image-remote",
+          name: null,
+          position: 0,
+          created_at: now,
+          updated_at: now,
+        },
+        updatedAt: new Date(now).toISOString(),
+        revision: 1,
+      },
+    ]);
+
+    expect(result.applied).toBe(0);
+    expect(result.skipped).toEqual([
+      expect.objectContaining({
+        entityType: "task_image",
+        entityId: "orphan-image",
+        reason: "Parent task no longer exists",
+      }),
+    ]);
   });
 
   it("does not queue a board change when a whiteboard scene is saved", async () => {

@@ -299,6 +299,32 @@ export const comments = sqliteTable(
 );
 
 /**
+ * Image attached to a task. Premium workspaces store a canonical
+ * `/api/images/<imageId>` URL and keep the bytes in R2 plus the local image
+ * cache; the free local workspace stores the image as a data URL, the same
+ * fallback Notes and whiteboard scenes use. One `task_image` sync entity
+ * carries each row, so attachments can be added or removed independently of
+ * the parent task.
+ */
+export const taskImages = sqliteTable(
+  "task_images",
+  {
+    id: text("id").primaryKey(),
+    taskId: text("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    name: text("name"),
+    position: integer("position").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("task_images_task_position_idx").on(table.taskId, table.position),
+  ],
+);
+
+/**
  * Excalidraw scene for a whiteboard board, keyed one-to-one by board id. The
  * scene JSON (elements, appState, embedded files) is kept out of the boards
  * table so board-list reads stay small and the size budget is isolated. A

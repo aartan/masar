@@ -48,7 +48,6 @@ import { toast } from "sonner";
 
 import { Logo } from "@/components/brand/logo";
 import { Kbd } from "@/components/shared/empty-state";
-import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 import { useTheme, type Theme } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
@@ -989,14 +988,6 @@ function SortableBoardLink({
             className={cn(
               "size-3.5 shrink-0",
               active ? "opacity-100" : "opacity-80",
-            )}
-          />
-          <span
-            className={cn(
-              "size-2 shrink-0 rounded-full",
-              BOARD_COLOR_CLASS[board.color],
-              "board-dot",
-              active ? "opacity-100" : "opacity-70",
             )}
           />
           <span className="truncate">{board.name}</span>

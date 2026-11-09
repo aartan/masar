@@ -71,3 +71,55 @@
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-float);
 }
+
+/*
+ * The formatting toolbar is pinned above the editor instead of floating over
+ * the selection. Drop its popover chrome so it reads as part of the note's
+ * chrome; the menus and pickers it opens keep the popover styling above.
+ */
+.masar-note .masar-note-toolbar .bn-formatting-toolbar {
+  width: 100%;
+  padding: 2px 0;
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  scrollbar-width: thin;
+  /* Center the controls on the note column; "safe" keeps the first button
+     reachable when a narrow desktop window makes the toolbar overflow. */
+  justify-content: center;
+  justify-content: safe center;
+}
+
+/* Toolbar buttons rest transparent on the strip so hover and active states
+   provide the only surface. */
+.masar-note .masar-note-toolbar .bn-formatting-toolbar .mantine-Button-root,
+.masar-note .masar-note-toolbar .bn-formatting-toolbar .mantine-ActionIcon-root {
+  background-color: transparent;
+}
+
+@media (hover: hover) {
+  .masar-note
+    .masar-note-toolbar
+    .bn-formatting-toolbar
+    .mantine-Button-root:hover,
+  .masar-note
+    .masar-note-toolbar
+    .bn-formatting-toolbar
+    .mantine-ActionIcon-root:hover {
+    background-color: var(--bn-colors-hovered-background);
+    color: var(--bn-colors-hovered-text);
+  }
+}
+
+.masar-note
+  .masar-note-toolbar
+  .bn-formatting-toolbar
+  .mantine-Button-root[data-selected],
+.masar-note
+  .masar-note-toolbar
+  .bn-formatting-toolbar
+  .mantine-ActionIcon-root[data-selected] {
+  background-color: var(--bn-colors-selected-background);
+  color: var(--bn-colors-selected-text);
+}

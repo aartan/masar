@@ -62,17 +62,17 @@ test.describe("board workflows", () => {
       await page.goto("/");
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
-      // The overview's create-board button adapts to whether the workspace is
-      // empty ("Create your first board") or already has boards ("Create
-      // another board" / "New board"). Match any of them.
+      // The overview's create-space button adapts to whether the workspace is
+      // empty ("Create your first space") or already has spaces ("Create
+      // another space" / "New space"). Match any of them.
       await page
         .getByRole("button", {
-          name: /Create your first board|Create another board|New board/,
+          name: /Create your first space|Create another space|New space/,
         })
         .first()
         .click();
-      await page.getByLabel("Name").fill(boardName);
-      await page.getByRole("button", { name: /Create board/ }).click();
+      await page.getByLabel("Space name").fill(boardName);
+      await page.getByRole("button", { name: /Create space/ }).click();
       await expect(page).toHaveURL(/\/boards\/[0-9a-f-]+$/);
       boardId = page.url().split("/boards/")[1];
       await expect(page.getByRole("heading", { name: boardName })).toBeVisible();
@@ -196,7 +196,7 @@ test.describe("board workflows", () => {
       await page.keyboard.press("Escape");
       await expect(page.getByText("1 of 1", { exact: true })).toBeVisible();
       await page
-        .getByRole("toolbar", { name: "Board filters" })
+        .getByRole("toolbar", { name: "Space filters" })
         .getByRole("button", { name: /^Clear/ })
         .click();
 
@@ -207,11 +207,11 @@ test.describe("board workflows", () => {
         .click();
       await expect(page.getByRole("dialog", { name: "Task details" })).toBeVisible();
       await page.getByRole("button", { name: "Close task details" }).click();
-      await page.getByRole("button", { name: "Board", exact: true }).click();
+      await page.getByRole("button", { name: "Kanban", exact: true }).click();
 
       // Command palette deep-links into the task.
       await page.keyboard.press("Control+k");
-      const search = page.getByRole("textbox", { name: "Search tasks and boards" });
+      const search = page.getByRole("textbox", { name: "Search tasks and spaces" });
       await expect(search).toBeVisible();
       await search.fill("E2E task updated");
       const option = page.getByRole("option", { name: /E2E task updated/ });
@@ -227,7 +227,7 @@ test.describe("board workflows", () => {
     }
   });
 
-  test("manages labels from board settings", async ({ page }) => {
+  test("manages labels from space settings", async ({ page }) => {
     const errors = collectPageErrors(page);
     const boardName = uniqueName("E2E Labels");
     const taskTitle = "Label target";
@@ -246,10 +246,10 @@ test.describe("board workflows", () => {
       });
 
       await page.goto(`/boards/${boardId}`);
-      await page.getByRole("button", { name: "Board actions" }).click();
-      await page.getByRole("menuitem", { name: "Board settings" }).click();
+      await page.getByRole("button", { name: "Space actions" }).click();
+      await page.getByRole("menuitem", { name: "Space settings" }).click();
 
-      const settings = page.getByRole("dialog", { name: "Board settings" });
+      const settings = page.getByRole("dialog", { name: "Space settings" });
       await expect(settings).toBeVisible();
       await settings.getByRole("button", { name: "Manage" }).click();
 
@@ -306,10 +306,10 @@ test.describe("board workflows", () => {
       const card = page.getByRole("button", { name: `Open task: ${taskTitle}` });
       await expect(card.getByText(renamedLabel, { exact: true })).toBeVisible();
 
-      await page.getByRole("button", { name: "Board actions" }).click();
-      await page.getByRole("menuitem", { name: "Board settings" }).click();
+      await page.getByRole("button", { name: "Space actions" }).click();
+      await page.getByRole("menuitem", { name: "Space settings" }).click();
       const reopenedSettings = page.getByRole("dialog", {
-        name: "Board settings",
+        name: "Space settings",
       });
       await reopenedSettings.getByRole("button", { name: "Manage" }).click();
       await page
@@ -347,7 +347,7 @@ test.describe("board workflows", () => {
           .getByText(renamedLabel, { exact: true }),
       ).toHaveCount(0);
       await page.getByRole("button", { name: "Labels", exact: true }).click();
-      await expect(page.getByText("No labels on this board")).toBeVisible();
+      await expect(page.getByText("No labels on this space")).toBeVisible();
 
       expect(errors).toEqual([]);
     } finally {
@@ -608,13 +608,13 @@ test.describe("board workflows", () => {
         page.getByRole("button", { name: `Open task: ${taskTitle}` }),
       ).toHaveCount(0);
 
-      await page.getByRole("button", { name: "Board actions" }).click();
-      await page.getByRole("menuitem", { name: "Delete board" }).click();
+      await page.getByRole("button", { name: "Space actions" }).click();
+      await page.getByRole("menuitem", { name: "Delete space" }).click();
       const boardDialog = page.getByRole("alertdialog");
       await expect(
         boardDialog.getByText(`Delete ${boardName}?`),
       ).toBeVisible();
-      await boardDialog.getByRole("button", { name: "Delete board" }).click();
+      await boardDialog.getByRole("button", { name: "Delete space" }).click();
       await expect(page).toHaveURL("/");
       await expect(page.getByRole("link", { name: boardName })).toHaveCount(0);
 
@@ -650,7 +650,7 @@ test.describe("board workflows", () => {
 
       await page.goto("/");
       const main = page.getByRole("main");
-      await expect(main.getByText("Active boards")).toBeVisible();
+      await expect(main.getByText("Active spaces")).toBeVisible();
       await expect(main.getByText(boardName, { exact: true }).first()).toBeVisible();
       await expect(main.getByText("1/2", { exact: true }).first()).toBeVisible();
       await expect(main.getByText("E2E due soon").first()).toBeVisible();

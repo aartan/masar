@@ -8,11 +8,13 @@ import {
   columns,
   images as imagesTable,
   labels,
+  notes,
   projects,
   tasks,
   whiteboards,
 } from "@/db/schema";
 import { ApiError } from "@/lib/api";
+import { collectNoteImageIds } from "@/lib/note-document";
 import type { ProjectDetail, ProjectSummary } from "@/lib/types";
 import type { ProjectCreateInput, ProjectUpdateInput } from "@/lib/validation";
 import {
@@ -253,15 +255,26 @@ export async function deleteProject(
   const boardIds = projectBoards.map((row) => row.id);
 
   // Image objects live in R2, outside the SQLite cascade. Gather their ids
-  // before the scenes and metadata rows are deleted.
+  // before the scenes, documents and metadata rows are deleted.
   const imageIds = new Set<string>();
   if (boardIds.length > 0) {
-    const scenes = await database
-      .select({ scene: whiteboards.scene })
-      .from(whiteboards)
-      .where(inArray(whiteboards.boardId, boardIds));
+    const [scenes, documents] = await Promise.all([
+      database
+        .select({ scene: whiteboards.scene })
+        .from(whiteboards)
+        .where(inArray(whiteboards.boardId, boardIds)),
+      database
+        .select({ document: notes.document })
+        .from(notes)
+        .where(inArray(notes.boardId, boardIds)),
+    ]);
     for (const scene of scenes) {
       for (const imageId of sceneImageIds(scene.scene)) imageIds.add(imageId);
+    }
+    for (const document of documents) {
+      for (const imageId of collectNoteImageIds(document.document)) {
+        imageIds.add(imageId);
+      }
     }
     const stored = await database
       .select({ id: imagesTable.id })
@@ -287,6 +300,7 @@ export async function deleteProject(
       await tx.delete(columns).where(eq(columns.boardId, boardId));
       await tx.delete(labels).where(eq(labels.boardId, boardId));
       await tx.delete(whiteboards).where(eq(whiteboards.boardId, boardId));
+      await tx.delete(notes).where(eq(notes.boardId, boardId));
       await tx.delete(boards).where(eq(boards.id, boardId));
     }
     await tx

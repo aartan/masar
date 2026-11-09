@@ -117,7 +117,7 @@ export function CalendarView({ initialData }: { initialData: CalendarData }) {
         const column = columnMap.get(task.columnId);
         return {
           ...task,
-          boardName: board?.name ?? "Unknown board",
+          boardName: board?.name ?? "Unknown space",
           boardColor: (board?.color ?? "slate") as BoardColor,
           columnName: column?.name ?? "Unknown",
           columnDone: column?.isDone ?? false,

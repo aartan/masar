@@ -51,6 +51,10 @@ const TABLES = [
     table: "whiteboards",
     columns: "board_id, scene, updated_at",
   },
+  {
+    table: "notes",
+    columns: "board_id, document, updated_at",
+  },
 ] as const;
 
 async function copyTable(

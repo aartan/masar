@@ -25,6 +25,7 @@ import {
   CalendarDays,
   ChevronRight,
   ChevronsUpDown,
+  FileText,
   FolderPlus,
   GripVertical,
   Keyboard,
@@ -248,7 +249,7 @@ export function SidebarContent({
       nextIds.splice(insertAt, 0, boardId);
     }
     void onMoveBoards(destProjectId, nextIds).catch((error) =>
-      toast.error("Could not move board", { description: errorMessage(error) }),
+      toast.error("Could not move space", { description: errorMessage(error) }),
     );
   }
 
@@ -636,6 +637,7 @@ export function SidebarContent({
 const BOARD_TYPE_ICON = {
   kanban: LayoutGrid,
   whiteboard: PenLine,
+  note: FileText,
 } as const;
 
 function SortableProjectGroup({
@@ -726,12 +728,12 @@ function SortableProjectGroup({
               type="button"
               onClick={onCreateBoard}
               className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/0 transition-colors group-hover/project:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              aria-label={`Add board to ${project.name}`}
+              aria-label={`Add space to ${project.name}`}
             >
               <Plus className="size-3.5" />
             </button>
           </TooltipTrigger>
-          <TooltipContent side="right">New board</TooltipContent>
+          <TooltipContent side="right">New space</TooltipContent>
         </Tooltip>
         <ProjectActionsMenu
           onRename={onRename}
@@ -763,7 +765,7 @@ function SortableProjectGroup({
               )}
             >
               <Plus className="size-3" />
-              Add a board
+              Add a space
             </button>
           ) : (
             <SortableContext
@@ -811,7 +813,7 @@ function ProjectActionsMenu({
       <DropdownMenuContent align="start" className="w-[180px]">
         <DropdownMenuItem onSelect={onAddBoard}>
           <Plus />
-          New board
+          New space
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={onRename}>
           <Pencil />
@@ -927,7 +929,7 @@ function CompactProjectLink({
         <TooltipContent side="right">
           {project.name}
           <span className="ml-1 text-background/60">
-            {project.boardCount} {project.boardCount === 1 ? "board" : "boards"}
+            {project.boardCount} {project.boardCount === 1 ? "space" : "spaces"}
           </span>
         </TooltipContent>
       </Tooltip>
@@ -1016,7 +1018,7 @@ function SortableBoardLink({
           type="button"
           data-drag-handle=""
           className="grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:cursor-grabbing sm:text-muted-foreground/0 sm:group-hover/board:text-muted-foreground sm:group-focus-within/board:text-muted-foreground"
-          aria-label={`Reorder board ${board.name}`}
+          aria-label={`Reorder space ${board.name}`}
           title="Drag to reorder or move between projects"
           {...attributes}
           {...listeners}

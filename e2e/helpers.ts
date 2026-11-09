@@ -6,7 +6,7 @@ export interface ApiBoard {
   id: string;
   name: string;
   projectId: string | null;
-  type: "kanban" | "whiteboard";
+  type: "kanban" | "whiteboard" | "note";
 }
 
 export interface ApiProject {
@@ -57,7 +57,7 @@ export async function deleteProject(
 export async function createBoard(
   request: APIRequestContext,
   name: string,
-  options: { projectId?: string; type?: "kanban" | "whiteboard" } = {},
+  options: { projectId?: string; type?: "kanban" | "whiteboard" | "note" } = {},
 ): Promise<ApiBoard> {
   const response = await request.post("/api/boards", {
     data: { name, ...options },

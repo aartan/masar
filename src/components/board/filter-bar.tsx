@@ -88,7 +88,7 @@ export function FilterBar({
   return (
     <div
       role="toolbar"
-      aria-label="Board filters"
+      aria-label="Space filters"
       className="flex flex-wrap items-center gap-2"
     >
       <div className="relative min-w-[170px] max-w-[300px] flex-1 sm:flex-none sm:basis-[260px]">
@@ -96,8 +96,8 @@ export function FilterBar({
         <Input
           value={filters.query}
           onChange={(event) => update({ query: event.target.value })}
-          placeholder="Search this board…"
-          aria-label="Search tasks on this board"
+          placeholder="Search this space…"
+          aria-label="Search tasks on this space"
           className="h-8 bg-card/60 pl-8 text-[12.5px]"
         />
         {filters.query && (
@@ -158,7 +158,7 @@ export function FilterBar({
       >
         <DropdownMenuLabel>Labels</DropdownMenuLabel>
         {labels.length === 0 ? (
-          <DropdownMenuItem disabled>No labels on this board</DropdownMenuItem>
+          <DropdownMenuItem disabled>No labels on this space</DropdownMenuItem>
         ) : (
           labels.map((label) => (
             <DropdownMenuCheckboxItem

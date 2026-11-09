@@ -32,7 +32,7 @@ type Choice = "cloud" | "local";
 
 const TYPE_LABEL: Record<SyncConflictView["entityType"], string> = {
   project: "Project",
-  board: "Board",
+  board: "Space",
   column: "Column",
   task: "Task",
   label: "Label",
@@ -40,6 +40,7 @@ const TYPE_LABEL: Record<SyncConflictView["entityType"], string> = {
   subtask: "Subtask",
   comment: "Comment",
   whiteboard: "Whiteboard",
+  note: "Note",
 };
 
 export function ConflictsPage() {
@@ -408,8 +409,9 @@ function ConflictCard({
           What changed
         </h3>
         {diff.whiteboard && <WhiteboardDiffView stats={diff.whiteboard} />}
+        {diff.note && <NoteDiffView stats={diff.note} />}
         {diff.changed.length > 0 && <ConflictDiffTable rows={diff.changed} />}
-        {!diff.whiteboard && diff.changed.length === 0 && (
+        {!diff.whiteboard && !diff.note && diff.changed.length === 0 && (
           <p className="mt-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-[12px] text-muted-foreground">
             No field-level difference is available. The item was changed on
             both devices, but the stored fields match.
@@ -565,6 +567,41 @@ function WhiteboardDiffView({
         </p>
         <p className="mt-1 text-[18px] font-semibold tabular-nums">
           {stats.localElements}
+        </p>
+      </div>
+      <div className="rounded-lg border border-border/60 bg-background/45 px-3 py-2.5">
+        <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+          Changes
+        </p>
+        <p className="mt-1 text-[12px] text-foreground/85">
+          {stats.added} added · {stats.removed} removed · {stats.modified} modified
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function NoteDiffView({
+  stats,
+}: {
+  stats: NonNullable<ReturnType<typeof buildConflictDiff>["note"]>;
+}) {
+  return (
+    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+      <div className="rounded-lg border border-border/60 bg-background/45 px-3 py-2.5">
+        <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+          Cloud blocks
+        </p>
+        <p className="mt-1 text-[18px] font-semibold tabular-nums">
+          {stats.cloudBlocks}
+        </p>
+      </div>
+      <div className="rounded-lg border border-border/60 bg-background/45 px-3 py-2.5">
+        <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+          This device
+        </p>
+        <p className="mt-1 text-[18px] font-semibold tabular-nums">
+          {stats.localBlocks}
         </p>
       </div>
       <div className="rounded-lg border border-border/60 bg-background/45 px-3 py-2.5">

@@ -12,7 +12,8 @@ export type SyncEntityType =
   | "task_label"
   | "subtask"
   | "comment"
-  | "whiteboard";
+  | "whiteboard"
+  | "note";
 
 export interface LocalSyncChange {
   id: number;
@@ -87,6 +88,7 @@ const ENTITY_TYPES = new Set<SyncEntityType>([
   "subtask",
   "comment",
   "whiteboard",
+  "note",
 ]);
 
 function assertEntityType(value: string): SyncEntityType {
@@ -287,6 +289,11 @@ async function bootstrapChanges(tx: Transaction): Promise<void> {
        json_object('id', board_id, 'board_id', board_id, 'scene', scene, 'updated_at', updated_at),
        coalesce(updated_at, unixepoch() * 1000)
      from whiteboards`,
+    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+     select 'note', board_id, 0,
+       json_object('id', board_id, 'board_id', board_id, 'document', document, 'updated_at', updated_at),
+       coalesce(updated_at, unixepoch() * 1000)
+     from notes`,
   ];
   for (const sql of statements) await tx.execute(sql);
 }
@@ -625,6 +632,15 @@ async function conflictContext(
         entityLabel: context.boardName ?? "Whiteboard",
       };
     }
+    case "note": {
+      const context = await boardContext(
+        asString(data.board_id, entityId),
+      );
+      return {
+        ...context,
+        entityLabel: context.boardName ?? "Note",
+      };
+    }
     case "column": {
       const context = await boardContext(asString(data.board_id));
       return { ...context, entityLabel: asNullableString(data.name) };
@@ -923,6 +939,8 @@ function dependencyRank(type: SyncEntityType): number {
       return 7;
     case "whiteboard":
       return 8;
+    case "note":
+      return 9;
     default:
       return 99;
   }
@@ -942,6 +960,7 @@ async function localTimestamp(
     subtask: "select coalesce(updated_at, created_at) as value from subtasks where id = ?",
     comment: "select coalesce(updated_at, created_at) as value from comments where id = ?",
     whiteboard: "select updated_at as value from whiteboards where board_id = ?",
+    note: "select updated_at as value from notes where board_id = ?",
   };
   if (entityType === "task_label") return null;
   const result = await tx.execute({ sql: queries[entityType], args: [entityId] });
@@ -1066,6 +1085,11 @@ async function queueCurrentEntity(
         json_object('id', board_id, 'board_id', board_id, 'scene', scene, 'updated_at', updated_at),
         coalesce(updated_at, unixepoch() * 1000)
       from whiteboards where board_id = ?`,
+    note: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+      select 'note', board_id, 0,
+        json_object('id', board_id, 'board_id', board_id, 'document', document, 'updated_at', updated_at),
+        coalesce(updated_at, unixepoch() * 1000)
+      from notes where board_id = ?`,
   };
   await tx.execute({ sql: statements[entityType], args: [entityId] });
 }
@@ -1172,6 +1196,12 @@ async function deleteEntity(tx: Transaction, change: RemoteSyncChange): Promise<
         args: [change.entityId],
       });
       break;
+    case "note":
+      await tx.execute({
+        sql: "delete from notes where board_id = ?",
+        args: [change.entityId],
+      });
+      break;
   }
 }
 
@@ -1227,7 +1257,7 @@ async function applyUpsert(
           change.entityId,
           resolvedProjectId,
           asString(data.type, "kanban"),
-          asString(data.name, "Untitled board"),
+          asString(data.name, "Untitled space"),
           asNullableString(data.description),
           asString(data.color, "sage"),
           asNumber(data.position),
@@ -1374,6 +1404,22 @@ async function applyUpsert(
         args: [
           boardId,
           asString(data.scene, "{}"),
+          toMs(data.updated_at, now),
+        ],
+      });
+      return null;
+    }
+    case "note": {
+      const boardId = asString(data.board_id, change.entityId);
+      if (!(await exists(tx, "boards", boardId))) return "Parent board no longer exists";
+      await tx.execute({
+        sql: `insert into notes (board_id, document, updated_at)
+              values (?, ?, ?)
+              on conflict(board_id) do update set
+                document = excluded.document, updated_at = excluded.updated_at`,
+        args: [
+          boardId,
+          asString(data.document, "[]"),
           toMs(data.updated_at, now),
         ],
       });

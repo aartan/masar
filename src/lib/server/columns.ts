@@ -127,7 +127,7 @@ export async function deleteColumn(
 
   if (boardColumns.length <= 1) {
     throw new ApiError(
-      "A board needs at least one column. Create another column first.",
+      "A space needs at least one column. Create another column first.",
       400,
     );
   }
@@ -197,7 +197,7 @@ export async function reorderColumns(
     columnIds.some((id) => !existing.has(id))
   ) {
     throw new ApiError(
-      "Column order must include every column on the board exactly once.",
+      "Column order must include every column on the space exactly once.",
       400,
     );
   }

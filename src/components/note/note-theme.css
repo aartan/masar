@@ -1,0 +1,73 @@
+/*
+ * Masar's semantic theme for the BlockNote editor chrome.
+ *
+ * BlockNote exposes every color through `--bn-*` CSS custom properties that
+ * its default light/dark themes set on the editor root. This overlay re-maps
+ * them to Masar's design tokens (see globals.css) so menus, toolbars and
+ * selection states match the rest of the app. Imported after BlockNote's own
+ * stylesheet so these overrides win.
+ */
+
+.masar-note .bn-container,
+.masar-note .bn-editor {
+  /* Typography follows the app: system sans for content, mono for code. */
+  --bn-font-family: var(--font-sans);
+  font-family: var(--font-sans);
+
+  /* Chrome surfaces. */
+  --bn-colors-editor-background: transparent;
+  --bn-colors-editor-text: var(--foreground);
+  --bn-colors-menu-background: var(--popover);
+  --bn-colors-menu-text: var(--popover-foreground);
+  --bn-colors-tooltip-background: var(--popover);
+  --bn-colors-tooltip-text: var(--popover-foreground);
+  --bn-colors-hovered-background: var(--accent);
+  --bn-colors-hovered-text: var(--accent-foreground);
+  --bn-colors-selected-background: var(--accent);
+  --bn-colors-selected-text: var(--accent-foreground);
+  --bn-colors-disabled-background: var(--muted);
+  --bn-colors-disabled-text: var(--muted-foreground);
+  --bn-colors-side-menu: var(--muted-foreground);
+  --bn-colors-border: var(--border);
+  --bn-colors-shadow: var(--shadow-float);
+  --bn-shadow-light: var(--shadow-soft);
+  --bn-shadow-medium: var(--shadow-float);
+
+  /* Radii align with the app's control geometry. */
+  --bn-border-radius: var(--radius-md);
+  --bn-border-radius-medium: var(--radius-md);
+  --bn-border-radius-large: var(--radius-lg);
+  --bn-border-radius-small: var(--radius-sm);
+}
+
+/* Links and inline code use the app's accent and muted tokens. */
+.masar-note .bn-editor a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.masar-note .bn-editor code,
+.masar-note .bn-editor .bn-inline-code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background-color: var(--muted);
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+}
+
+/* Blocks render on the page surface; keep their spacing writing-focused. */
+.masar-note .bn-editor [data-content-type="blockContainer"] {
+  margin-block: 0.2em;
+}
+
+/* Slash menu and toolbar popovers sit on the popover surface. */
+.masar-note [role="menu"],
+.masar-note .bn-suggestion-menu,
+.masar-note .mantine-Popover-dropdown {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-float);
+}

@@ -634,12 +634,12 @@ export function BoardView({
   async function deleteBoard() {
     try {
       await api(`/api/boards/${board.id}`, { method: "DELETE" });
-      toast.success("Board deleted");
+      toast.success("Space deleted");
       setDeleteBoardOpen(false);
       navigate("/");
       void refreshBoards();
     } catch (error) {
-      toast.error("Could not delete board", {
+      toast.error("Could not delete space", {
         description: errorMessage(error),
       });
     }
@@ -856,7 +856,7 @@ export function BoardView({
                   )}
                 >
                   <LayoutGrid className="size-3.5" />
-                  Board
+                  Kanban
                 </button>
                 <button
                   type="button"
@@ -892,7 +892,7 @@ export function BoardView({
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label="Board actions"
+                        aria-label="Space actions"
                         className="text-muted-foreground"
                       >
                         <MoreHorizontal className="size-4" />
@@ -901,7 +901,7 @@ export function BoardView({
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
                         <PencilLine />
-                        Board settings
+                        Space settings
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
@@ -909,7 +909,7 @@ export function BoardView({
                         onSelect={() => setDeleteBoardOpen(true)}
                       >
                         <Trash2 />
-                        Delete board
+                        Delete space
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -1139,7 +1139,7 @@ export function BoardView({
                 . Nothing will be deleted.
               </>
             ) : (
-              "This empty column will be removed from the board."
+              "This empty column will be removed from the space."
             )}
           </>
         }
@@ -1158,7 +1158,7 @@ export function BoardView({
             be permanently deleted. This cannot be undone.
           </>
         }
-        confirmLabel="Delete board"
+        confirmLabel="Delete space"
         onConfirm={deleteBoard}
       />
     </PageSurface>

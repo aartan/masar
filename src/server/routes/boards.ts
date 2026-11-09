@@ -15,6 +15,7 @@ import { createColumn, deleteColumn, reorderColumns, updateColumn } from "@/lib/
 import { createLabel, deleteLabel, updateLabel } from "@/lib/server/labels";
 import { createTask, reorderTasks } from "@/lib/server/tasks";
 import { getWhiteboardScene, saveWhiteboardScene } from "@/lib/server/whiteboards";
+import { getNoteDocument, saveNoteDocument } from "@/lib/server/notes";
 import {
   boardCreateSchema,
   boardUpdateSchema,
@@ -23,6 +24,7 @@ import {
   labelCreateSchema,
   labelUpdateSchema,
   moveBoardSchema,
+  noteDocumentSchema,
   reorderBoardsSchema,
   reorderColumnsSchema,
   reorderTasksSchema,
@@ -184,6 +186,33 @@ boardRoutes.put("/boards/:boardId/scene", async (c) => {
       scene: await saveWhiteboardScene(
         c.req.param("boardId"),
         input.scene,
+        user.id,
+      ),
+    });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+});
+
+boardRoutes.get("/boards/:boardId/document", async (c) => {
+  try {
+    const user = await requireApiUser();
+    return jsonOk({
+      document: await getNoteDocument(c.req.param("boardId"), user.id),
+    });
+  } catch (error) {
+    return handleRouteError(error);
+  }
+});
+
+boardRoutes.put("/boards/:boardId/document", async (c) => {
+  try {
+    const user = await requireApiUser();
+    const input = await parseJsonBody(c.req.raw, noteDocumentSchema);
+    return jsonOk({
+      document: await saveNoteDocument(
+        c.req.param("boardId"),
+        input.document,
         user.id,
       ),
     });

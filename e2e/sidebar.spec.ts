@@ -45,10 +45,10 @@ test("reorders boards within a project by dragging and persists the order", asyn
     await expect.poll(renderedBoardIds).toEqual(boardIds);
 
     const firstHandle = sidebar.getByRole("button", {
-      name: `Reorder board ${names[0]}`,
+      name: `Reorder space ${names[0]}`,
     });
     const thirdHandle = sidebar.getByRole("button", {
-      name: `Reorder board ${names[2]}`,
+      name: `Reorder space ${names[2]}`,
     });
     const moveResponse = page.waitForResponse(
       (response) =>

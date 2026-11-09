@@ -25,6 +25,7 @@ const ENTITY_TYPES = [
   "subtask",
   "comment",
   "whiteboard",
+  "note",
 ] as const;
 
 const remoteChangeSchema = z.object({

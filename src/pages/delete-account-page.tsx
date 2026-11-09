@@ -212,7 +212,7 @@ export function DeleteAccountPage() {
           <ul className="space-y-2 text-[12.5px] leading-relaxed text-muted-foreground">
             <li>Your Masar account and sign-in access are permanently removed.</li>
             <li>
-              Synced cloud data is erased, including boards, columns, tasks,
+              Synced cloud data is erased, including spaces, columns, tasks,
               labels, subtasks, and comments.
             </li>
             <li>All active sessions and sync access are revoked immediately.</li>

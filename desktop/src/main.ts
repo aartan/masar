@@ -911,7 +911,7 @@ function refreshMenu(): void {
                 message:
                   result.boards === 0
                     ? "There is no local workspace to import."
-                    : `Imported ${result.boards} board(s) and ${result.tasks} task(s) into your premium workspace.`,
+                    : `Imported ${result.boards} space(s) and ${result.tasks} task(s) into your premium workspace.`,
               });
             }
           })

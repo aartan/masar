@@ -45,6 +45,14 @@ test.describe("note workflows", () => {
       await page.keyboard.type("Hello from the note");
       await expect(page.getByText("Saved", { exact: true })).toBeVisible();
 
+      // The formatting toolbar is pinned above the editor rather than floating
+      // over the selection, so it stays available while writing.
+      const toolbar = page.locator(".masar-note-toolbar .bn-formatting-toolbar");
+      await expect(toolbar).toBeVisible();
+      await expect(
+        toolbar.getByRole("button", { name: "Bold", exact: true }),
+      ).toBeVisible();
+
       // Content persists across a reload.
       await page.reload({ waitUntil: "networkidle" });
       await expect(page.locator(".masar-note .bn-editor")).toContainText(

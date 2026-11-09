@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { AlertTriangle, FileText, Settings2 } from "lucide-react";
 import { BlockNoteEditor, type PartialBlock } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/mantine";
+import { BlockNoteViewEditor, FormattingToolbar } from "@blocknote/react";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 import "./note-theme.css";
@@ -369,7 +370,7 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
 
   return (
     <>
-      <PageSurface className="flex h-full flex-col">
+      <PageSurface className="masar-note flex h-full flex-col">
         <div className="flex items-center gap-3 border-b border-border/60 bg-background/65 px-4 py-3 sm:px-6">
           <FileText className="size-4 text-muted-foreground" />
           <h1 className="truncate font-display text-[15px] font-semibold">
@@ -395,9 +396,9 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
           </div>
         </div>
 
-        <div className="masar-note scrollbar-thin min-h-0 flex-1 overflow-y-auto">
-          {editor === null ? (
-            showLoading ? (
+        {editor === null ? (
+          <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
+            {showLoading ? (
               <div
                 className="grid h-full place-items-center text-muted-foreground"
                 role="status"
@@ -410,20 +411,35 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
               </div>
             ) : (
               <div className="h-full" aria-busy="true" />
-            )
-          ) : (
-            <div className="mx-auto w-full max-w-[760px] px-5 py-8 sm:px-8 sm:py-12">
-              {/* The space name is shown in the header bar above; the note
-                  itself starts blank so the user owns every word in it. */}
-              <BlockNoteView
-                editor={editor}
-                theme={resolvedTheme === "dark" ? "dark" : "light"}
-                editable={!readOnly}
-                onChange={handleChange}
-              />
+            )}
+          </div>
+        ) : (
+          <BlockNoteView
+            editor={editor}
+            theme={resolvedTheme === "dark" ? "dark" : "light"}
+            editable={!readOnly}
+            onChange={handleChange}
+            formattingToolbar={false}
+            renderEditor={false}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            {!readOnly && (
+              <div className="masar-note-toolbar shrink-0 border-b border-border/60 bg-background/65">
+                <div className="mx-auto flex w-full max-w-[760px] items-center px-3 py-1.5 sm:px-5">
+                  <FormattingToolbar />
+                </div>
+              </div>
+            )}
+
+            <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
+              <div className="mx-auto w-full max-w-[760px] px-5 py-8 sm:px-8 sm:py-12">
+                {/* The space name is shown in the header bar above; the note
+                    itself starts blank so the user owns every word in it. */}
+                <BlockNoteViewEditor />
+              </div>
             </div>
-          )}
-        </div>
+          </BlockNoteView>
+        )}
       </PageSurface>
       <BoardSettingsDialog
         open={settingsOpen}

@@ -121,6 +121,11 @@ export function ProjectView({
             <span>
               {totals.tasks} task{totals.tasks === 1 ? "" : "s"}
             </span>
+            {totals.totalEffort > 0 && (
+              <span>
+                Total Effort: {totals.totalEffort}
+              </span>
+            )}
             <span>{completion}% complete</span>
             {totals.overdue > 0 && (
               <span className="text-destructive">

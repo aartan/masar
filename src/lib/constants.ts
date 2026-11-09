@@ -1,6 +1,21 @@
 export const PRIORITIES = ["none", "low", "medium", "high", "urgent"] as const;
 export type Priority = (typeof PRIORITIES)[number];
 
+/** T-shirt sizes used to estimate task size and relative effort. */
+export const TASK_COMPLEXITIES = ["XS", "S", "M", "L", "XL"] as const;
+export type TaskComplexity = (typeof TASK_COMPLEXITIES)[number];
+
+export const TASK_COMPLEXITY_META: Record<
+  TaskComplexity,
+  { label: string; effortPoints: number }
+> = {
+  XS: { label: "Extra small", effortPoints: 1 },
+  S: { label: "Small", effortPoints: 2 },
+  M: { label: "Medium", effortPoints: 3 },
+  L: { label: "Large", effortPoints: 5 },
+  XL: { label: "Extra large", effortPoints: 8 },
+};
+
 export const PRIORITY_META: Record<
   Priority,
   { label: string; rank: number; description: string }

@@ -91,7 +91,7 @@ describe("local sync outbox", () => {
     await updateBoard(board.id, { name: "Renamed" }, LOCAL_USER_ID, test.db);
     const task = await createTask(
       board.id,
-      { columnId: detail.columns[0]!.id, title: "A task" },
+      { columnId: detail.columns[0]!.id, title: "A task", complexity: "L" },
       LOCAL_USER_ID,
       test.db,
     );
@@ -99,6 +99,11 @@ describe("local sync outbox", () => {
     let pending = await listPendingChanges(0, 500);
     expect(pending.filter((change) => change.entityType === "board")).toHaveLength(2);
     expect(pending.some((change) => change.entityType === "task" && change.entityId === task.id)).toBe(true);
+    expect(
+      pending.find(
+        (change) => change.entityType === "task" && change.entityId === task.id,
+      )?.data,
+    ).toMatchObject({ complexity: "L" });
 
     const last = pending[pending.length - 1]!;
     await acknowledgeChanges(last.id);
@@ -194,6 +199,43 @@ describe("local sync outbox", () => {
     expect(pending.filter((change) => change.entityType === "project")).toHaveLength(1);
     const state = await getSyncState();
     expect(state.lastRevision).toBe(1);
+  });
+
+  it("applies remote task size estimates", async () => {
+    const { board, detail } = await makeBoard("Size board");
+    await prepareSync("remote-user-a");
+    const now = Date.now();
+
+    const result = await applyRemoteChanges(1, [
+      {
+        entityType: "task",
+        entityId: "remote-task-1",
+        deleted: false,
+        data: {
+          id: "remote-task-1",
+          board_id: board.id,
+          column_id: detail.columns[0]!.id,
+          title: "Remote estimated task",
+          description: null,
+          priority: "medium",
+          complexity: "XL",
+          due_date: null,
+          assignee: null,
+          position: 0,
+          completed_at: null,
+          created_at: now,
+          updated_at: now,
+        },
+        updatedAt: new Date(now).toISOString(),
+        revision: 1,
+      },
+    ]);
+
+    expect(result.applied).toBe(1);
+    const refreshed = await getBoardDetail(board.id, LOCAL_USER_ID, test.db);
+    expect(
+      refreshed.tasks.find((task) => task.id === "remote-task-1"),
+    ).toMatchObject({ complexity: "XL" });
   });
 
   it("keeps a newer local edit and queues it when an older remote change arrives", async () => {

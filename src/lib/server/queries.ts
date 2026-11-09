@@ -23,7 +23,12 @@ import type {
   ProjectSummary,
   Task,
 } from "@/lib/types";
-import type { BoardType, LabelColor, Priority } from "@/lib/constants";
+import type {
+  BoardType,
+  LabelColor,
+  Priority,
+  TaskComplexity,
+} from "@/lib/constants";
 
 function ownedBoardIds(database: AppDatabase, ownerId: string) {
   return database
@@ -133,6 +138,7 @@ export function serializeTask(
     title: row.title,
     description: row.description,
     priority: row.priority as Priority,
+    complexity: row.complexity as TaskComplexity | null,
     dueDate: row.dueDate,
     position: row.position,
     completedAt: row.completedAt ? row.completedAt.toISOString() : null,

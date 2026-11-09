@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  SizeBadge,
   DueDateChip,
   LabelChip,
   PriorityBars,
@@ -216,6 +217,7 @@ export function TaskCard({
       <div className="mt-2.5 flex items-center gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {task.priority !== "none" && <PriorityBars priority={task.priority} />}
+          <SizeBadge size={task.complexity} />
           <DueDateChip task={task} columnDone={column.isDone} />
         </div>
         <div className="flex shrink-0 items-center gap-2 text-muted-foreground">

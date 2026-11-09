@@ -102,6 +102,16 @@ test.describe("board workflows", () => {
         sheet.getByRole("combobox").filter({ hasText: "High" }),
       ).toBeVisible();
 
+      // Size (T-shirt size)
+      await sheet
+        .getByRole("combobox")
+        .filter({ hasText: "No size" })
+        .click();
+      await page.getByRole("option", { name: /^Large\b/ }).click();
+      await expect(
+        sheet.getByRole("combobox").filter({ hasText: "Large" }),
+      ).toBeVisible();
+
       // Label
       await sheet.getByRole("button", { name: "Manage" }).click();
       await page.getByPlaceholder("New label").fill("Design");
@@ -168,6 +178,11 @@ test.describe("board workflows", () => {
       await expect(
         page.getByRole("button", { name: `Open task: ${updatedTitle}` }),
       ).toBeVisible();
+      await expect(
+        page
+          .getByRole("button", { name: `Open task: ${updatedTitle}` })
+          .getByLabel("Large, 5 Effort Points"),
+      ).toBeVisible();
 
       // Everything survives a reload.
       await page.reload({ waitUntil: "networkidle" });
@@ -186,6 +201,9 @@ test.describe("board workflows", () => {
       await expect(reopened.getByText("Ready for review.", { exact: true })).toBeVisible();
       await expect(
         reopened.getByRole("combobox").filter({ hasText: "High" }),
+      ).toBeVisible();
+      await expect(
+        reopened.getByRole("combobox").filter({ hasText: "Large" }),
       ).toBeVisible();
       await expect(reopened.getByText("Design", { exact: true })).toBeVisible();
       await reopened.getByRole("button", { name: "Close task details" }).click();

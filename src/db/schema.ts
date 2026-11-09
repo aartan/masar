@@ -210,6 +210,11 @@ export const tasks = sqliteTable(
     title: text("title").notNull(),
     description: text("description"),
     priority: text("priority").notNull().default("none"),
+    /**
+     * Optional T-shirt-size estimate. Null means the task has not been
+     * estimated, which keeps existing rows untouched when the field is added.
+     */
+    complexity: text("complexity"),
     dueDate: text("due_date"),
     // Legacy free-text field kept for database compatibility. The app no
     // longer reads or writes it.

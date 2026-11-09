@@ -36,7 +36,7 @@ const TABLES = [
   {
     table: "tasks",
     columns:
-      "id, board_id, column_id, title, description, priority, due_date, assignee, position, completed_at, created_at, updated_at",
+      "id, board_id, column_id, title, description, priority, complexity, due_date, assignee, position, completed_at, created_at, updated_at",
   },
   {
     table: "task_images",

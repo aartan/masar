@@ -194,6 +194,16 @@ describe("0001 auth and workspace ownership migration", () => {
       .then((result) => result.rows.map((row) => row.name));
     expect(boardColumns).not.toContain("color");
 
+    const taskColumns = await fixture.client
+      .execute("PRAGMA table_info(tasks)")
+      .then((result) => result.rows.map((row) => row.name));
+    expect(taskColumns).toContain("complexity");
+    const [legacyTask] = await fixture.db
+      .select({ complexity: tasks.complexity })
+      .from(tasks)
+      .where(eq(tasks.id, "legacy-task-1"));
+    expect(legacyTask?.complexity).toBeNull();
+
     // Re-running migrations is a no-op.
     await migrate(fixture.db, { migrationsFolder: fixture.migrationsFolder });
     const [boardCount] = await fixture.db.select({ value: count() }).from(boards);

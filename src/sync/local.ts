@@ -261,9 +261,9 @@ async function bootstrapChanges(tx: Transaction): Promise<void> {
     `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
      select 'task', id, 0,
        json_object('id', id, 'board_id', board_id, 'column_id', column_id, 'title', title,
-                   'description', description, 'priority', priority, 'due_date', due_date,
-                   'assignee', assignee, 'position', position, 'completed_at', completed_at,
-                   'created_at', created_at, 'updated_at', updated_at),
+                   'description', description, 'priority', priority, 'complexity', complexity,
+                   'due_date', due_date, 'assignee', assignee, 'position', position,
+                   'completed_at', completed_at, 'created_at', created_at, 'updated_at', updated_at),
        coalesce(updated_at, unixepoch() * 1000)
      from tasks
      order by board_id, column_id, position`,
@@ -1093,9 +1093,9 @@ async function queueCurrentEntity(
     task: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
       select 'task', id, 0,
         json_object('id', id, 'board_id', board_id, 'column_id', column_id, 'title', title,
-                    'description', description, 'priority', priority, 'due_date', due_date,
-                    'assignee', assignee, 'position', position, 'completed_at', completed_at,
-                    'created_at', created_at, 'updated_at', updated_at),
+                    'description', description, 'priority', priority, 'complexity', complexity,
+                    'due_date', due_date, 'assignee', assignee, 'position', position,
+                    'completed_at', completed_at, 'created_at', created_at, 'updated_at', updated_at),
         coalesce(updated_at, unixepoch() * 1000)
       from tasks where id = ?`,
     subtask: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
@@ -1355,14 +1355,14 @@ async function applyUpsert(
       if (!(await exists(tx, "boards", boardId))) return "Parent board no longer exists";
       if (!(await exists(tx, "columns", columnId))) return "Parent column no longer exists";
       await tx.execute({
-        sql: `insert into tasks (id, board_id, column_id, title, description, priority, due_date, assignee, position, completed_at, created_at, updated_at)
-              values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        sql: `insert into tasks (id, board_id, column_id, title, description, priority, complexity, due_date, assignee, position, completed_at, created_at, updated_at)
+              values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               on conflict(id) do update set
                 board_id = excluded.board_id, column_id = excluded.column_id, title = excluded.title,
                 description = excluded.description, priority = excluded.priority,
-                due_date = excluded.due_date, assignee = excluded.assignee,
-                position = excluded.position, completed_at = excluded.completed_at,
-                updated_at = excluded.updated_at`,
+                complexity = excluded.complexity, due_date = excluded.due_date,
+                assignee = excluded.assignee, position = excluded.position,
+                completed_at = excluded.completed_at, updated_at = excluded.updated_at`,
         args: [
           change.entityId,
           boardId,
@@ -1370,6 +1370,7 @@ async function applyUpsert(
           asString(data.title, "Untitled task"),
           asNullableString(data.description),
           asString(data.priority, "none"),
+          asNullableString(data.complexity),
           asNullableString(data.due_date),
           asNullableString(data.assignee),
           asNumber(data.position),

@@ -4,6 +4,7 @@ import * as React from "react";
 import { ChevronRight, ListChecks, MessageSquare, SearchX } from "lucide-react";
 
 import {
+  SizeBadge,
   DueDateChip,
   LabelChip,
   PriorityBars,
@@ -144,6 +145,7 @@ export function BoardListView({
                       </td>
                       <td className="px-3 py-3">
                         <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <SizeBadge size={task.complexity} />
                           <PriorityBars priority={task.priority} />
                           <span className="capitalize">
                             {task.priority === "none" ? "—" : task.priority}
@@ -195,6 +197,7 @@ export function BoardListView({
                 <div className="flex items-center justify-between gap-2">
                   <Badge variant="outline">{column?.name ?? "—"}</Badge>
                   <div className="flex items-center gap-1.5">
+                    <SizeBadge size={task.complexity} />
                     <PriorityBars priority={task.priority} />
                     <DueDateChip task={task} columnDone={column?.isDone} />
                   </div>

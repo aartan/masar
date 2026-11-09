@@ -85,6 +85,13 @@
       "when": 1794187870504,
       "tag": "0011_certain_polaris",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794258243786,
+      "tag": "0012_outstanding_whistler",
+      "breakpoints": true
     }
   ]
 }

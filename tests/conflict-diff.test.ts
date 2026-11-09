@@ -137,6 +137,46 @@ describe("conflict diff", () => {
     expect(diff.summary).toBe("1 added · 1 removed · 1 modified");
   });
 
+  it("compares task image metadata without rendering the URL", () => {
+    const diff = buildConflictDiff(
+      conflict({
+        entityType: "task_image",
+        incomingData: {
+          id: "image-1",
+          task_id: "task-1",
+          url: `data:image/png;base64,${"A".repeat(1000)}`,
+          name: "shot.png",
+          position: 0,
+        },
+        winningData: {
+          id: "image-1",
+          task_id: "task-1",
+          url: "/api/images/image-1",
+          name: "renamed.png",
+          position: 2,
+        },
+        entityLabel: "shot.png",
+      }),
+      lookup,
+    );
+
+    const changed = new Map(diff.changed.map((row) => [row.key, row]));
+    expect(changed.get("name")).toMatchObject({
+      label: "File name",
+      local: "shot.png",
+      cloud: "renamed.png",
+    });
+    expect(changed.get("position")).toMatchObject({
+      label: "Order",
+      local: "#1",
+      cloud: "#3",
+    });
+    expect(
+      [...diff.changed, ...diff.unchanged].some((row) => row.key === "url"),
+    ).toBe(false);
+    expect(diff.summary).toBe("Changed: File name, Order");
+  });
+
   it("builds a line diff for long text", () => {
     const lines = diffText("First line\nSecond line", "First line\nUpdated line");
     expect(lines).toEqual([

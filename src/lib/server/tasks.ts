@@ -7,6 +7,7 @@ import {
   columns,
   comments,
   subtasks,
+  taskImages,
   taskLabels,
   tasks,
 } from "@/db/schema";
@@ -26,6 +27,11 @@ import {
   requireBoard,
   requireColumn,
 } from "./queries";
+import { cleanupDeletedTaskImages, fetchTaskImages } from "./task-images";
+import {
+  premiumImageClient,
+  type SceneImageStorage,
+} from "./images";
 
 export function serializeSubtask(row: {
   id: string;
@@ -69,7 +75,7 @@ export async function getTaskDetail(
   const task = (await fetchTasks(database, { ownerId, taskId }))[0];
   if (!task) throw new ApiError("Task not found.", 404);
 
-  const [subtaskRows, commentRows] = await Promise.all([
+  const [subtaskRows, commentRows, images] = await Promise.all([
     database
       .select()
       .from(subtasks)
@@ -80,12 +86,14 @@ export async function getTaskDetail(
       .from(comments)
       .where(eq(comments.taskId, taskId))
       .orderBy(asc(comments.createdAt)),
+    fetchTaskImages(taskId, database),
   ]);
 
   return {
     ...task,
     subtasks: subtaskRows.map(serializeSubtask),
     comments: commentRows.map(serializeComment),
+    images,
   };
 }
 
@@ -203,9 +211,24 @@ export async function deleteTask(
   taskId: string,
   ownerId: string,
   database: AppDatabase = getDb(),
+  images: SceneImageStorage | null = premiumImageClient(),
 ): Promise<void> {
-  await assertTaskWritable(database, taskId, ownerId);
+  const task = await assertTaskWritable(database, taskId, ownerId);
+  const imageRows = await database
+    .select({ url: taskImages.url })
+    .from(taskImages)
+    .where(eq(taskImages.taskId, taskId));
+
   await database.delete(tasks).where(eq(tasks.id, taskId));
+
+  // Duplicated tasks share the same URLs, so only unreferenced objects are
+  // removed. Cache rows are board-scoped and shared by those duplicates too.
+  await cleanupDeletedTaskImages(
+    task.boardId,
+    imageRows.map((row) => row.url),
+    database,
+    images,
+  );
 }
 
 export async function duplicateTask(
@@ -218,7 +241,7 @@ export async function duplicateTask(
   const newId = randomUUID();
   const now = new Date();
 
-  const [sourceLabels, sourceSubtasks] = await Promise.all([
+  const [sourceLabels, sourceSubtasks, sourceImages] = await Promise.all([
     database
       .select({ labelId: taskLabels.labelId })
       .from(taskLabels)
@@ -228,6 +251,11 @@ export async function duplicateTask(
       .from(subtasks)
       .where(eq(subtasks.taskId, taskId))
       .orderBy(asc(subtasks.position)),
+    database
+      .select()
+      .from(taskImages)
+      .where(eq(taskImages.taskId, taskId))
+      .orderBy(asc(taskImages.position)),
   ]);
 
   const title = `${source.title} (copy)`.slice(0, 200);
@@ -264,6 +292,23 @@ export async function duplicateTask(
           completed: row.completed,
           position: index,
           createdAt: now,
+        })),
+      );
+    }
+
+    if (sourceImages.length > 0) {
+      // Copies share the same image URL (and therefore the same R2 object),
+      // so delete paths reference-check before removing an object or its
+      // local cache entry.
+      await tx.insert(taskImages).values(
+        sourceImages.map((row) => ({
+          id: randomUUID(),
+          taskId: newId,
+          url: row.url,
+          name: row.name,
+          position: row.position,
+          createdAt: now,
+          updatedAt: now,
         })),
       );
     }

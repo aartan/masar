@@ -38,6 +38,10 @@ const TABLES = [
     columns:
       "id, board_id, column_id, title, description, priority, due_date, assignee, position, completed_at, created_at, updated_at",
   },
+  {
+    table: "task_images",
+    columns: "id, task_id, url, name, position, created_at, updated_at",
+  },
   { table: "task_labels", columns: "task_id, label_id" },
   {
     table: "subtasks",

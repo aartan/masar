@@ -161,6 +161,21 @@ export const reorderTasksSchema = z.object({
     .max(50),
 });
 
+/**
+ * Add an image to a task. Premium uploads send the image id returned by
+ * `POST /api/images`; the free/offline fallback sends the image as a data URL.
+ * Exactly one source must be present.
+ */
+export const taskImageCreateSchema = z
+  .object({
+    imageId: z.string().trim().min(1).max(120).optional(),
+    dataURL: z.string().trim().min(5).max(3 * 1024 * 1024).optional(),
+    name: z.string().trim().max(255).nullish(),
+  })
+  .refine((value) => Boolean(value.imageId) !== Boolean(value.dataURL), {
+    message: "Provide exactly one image source",
+  });
+
 export const subtaskCreateSchema = z.object({
   title: nameSchema(200, "Subtask"),
 });

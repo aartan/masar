@@ -26,7 +26,7 @@ export const BOARD_TYPES = ["kanban", "whiteboard", "note"] as const;
 export type BoardType = (typeof BOARD_TYPES)[number];
 
 /** Image use cases accepted by the shared image storage API. */
-export const IMAGE_KINDS = ["whiteboard", "note", "general"] as const;
+export const IMAGE_KINDS = ["whiteboard", "note", "task", "general"] as const;
 export type ImageKind = (typeof IMAGE_KINDS)[number];
 
 /** Name given to the project created for existing boards during migration and

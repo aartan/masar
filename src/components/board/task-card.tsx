@@ -7,6 +7,7 @@ import {
   Check,
   Copy,
   GripVertical,
+  Image as ImageIcon,
   ListChecks,
   MessageSquare,
   MoreHorizontal,
@@ -228,6 +229,15 @@ export function TaskCard({
             >
               <ListChecks className="size-3" />
               {task.subtaskDoneCount}/{task.subtaskCount}
+            </span>
+          )}
+          {task.imageCount > 0 && (
+            <span
+              className="inline-flex items-center gap-0.5 text-[10px] tabular-nums"
+              title={`${task.imageCount} images`}
+            >
+              <ImageIcon className="size-3" />
+              {task.imageCount}
             </span>
           )}
           {task.commentCount > 0 && (

@@ -16,6 +16,7 @@ import {
   subtaskCreateSchema,
   subtaskUpdateSchema,
   taskCreateSchema,
+  taskImageCreateSchema,
   taskQuerySchema,
   taskUpdateSchema,
 } from "@/lib/validation";
@@ -30,6 +31,29 @@ describe("dateOnlySchema", () => {
     expect(dateOnlySchema.safeParse("2026-02-30").success).toBe(false);
     expect(dateOnlySchema.safeParse("2026-6-1").success).toBe(false);
     expect(dateOnlySchema.safeParse("not-a-date").success).toBe(false);
+  });
+});
+
+describe("task image schema", () => {
+  it("accepts exactly one image source", () => {
+    expect(
+      taskImageCreateSchema.parse({ imageId: "image-1", name: "shot.png" }),
+    ).toEqual({ imageId: "image-1", name: "shot.png" });
+    expect(
+      taskImageCreateSchema.safeParse({
+        dataURL: "data:image/png;base64,AAAA",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects missing or conflicting image sources", () => {
+    expect(taskImageCreateSchema.safeParse({}).success).toBe(false);
+    expect(
+      taskImageCreateSchema.safeParse({
+        imageId: "image-1",
+        dataURL: "data:image/png;base64,AAAA",
+      }).success,
+    ).toBe(false);
   });
 });
 

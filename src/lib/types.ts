@@ -63,6 +63,7 @@ export interface Task {
   subtaskCount: number;
   subtaskDoneCount: number;
   commentCount: number;
+  imageCount: number;
 }
 
 export interface Label {
@@ -90,9 +91,23 @@ export interface Comment {
   createdAt: string;
 }
 
+/**
+ * An image attached to a task. `url` is either a canonical premium image URL
+ * (`/api/images/<id>`) or an embedded data URL in the free local workspace.
+ */
+export interface TaskImage {
+  id: string;
+  taskId: string;
+  url: string;
+  name: string | null;
+  position: number;
+  createdAt: string;
+}
+
 export interface TaskDetail extends Task {
   subtasks: Subtask[];
   comments: Comment[];
+  images: TaskImage[];
 }
 
 export interface BoardDetail {
@@ -143,7 +158,8 @@ export interface SyncConflictView {
     | "subtask"
     | "comment"
     | "whiteboard"
-    | "note";
+    | "note"
+    | "task_image";
   entityId: string;
   incomingDeleted: boolean;
   incomingData: Record<string, unknown>;

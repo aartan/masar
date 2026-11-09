@@ -41,6 +41,7 @@ const TYPE_LABEL: Record<SyncConflictView["entityType"], string> = {
   comment: "Comment",
   whiteboard: "Whiteboard",
   note: "Note",
+  task_image: "Task image",
 };
 
 export function ConflictsPage() {

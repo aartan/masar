@@ -21,11 +21,10 @@ import {
 } from "@/lib/server/whiteboards";
 import { saveNoteDocument } from "@/lib/server/notes";
 import { createTestDatabase, createTestUser, type TestDatabase } from "./helpers/test-db";
+import { PNG_BYTES, PNG_DATA_URL } from "./helpers/image-fixtures";
 
 let test: TestDatabase;
 let owner: { id: string; name: string; email: string };
-
-const PNG_DATA_URL = `data:image/png;base64,${Buffer.from("png-bytes").toString("base64")}`;
 
 class FakeImageStorage implements SceneImageStorage {
   uploads: UploadImageInput[] = [];
@@ -181,6 +180,39 @@ describe("whiteboard image externalisation", () => {
       width: 32,
       height: 16,
     });
+  });
+
+  it("rejects non-image files embedded in a scene", async () => {
+    const board = await makeWhiteboard();
+    const images = new FakeImageStorage();
+
+    await expect(
+      saveWhiteboardScene(
+        board.id,
+        sceneWithFiles({
+          "file-a": "data:text/html;base64,PGgxPmhpPC9oMT4=",
+        }),
+        owner.id,
+        test.db,
+        images,
+      ),
+    ).rejects.toMatchObject({ status: 415 });
+
+    await expect(
+      saveWhiteboardScene(
+        board.id,
+        sceneWithFiles({
+          "file-a": `data:image/png;base64,${Buffer.from("not an image").toString("base64")}`,
+        }),
+        owner.id,
+        test.db,
+        images,
+      ),
+    ).rejects.toMatchObject({ status: 422 });
+
+    expect(images.uploads).toEqual([]);
+    const reloaded = await getWhiteboardScene(board.id, owner.id, test.db);
+    expect(reloaded.scene).toBe("{}");
   });
 
   it("does not re-upload images that are already referenced", async () => {
@@ -415,6 +447,46 @@ describe("note image cleanup", () => {
     );
     expect(images.removed).toEqual(["image-1"]);
   });
+
+  it("rejects non-image data URLs in a note document", async () => {
+    const board = await createBoard(
+      { name: "Unsafe note", type: "note" },
+      owner.id,
+      test.db,
+    );
+
+    await expect(
+      saveNoteDocument(
+        board.id,
+        JSON.stringify([
+          {
+            id: "block-1",
+            type: "file",
+            props: { url: "data:text/html;base64,PGgxPmhpPC9oMT4=" },
+          },
+        ]),
+        owner.id,
+        test.db,
+      ),
+    ).rejects.toMatchObject({ status: 415 });
+
+    await expect(
+      saveNoteDocument(
+        board.id,
+        JSON.stringify([
+          {
+            id: "block-2",
+            type: "image",
+            props: {
+              url: `data:image/png;base64,${Buffer.from("not an image").toString("base64")}`,
+            },
+          },
+        ]),
+        owner.id,
+        test.db,
+      ),
+    ).rejects.toMatchObject({ status: 422 });
+  });
 });
 
 describe("premium image client", () => {
@@ -460,7 +532,7 @@ describe("premium image client", () => {
     });
 
     const uploaded = await client.upload({
-      bytes: new Uint8Array(Buffer.from("png-bytes")),
+      bytes: new Uint8Array(PNG_BYTES),
       contentType: "image/png",
       filename: "image.png",
       kind: "whiteboard",

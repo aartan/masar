@@ -14,7 +14,7 @@ import {
   taskImageUrlId,
 } from "@/lib/task-image";
 import type { TaskImage } from "@/lib/types";
-import { decodeDataUrl } from "./image-data";
+import { parseImageDataUrl, verifyImageBytes } from "./image-data";
 import { deleteCachedImage } from "./image-cache";
 import {
   premiumImageClient,
@@ -99,16 +99,17 @@ export async function addTaskImage(
       .limit(1);
     if (existing) return serializeTaskImage(existing);
   } else if (input.dataURL) {
-    const decoded = decodeDataUrl(input.dataURL);
-    if (!decoded) {
-      throw new ApiError("The file is not a valid image data URL.", 422);
+    const parsed = parseImageDataUrl(input.dataURL);
+    if (!parsed.ok) {
+      throw new ApiError(parsed.message, parsed.status);
     }
-    if (decoded.bytes.byteLength > MAX_EMBEDDED_TASK_IMAGE_BYTES) {
+    if (parsed.bytes.byteLength > MAX_EMBEDDED_TASK_IMAGE_BYTES) {
       throw new ApiError(
         "This image is too large to attach without premium image storage.",
         413,
       );
     }
+    verifyImageBytes(parsed.bytes, parsed.declaredContentType);
 
     const embedded = await database
       .select({ url: taskImages.url })
@@ -123,7 +124,7 @@ export async function addTaskImage(
       (sum, row) => sum + dataUrlByteSize(row.url),
       0,
     );
-    if (total + decoded.bytes.byteLength > MAX_EMBEDDED_TASK_TOTAL_BYTES) {
+    if (total + parsed.bytes.byteLength > MAX_EMBEDDED_TASK_TOTAL_BYTES) {
       throw new ApiError(
         "This task has too many embedded images. Remove one or use premium image storage.",
         413,

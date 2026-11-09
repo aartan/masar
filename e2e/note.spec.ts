@@ -118,4 +118,29 @@ test.describe("note workflows", () => {
       if (boardId) await deleteBoard(page.request, boardId);
     }
   });
+
+  test("hides non-image upload blocks from the note menu", async ({ page }) => {
+    const noteName = uniqueName("E2E Note Menu");
+    let boardId: string | undefined;
+
+    try {
+      const board = await createBoard(page.request, noteName, {
+        type: "note",
+      });
+      boardId = board.id;
+
+      await page.goto(`/boards/${boardId}`);
+      const editor = page.locator(".masar-note .bn-editor");
+      await expect(editor).toBeVisible();
+      await editor.click();
+      await page.keyboard.type("/");
+
+      await expect(page.getByText("Image", { exact: true })).toBeVisible();
+      await expect(page.getByText("File", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Video", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Audio", { exact: true })).toHaveCount(0);
+    } finally {
+      if (boardId) await deleteBoard(page.request, boardId);
+    }
+  });
 });

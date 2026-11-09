@@ -23,6 +23,7 @@ import {
   recordSyncConflicts,
 } from "@/sync/local";
 import type { BoardSummary } from "@/lib/types";
+import { pngDataUrl } from "./helpers/image-fixtures";
 import { createTestDatabase, type TestDatabase } from "./helpers/test-db";
 
 let test: TestDatabase;
@@ -655,7 +656,7 @@ describe("local sync outbox", () => {
     const image = await addTaskImage(
       task.id,
       {
-        dataURL: `data:image/png;base64,${Buffer.from("png-bytes").toString("base64")}`,
+        dataURL: pngDataUrl(),
         name: "shot.png",
       },
       LOCAL_USER_ID,

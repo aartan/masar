@@ -7,6 +7,7 @@ import { collectNoteImageIds } from "@/lib/note-document";
 import type { NoteDocument } from "@/lib/types";
 import { assertBoardWritable } from "./queries";
 import { pruneBoardCache } from "./image-cache";
+import { validateNoteEmbeddedImages } from "./image-data";
 
 /**
  * Maximum serialized BlockNote document size. Premium notes store only image
@@ -67,6 +68,7 @@ export async function saveNoteDocument(
   await requireNoteBoard(database, boardId, ownerId);
   // Rejects mutations while the owning project is archived.
   await assertBoardWritable(database, boardId, ownerId);
+  validateNoteEmbeddedImages(document);
 
   const size = Buffer.byteLength(document, "utf8");
   if (size > MAX_NOTE_BYTES) {

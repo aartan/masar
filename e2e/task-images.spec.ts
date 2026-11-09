@@ -15,6 +15,50 @@ const PNG = Buffer.from(
   "base64",
 );
 
+test("rejects non-image task attachments with a clear error", async ({
+  page,
+}) => {
+  const boardName = uniqueName("Task Image Rejection");
+  const taskTitle = "Attachment rejection";
+  let boardId: string | undefined;
+
+  try {
+    const board = await createBoard(page.request, boardName);
+    boardId = board.id;
+    const boardDetail = await getBoardDetail(page.request, boardId);
+    const todo = columnByName(boardDetail.columns, "To Do");
+    const task = await createTask(page.request, boardId, {
+      columnId: todo.id,
+      title: taskTitle,
+    });
+
+    await page.goto(`/boards/${boardId}`);
+    await page
+      .getByRole("button", { name: `Open task: ${taskTitle}` })
+      .click();
+
+    const sheet = page.getByRole("dialog", { name: "Task details" });
+    await sheet.locator('input[type="file"]').setInputFiles({
+      name: "notes.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("this is not an image"),
+    });
+
+    await expect(page.getByText("Only image files can be attached")).toBeVisible();
+    await expect
+      .poll(async () => {
+        const response = await page.request.get(`/api/tasks/${task.id}`);
+        const body = (await response.json()) as {
+          task: { imageCount: number };
+        };
+        return body.task.imageCount;
+      })
+      .toBe(0);
+  } finally {
+    if (boardId) await deleteBoard(page.request, boardId);
+  }
+});
+
 test("attaches, previews, persists and removes a task image offline", async ({
   page,
 }) => {

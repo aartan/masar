@@ -17,11 +17,10 @@ import {
 } from "@/lib/server/whiteboards";
 import type { RemoteImage, UploadImageInput } from "@/lib/server/images";
 import { createTestDatabase, createTestUser, type TestDatabase } from "./helpers/test-db";
+import { PNG_BYTES, PNG_DATA_URL } from "./helpers/image-fixtures";
 
 let test: TestDatabase;
 let owner: { id: string; name: string; email: string };
-
-const PNG_DATA_URL = `data:image/png;base64,${Buffer.from("png-bytes").toString("base64")}`;
 
 /** A scene whose single image file is embedded. */
 function sceneWithFiles(files: Record<string, string>): string {
@@ -195,7 +194,7 @@ describe("whiteboard image cache", () => {
     });
     await waitFor(async () => images.pendingCount === 1);
     expect(await getCachedImage(board.id, "file-a", test.db)).toEqual({
-      bytes: Buffer.from("png-bytes"),
+      bytes: PNG_BYTES,
       contentType: "image/png",
     });
 
@@ -313,7 +312,10 @@ describe("whiteboard image cache", () => {
   it("commits a scene too large to embed only after externalisation", async () => {
     const board = await makeWhiteboard();
     const images = new DeferredImageStorage();
-    const bigBytes = Buffer.alloc(2 * 1024 * 1024, "x");
+    const bigBytes = Buffer.concat([
+      PNG_BYTES,
+      Buffer.alloc(2 * 1024 * 1024 - PNG_BYTES.length, "x"),
+    ]);
     const bigDataUrl = `data:image/png;base64,${bigBytes.toString("base64")}`;
     const scene = sceneWithFiles({ "file-a": bigDataUrl });
 

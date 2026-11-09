@@ -10,7 +10,7 @@ import {
   parseSceneDocument,
   type SceneFileRecord,
 } from "@/lib/whiteboard-scene";
-import { decodeDataUrl } from "./image-data";
+import { decodeVerifiedImageDataUrl, validateSceneEmbeddedImages } from "./image-data";
 import {
   cachedRemoteIdsFor,
   pruneBoardCache,
@@ -122,8 +122,13 @@ async function externalizeImages(
   try {
     for (const [fileId, file] of Object.entries(files)) {
       if (imageReferenceId(file.dataURL)) continue;
-      const decoded = decodeDataUrl(file.dataURL);
-      if (!decoded) continue;
+      if (
+        typeof file.dataURL !== "string" ||
+        !file.dataURL.startsWith("data:")
+      ) {
+        continue;
+      }
+      const decoded = decodeVerifiedImageDataUrl(file.dataURL);
 
       // The bytes may already live in R2 from an earlier save (for example
       // the renderer serialized this file before it learned the reference).
@@ -207,6 +212,7 @@ export async function saveWhiteboardScene(
 ): Promise<WhiteboardScene> {
   const board = await requireWhiteboardBoard(database, boardId, ownerId);
   await assertBoardProjectWritable(database, board.projectId, ownerId);
+  validateSceneEmbeddedImages(scene);
 
   const [existing] = await database
     .select({ scene: whiteboards.scene })
@@ -228,8 +234,13 @@ export async function saveWhiteboardScene(
     if (document) {
       for (const [fileId, file] of Object.entries(document.files)) {
         if (imageReferenceId(file.dataURL)) continue;
-        const decoded = decodeDataUrl(file.dataURL);
-        if (!decoded) continue;
+        if (
+          typeof file.dataURL !== "string" ||
+          !file.dataURL.startsWith("data:")
+        ) {
+          continue;
+        }
+        const decoded = decodeVerifiedImageDataUrl(file.dataURL);
         embeddedFileIds.push(fileId);
         try {
           await putCachedImage(

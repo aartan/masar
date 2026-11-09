@@ -8,6 +8,11 @@
  * served from `/api/boards/<boardId>/images/<imageId>/cache`.
  */
 
+import {
+  IMAGE_ACCEPT,
+  isSupportedImageMime,
+} from "@/lib/image-file";
+
 /** The local API path a premium task image is served from. */
 export const TASK_IMAGE_URL_PREFIX = "/api/images/";
 
@@ -25,8 +30,7 @@ export const MAX_EMBEDDED_TASK_TOTAL_BYTES = 8 * 1024 * 1024;
 export const MAX_TASK_IMAGES = 20;
 
 /** MIME types accepted by the shared image storage API. */
-export const TASK_IMAGE_ACCEPT =
-  "image/png,image/jpeg,image/webp,image/gif,image/svg+xml";
+export const TASK_IMAGE_ACCEPT = IMAGE_ACCEPT;
 
 const CACHE_URL_PATTERN = /^\/api\/boards\/[^/]+\/images\/([^/]+)\/cache$/;
 
@@ -56,9 +60,14 @@ export function taskImageUrlId(value: unknown): string | null {
   return id.length > 0 ? id : null;
 }
 
-/** True when the value is an embedded image data URL. */
+/** True when the value is an embedded supported-image data URL. */
 export function isImageDataUrl(value: unknown): value is string {
-  return typeof value === "string" && value.startsWith("data:image/");
+  if (typeof value !== "string" || !value.startsWith("data:")) return false;
+  const comma = value.indexOf(",");
+  if (comma < 5) return false;
+  const metadata = value.slice(5, comma);
+  const mime = metadata.split(";", 1)[0] ?? "";
+  return isSupportedImageMime(mime);
 }
 
 /** Approximate decoded byte size of a base64 data URL. */

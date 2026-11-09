@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api";
 import type { ImageKind } from "@/lib/constants";
+import { checkImageBytes } from "@/lib/image-file";
 import { collectSceneImageIds } from "@/lib/whiteboard-scene";
 
 /**
@@ -143,11 +144,16 @@ export function createImageStorageClient(
 
   return {
     async upload(input) {
+      const check = checkImageBytes(input.bytes, input.contentType);
+      if (!check.ok) {
+        throw new ApiError(check.message, check.status);
+      }
+
       const form = new FormData();
       form.append(
         "file",
         new Blob([input.bytes as BlobPart], {
-          type: input.contentType || "application/octet-stream",
+          type: check.contentType,
         }),
         input.filename ?? "image",
       );

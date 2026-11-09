@@ -12,16 +12,6 @@ export const PRIORITY_META: Record<
   none: { label: "No priority", rank: 4, description: "Unprioritized" },
 };
 
-export const BOARD_COLORS = [
-  "sage",
-  "sky",
-  "amber",
-  "rose",
-  "violet",
-  "slate",
-] as const;
-export type BoardColor = (typeof BOARD_COLORS)[number];
-
 export const BOARD_TYPES = ["kanban", "whiteboard", "note"] as const;
 export type BoardType = (typeof BOARD_TYPES)[number];
 

@@ -295,29 +295,6 @@
     --label-dot: var(--label-slate-dot);
   }
 
-  .board-sage {
-    --board-dot: var(--label-sage-dot);
-  }
-  .board-sky {
-    --board-dot: var(--label-sky-dot);
-  }
-  .board-amber {
-    --board-dot: var(--label-amber-dot);
-  }
-  .board-rose {
-    --board-dot: var(--label-rose-dot);
-  }
-  .board-violet {
-    --board-dot: var(--label-violet-dot);
-  }
-  .board-slate {
-    --board-dot: var(--label-slate-dot);
-  }
-
-  .board-dot {
-    background: var(--board-dot);
-  }
-
   .animate-rise {
     animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
   }

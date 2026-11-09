@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 
 import { getDb, type AppDatabase } from "@/db";
 import { boards, columns, notes, tasks, whiteboards } from "@/db/schema";
-import type { BoardColor, Priority } from "@/lib/constants";
+import type { Priority } from "@/lib/constants";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import type {
   ActivityItem,
@@ -111,7 +111,6 @@ export async function getDashboardData(
     return {
       boardId: board.id,
       name: board.name,
-      color: board.color,
       total: boardTasks.length,
       done: boardTasks.filter((task) => isDone(task.columnId)).length,
       open: boardTasks.filter((task) => !isDone(task.columnId)).length,
@@ -131,7 +130,6 @@ export async function getDashboardData(
     return {
       ...task,
       boardName: board?.name ?? "Unknown board",
-      boardColor: (board?.color ?? "slate") as BoardColor,
       columnName: column?.name ?? "Unknown",
       columnIsDone: column?.isDone ?? false,
       projectId: board?.projectId ?? null,

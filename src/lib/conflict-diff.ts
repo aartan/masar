@@ -81,7 +81,6 @@ const BOARD_FIELDS: FieldDefinition[] = [
   { key: "name", label: "Name" },
   { key: "description", label: "Description", kind: "longText" },
   { key: "project_id", label: "Project" },
-  { key: "color", label: "Color" },
   { key: "type", label: "Type" },
   { key: "position", label: "Order" },
 ];

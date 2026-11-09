@@ -28,7 +28,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DueDateChip, PriorityBars } from "@/components/shared/task-meta";
-import { BOARD_COLOR_CLASS } from "@/components/shared/colors";
 import { EmptyState, PageSectionTitle } from "@/components/shared/empty-state";
 import { NewBoardButton } from "@/components/board/new-board-button";
 
@@ -310,13 +309,6 @@ function OverviewContent({ data }: { data: DashboardData }) {
                             to={`/boards/${task.boardId}?task=${task.id}`}
                             className="group -mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-accent/50"
                           >
-                            <span
-                              className={cn(
-                                "size-2 shrink-0 rounded-full",
-                                BOARD_COLOR_CLASS[task.boardColor],
-                                "board-dot",
-                              )}
-                            />
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-[13px] font-medium text-foreground">
                                 {task.title}
@@ -362,13 +354,6 @@ function OverviewContent({ data }: { data: DashboardData }) {
                         className="group block"
                       >
                         <div className="flex items-center gap-2">
-                          <span
-                            className={cn(
-                              "size-2 rounded-full",
-                              BOARD_COLOR_CLASS[board.color],
-                              "board-dot",
-                            )}
-                          />
                           <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">
                             {board.name}
                           </span>

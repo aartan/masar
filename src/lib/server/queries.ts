@@ -23,7 +23,7 @@ import type {
   ProjectSummary,
   Task,
 } from "@/lib/types";
-import type { BoardColor, BoardType, LabelColor, Priority } from "@/lib/constants";
+import type { BoardType, LabelColor, Priority } from "@/lib/constants";
 
 function ownedBoardIds(database: AppDatabase, ownerId: string) {
   return database
@@ -42,7 +42,6 @@ export function serializeBoard(
     type: row.type as BoardType,
     name: row.name,
     description: row.description,
-    color: row.color as BoardColor,
     position: row.position,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

@@ -78,6 +78,13 @@
       "when": 1794184321019,
       "tag": "0010_dapper_timeslip",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1794187870504,
+      "tag": "0011_certain_polaris",
+      "breakpoints": true
     }
   ]
 }

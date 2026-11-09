@@ -23,7 +23,7 @@ const TABLES = [
   {
     table: "boards",
     columns:
-      "id, owner_id, project_id, type, name, description, color, position, created_at, updated_at",
+      "id, owner_id, project_id, type, name, description, position, created_at, updated_at",
   },
   {
     table: "columns",

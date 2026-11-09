@@ -1,9 +1,4 @@
-import type {
-  BoardColor,
-  BoardType,
-  LabelColor,
-  Priority,
-} from "@/lib/constants";
+import type { BoardType, LabelColor, Priority } from "@/lib/constants";
 
 export interface ProjectSummary {
   id: string;
@@ -28,7 +23,6 @@ export interface BoardSummary {
   type: BoardType;
   name: string;
   description: string | null;
-  color: BoardColor;
   position: number;
   createdAt: string;
   updatedAt: string;
@@ -203,7 +197,6 @@ export interface SearchResult {
   title: string;
   boardId: string;
   boardName: string;
-  boardColor: BoardColor;
   columnName: string;
   priority: Priority;
   dueDate: string | null;
@@ -212,7 +205,6 @@ export interface SearchResult {
 export interface BoardStats {
   boardId: string;
   name: string;
-  color: BoardColor;
   total: number;
   done: number;
   open: number;
@@ -221,7 +213,6 @@ export interface BoardStats {
 
 export interface DashboardTask extends Task {
   boardName: string;
-  boardColor: BoardColor;
   columnName: string;
   columnIsDone: boolean;
   projectId: string | null;

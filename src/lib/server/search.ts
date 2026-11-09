@@ -2,7 +2,7 @@ import { and, eq, or, sql } from "drizzle-orm";
 
 import { getDb, type AppDatabase } from "@/db";
 import { boards, columns, tasks } from "@/db/schema";
-import type { BoardColor, Priority } from "@/lib/constants";
+import type { Priority } from "@/lib/constants";
 import type { SearchResult } from "@/lib/types";
 
 export async function searchTasks(
@@ -21,7 +21,6 @@ export async function searchTasks(
       title: tasks.title,
       boardId: boards.id,
       boardName: boards.name,
-      boardColor: boards.color,
       columnName: columns.name,
       priority: tasks.priority,
       dueDate: tasks.dueDate,
@@ -49,7 +48,6 @@ export async function searchTasks(
     title: row.title,
     boardId: row.boardId,
     boardName: row.boardName,
-    boardColor: row.boardColor as BoardColor,
     columnName: row.columnName,
     priority: row.priority as Priority,
     dueDate: row.dueDate,

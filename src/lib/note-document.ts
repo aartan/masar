@@ -39,6 +39,19 @@ export function parseNoteDocument(raw: string): NoteBlockRecord[] | null {
   );
 }
 
+/**
+ * True when the raw document is either empty or parses as a block array. A
+ * non-empty document that cannot be parsed (or is not an array) is malformed:
+ * callers must not let an editor silently overwrite it with an empty note.
+ */
+export function isWellFormedNoteDocument(
+  raw: string | null | undefined,
+): boolean {
+  if (!raw) return true;
+  if (raw.trim() === "") return true;
+  return parseNoteDocument(raw) !== null;
+}
+
 /** The local-cache serving URL pattern for a note image of a board. */
 const NOTE_IMAGE_CACHE_URL_PATTERN =
   /^\/api\/boards\/[^/]+\/images\/([^/]+)\/cache$/;
@@ -187,4 +200,60 @@ export function noteDocumentsEquivalent(
   return (
     canonicalizeNoteDocument(a, boardId) === canonicalizeNoteDocument(b, boardId)
   );
+}
+
+/** A heading entry for the document outline. */
+export interface NoteHeading {
+  /** The heading block's id, used to jump the cursor to it. */
+  id: string;
+  /** Heading level (1-6); the outline indents levels 1-3. */
+  level: number;
+  /** Plain text of the heading (empty when the heading is blank). */
+  text: string;
+}
+
+/** Collect the plain text of one inline content element, recursively. */
+function inlineText(node: unknown): string {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return "";
+  const record = node as NoteBlockRecord;
+  if (typeof record.text === "string") return record.text;
+  const content = record.content;
+  if (Array.isArray(content)) {
+    return content.map((child) => inlineText(child)).join("");
+  }
+  return "";
+}
+
+/**
+ * Top-level heading blocks of a persisted document, in document order. Used
+ * to build the note outline. Malformed documents yield an empty outline.
+ */
+export function collectNoteHeadings(
+  raw: string | null | undefined,
+): NoteHeading[] {
+  if (!raw) return [];
+  const blocks = parseNoteDocument(raw);
+  if (!blocks) return [];
+
+  const headings: NoteHeading[] = [];
+  for (const block of blocks) {
+    if (block.type !== "heading") continue;
+    const props =
+      block.props && typeof block.props === "object"
+        ? (block.props as Record<string, unknown>)
+        : null;
+    const level =
+      typeof props?.level === "number" && props.level >= 1 && props.level <= 6
+        ? props.level
+        : 1;
+    const id =
+      typeof block.id === "string" && block.id.length > 0
+        ? block.id
+        : `heading-${headings.length}`;
+    const text = Array.isArray(block.content)
+      ? block.content.map((child) => inlineText(child)).join("")
+      : "";
+    headings.push({ id, level, text: text.trim() });
+  }
+  return headings;
 }

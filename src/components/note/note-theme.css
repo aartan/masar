@@ -122,6 +122,49 @@
   margin-block: 0.2em;
 }
 
+/*
+ * Reading typography. 15px with a generous line height keeps lines between
+ * roughly 60-75 characters across the Narrow, Standard and Wide widths, so
+ * all three stay comfortable to read.
+ */
+.masar-note .bn-editor {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+
+.masar-note .bn-editor [data-content-type="heading"] [data-level="1"] {
+  font-size: 1.875rem;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.masar-note .bn-editor [data-content-type="heading"] [data-level="2"] {
+  font-size: 1.375rem;
+  line-height: 1.3;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.masar-note .bn-editor [data-content-type="heading"] [data-level="3"] {
+  font-size: 1.125rem;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+/* Quote blocks read as pulled-out text. */
+.masar-note .bn-editor [data-content-type="quote"] {
+  border-left: 3px solid var(--border);
+  padding-left: 0.9em;
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+/* Checklist items keep a comfortable tap target on touch screens. */
+.masar-note .bn-editor [data-content-type="checkListItem"] .bn-inline-content {
+  min-height: 1.9em;
+}
+
 /* Slash menu and toolbar popovers sit on the popover surface. */
 .masar-note [role="menu"],
 .masar-note .bn-suggestion-menu,
@@ -133,54 +176,164 @@
   box-shadow: var(--shadow-float);
 }
 
-/*
- * The formatting toolbar is pinned above the editor instead of floating over
- * the selection. Drop its popover chrome so it reads as part of the note's
- * chrome; the menus and pickers it opens keep the popover styling above.
- */
-.masar-note .masar-note-toolbar .bn-formatting-toolbar {
+.masar-note .masar-note-toolbar {
   width: 100%;
-  padding: 2px 0;
-  background-color: transparent;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
+}
+
+.masar-note .masar-note-toolbar-scroll {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 0.45rem;
+  overflow-x: auto;
+  padding: 0.4rem 1rem;
   scrollbar-width: thin;
-  /* Center the controls on the note column; "safe" keeps the first button
-     reachable when a narrow desktop window makes the toolbar overflow. */
+  white-space: nowrap;
+}
+
+.masar-note .masar-note-toolbar-group {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.masar-note .masar-note-toolbar-button {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  align-items: center;
   justify-content: center;
-  justify-content: safe center;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
 }
 
-/* Toolbar buttons rest transparent on the strip so hover and active states
-   provide the only surface. */
-.masar-note .masar-note-toolbar .bn-formatting-toolbar .mantine-Button-root,
-.masar-note .masar-note-toolbar .bn-formatting-toolbar .mantine-ActionIcon-root {
-  background-color: transparent;
+.masar-note .masar-note-toolbar-button svg {
+  width: 1rem;
+  height: 1rem;
+  stroke-width: 1.8;
 }
 
-@media (hover: hover) {
-  .masar-note
-    .masar-note-toolbar
-    .bn-formatting-toolbar
-    .mantine-Button-root:hover,
-  .masar-note
-    .masar-note-toolbar
-    .bn-formatting-toolbar
-    .mantine-ActionIcon-root:hover {
-    background-color: var(--bn-colors-hovered-background);
-    color: var(--bn-colors-hovered-text);
-  }
+.masar-note .masar-note-toolbar-width-button {
+  width: 2rem;
+  padding: 0;
 }
 
-.masar-note
-  .masar-note-toolbar
-  .bn-formatting-toolbar
-  .mantine-Button-root[data-selected],
-.masar-note
-  .masar-note-toolbar
-  .bn-formatting-toolbar
-  .mantine-ActionIcon-root[data-selected] {
-  background-color: var(--bn-colors-selected-background);
-  color: var(--bn-colors-selected-text);
+.masar-note .masar-note-toolbar-button:hover,
+.masar-note .masar-note-toolbar-button[data-selected="true"] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.masar-note .masar-note-toolbar-button:disabled {
+  cursor: default;
+  opacity: 0.4;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.masar-note .masar-note-toolbar-button:focus-visible,
+.masar-note .masar-note-link-form input:focus-visible,
+.masar-note .masar-note-link-submit:focus-visible,
+.masar-note .masar-note-link-cancel:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.masar-note .masar-note-toolbar-divider {
+  width: 1px;
+  height: 1.25rem;
+  flex: 0 0 auto;
+  background: color-mix(in oklab, var(--border) 80%, transparent);
+}
+
+.masar-note .masar-note-link-form {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.35rem;
+  padding-inline: 0.2rem;
+}
+
+.masar-note .masar-note-link-form input {
+  width: 14rem;
+  height: 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  padding: 0 0.6rem;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.masar-note .masar-note-link-form input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.masar-note .masar-note-link-form input[aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+
+.masar-note .masar-note-link-error {
+  flex: 0 0 auto;
+  color: var(--destructive);
+  font-size: 0.72rem;
+}
+
+/* Outline entries keep the app's focus-ring convention. */
+.masar-note .masar-note-outline button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/*
+ * A brand-new note opens with the cursor in its empty heading. BlockNote's
+ * focused-empty placeholder is empty by default; keep the "Title" invitation
+ * visible so the note still reads like Apple Notes while ready to type.
+ */
+.masar-note-empty
+  .bn-editor
+  .bn-block-content[data-is-empty-and-focused][data-content-type="heading"]::after {
+  content: "Title" !important;
+}
+
+.masar-note .masar-note-link-submit,
+.masar-note .masar-note-link-cancel {
+  height: 2rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  padding: 0 0.55rem;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+.masar-note .masar-note-link-submit {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.masar-note .masar-note-link-cancel:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.masar-note .masar-note-image-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }

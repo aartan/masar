@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   canonicalizeNoteDocument,
+  collectNoteHeadings,
   collectNoteImageIds,
+  isWellFormedNoteDocument,
   noteDocumentsEquivalent,
   noteImageCacheUrl,
   noteImageUrlId,
@@ -89,5 +91,74 @@ describe("note document helpers", () => {
         "board-1",
       ),
     ).toBe(false);
+  });
+});
+
+describe("note document well-formedness", () => {
+  it("accepts empty and block-array documents", () => {
+    expect(isWellFormedNoteDocument(null)).toBe(true);
+    expect(isWellFormedNoteDocument(undefined)).toBe(true);
+    expect(isWellFormedNoteDocument("")).toBe(true);
+    expect(isWellFormedNoteDocument("   ")).toBe(true);
+    expect(isWellFormedNoteDocument("[]")).toBe(true);
+    expect(isWellFormedNoteDocument(DOCUMENT)).toBe(true);
+  });
+
+  it("rejects non-empty documents that cannot be parsed or are not arrays", () => {
+    expect(isWellFormedNoteDocument("not json")).toBe(false);
+    expect(isWellFormedNoteDocument('{"not":"an array"}')).toBe(false);
+    expect(isWellFormedNoteDocument('"just a string"')).toBe(false);
+  });
+});
+
+describe("note document outline", () => {
+  const OUTLINE_DOCUMENT = JSON.stringify([
+    {
+      id: "h1",
+      type: "heading",
+      props: { level: 1 },
+      content: [
+        { type: "text", text: "Title" },
+        {
+          type: "link",
+          href: "https://example.com",
+          content: [{ type: "text", text: " with link" }],
+        },
+      ],
+    },
+    { id: "p1", type: "paragraph", content: [{ type: "text", text: "Body" }] },
+    {
+      id: "h2",
+      type: "heading",
+      props: { level: 2 },
+      content: [{ type: "text", text: "Section" }],
+    },
+    {
+      id: "h3",
+      type: "heading",
+      props: { level: 3 },
+      content: [],
+    },
+    {
+      id: "h6",
+      type: "heading",
+      props: { level: 6 },
+      content: [{ type: "text", text: "Deep" }],
+    },
+  ]);
+
+  it("collects top-level headings with their level and full text", () => {
+    expect(collectNoteHeadings(OUTLINE_DOCUMENT)).toEqual([
+      { id: "h1", level: 1, text: "Title with link" },
+      { id: "h2", level: 2, text: "Section" },
+      { id: "h3", level: 3, text: "" },
+      { id: "h6", level: 6, text: "Deep" },
+    ]);
+  });
+
+  it("returns an empty outline for malformed or empty documents", () => {
+    expect(collectNoteHeadings(null)).toEqual([]);
+    expect(collectNoteHeadings("not json")).toEqual([]);
+    expect(collectNoteHeadings(JSON.stringify([{ id: "p", type: "paragraph" }]))).toEqual([]);
   });
 });

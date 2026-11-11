@@ -1,20 +1,35 @@
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, FileText, Settings2 } from "lucide-react";
-import { toast } from "sonner";
 import {
-  BlockNoteEditor,
-  filterSuggestionItems,
-  type PartialBlock,
-} from "@blocknote/core";
+  AlignCenter,
+  AlignJustify,
+  AlignLeft,
+  AlignRight,
+  Bold,
+  Code,
+  FileText,
+  Heading1,
+  Heading2,
+  Heading3,
+  ImagePlus,
+  Italic,
+  Link2,
+  List,
+  ListOrdered,
+  Settings2,
+  Strikethrough,
+  Underline,
+  Type,
+  AlertTriangle,
+} from "lucide-react";
+import { toast } from "sonner";
+import { BlockNoteEditor, type PartialBlock } from "@blocknote/core";
+import { en } from "@blocknote/core/locales";
 import { BlockNoteView } from "@blocknote/mantine";
 import {
   BlockNoteViewEditor,
-  FormattingToolbar,
-  getDefaultReactSlashMenuItems,
-  SuggestionMenuController,
-  blockTypeSelectItems as getBlockTypeSelectItems,
-  type DefaultReactSuggestionItem,
+  useEditorDOMElement,
+  useEditorSelectionChange,
 } from "@blocknote/react";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
@@ -55,21 +70,26 @@ import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardSummary, NoteDocument } from "@/lib/types";
 
 const SAVE_DEBOUNCE_MS = 1_200;
+const NOTE_WIDTH_STORAGE_KEY = "masar:note-width";
 
-/** Note blocks that upload a file which is not necessarily an image. */
-const NON_IMAGE_UPLOAD_BLOCKS = new Set(["audio", "file", "video"]);
-const NON_IMAGE_UPLOAD_KEYS = new Set(["audio", "file", "video"]);
-const NON_IMAGE_UPLOAD_TITLES = new Set(["audio", "file", "video"]);
+type NoteWidth = "narrow" | "standard" | "wide";
 
-function isNonImageUploadItem(item: DefaultReactSuggestionItem): boolean {
-  // The runtime slash-menu item carries a `key`, although the public React
-  // type omits it. Fall back to the title so the filter keeps working if the
-  // type changes.
-  const key = (item as DefaultReactSuggestionItem & { key?: string }).key;
-  return (
-    (key ? NON_IMAGE_UPLOAD_KEYS.has(key) : false) ||
-    NON_IMAGE_UPLOAD_TITLES.has(item.title.toLowerCase())
-  );
+const NOTE_WIDTH_CLASSES: Record<NoteWidth, string> = {
+  narrow: "max-w-[760px]",
+  standard: "max-w-[960px]",
+  wide: "max-w-none",
+};
+
+function readNoteWidth(): NoteWidth {
+  try {
+    const stored = window.localStorage.getItem(NOTE_WIDTH_STORAGE_KEY);
+    if (stored === "narrow" || stored === "standard" || stored === "wide") {
+      return stored;
+    }
+  } catch {
+    // Keep the default width when local storage is unavailable.
+  }
+  return "standard";
 }
 
 function parseBlocks(raw: string): PartialBlock[] {
@@ -140,6 +160,404 @@ async function uploadNoteImage(
   }
 }
 
+function NoteToolbarButton({
+  label,
+  selected = false,
+  className,
+  onClick,
+  children,
+}: {
+  label: string;
+  selected?: boolean;
+  className?: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      className={`masar-note-toolbar-button${className ? ` ${className}` : ""}`}
+      aria-label={label}
+      aria-pressed={selected}
+      data-selected={selected || undefined}
+      title={label}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+function NoteToolbarGroup({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="masar-note-toolbar-group" role="group" aria-label={label}>
+      {children}
+    </div>
+  );
+}
+
+function NoteWidthIcon({ width }: { width: NoteWidth }) {
+  const lineWidth = width === "narrow" ? 6 : width === "standard" ? 12 : 18;
+  const x = (24 - lineWidth) / 2;
+
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3.75" y="3.75" width="16.5" height="16.5" rx="2.25" />
+      <path d={`M${x} 8h${lineWidth}M${x} 12h${lineWidth}M${x} 16h${lineWidth}`} />
+    </svg>
+  );
+}
+
+function NoteFormattingToolbar({
+  editor,
+  boardId,
+  noteWidth,
+  onNoteWidthChange,
+}: {
+  editor: BlockNoteEditor;
+  boardId: string;
+  noteWidth: NoteWidth;
+  onNoteWidthChange: (width: NoteWidth) => void;
+}) {
+  const [, setSelectionVersion] = React.useState(0);
+  const [linkOpen, setLinkOpen] = React.useState(false);
+  const [linkUrl, setLinkUrl] = React.useState("");
+  const [linkText, setLinkText] = React.useState("");
+  const imageInputRef = React.useRef<HTMLInputElement | null>(null);
+  const editorElement = useEditorDOMElement(editor);
+
+  useEditorSelectionChange(
+    () => setSelectionVersion((version) => version + 1),
+    editor,
+  );
+
+  const openLinkEditor = React.useCallback(() => {
+    setLinkText(editor.getSelectedText());
+    setLinkUrl(editor.getSelectedLinkUrl() ?? "");
+    setLinkOpen(true);
+  }, [editor]);
+
+  React.useEffect(() => {
+    if (!editorElement) return;
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        openLinkEditor();
+      }
+    };
+    editorElement.addEventListener("keydown", handleShortcut);
+    return () => editorElement.removeEventListener("keydown", handleShortcut);
+  }, [editorElement, openLinkEditor]);
+
+  const block = editor.getTextCursorPosition().block;
+  const selectedBlocks = editor.getSelection()?.blocks ?? [block];
+  const currentType = block.type;
+  const activeStyles = editor.getActiveStyles();
+  const textAlignment =
+    "textAlignment" in block.props ? block.props.textAlignment : undefined;
+
+  const setBlockType = (
+    type: "paragraph" | "heading" | "bulletListItem" | "numberedListItem" | "codeBlock",
+    props?: Record<string, string | number | boolean>,
+  ) => {
+    editor.focus();
+    const activeBlock = editor.getTextCursorPosition().block;
+    editor.updateBlock(activeBlock, { type, ...(props ? { props } : {}) });
+  };
+
+  const setTextAlignment = (alignment: "left" | "center" | "right" | "justify") => {
+    editor.focus();
+    for (const selectedBlock of selectedBlocks) {
+      if ("textAlignment" in selectedBlock.props) {
+        editor.updateBlock(selectedBlock, {
+          props: { textAlignment: alignment },
+        });
+      }
+    }
+  };
+
+  const toggleStyle = (style: "bold" | "italic" | "underline" | "strike" | "code") => {
+    editor.focus();
+    editor.toggleStyles({ [style]: true });
+  };
+
+  const insertImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+
+    const referenceBlock = editor.getTextCursorPosition().block;
+    let url: string;
+    try {
+      url = await uploadNoteImage(boardId, file);
+    } catch {
+      // uploadNoteImage already reports validation and storage failures.
+      return;
+    }
+
+    try {
+      if (!editor.getBlock(referenceBlock.id)) return;
+      const [imageBlock] = editor.insertBlocks(
+        [{ type: "image", props: { url } }],
+        referenceBlock.id,
+        "after",
+      );
+      if (!imageBlock) throw new Error("BlockNote did not insert the image block");
+      editor.focus();
+    } catch (error) {
+      toast.error("Could not add image", {
+        description: errorMessage(error),
+      });
+    }
+  };
+
+  const createLink = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const enteredUrl = linkUrl.trim();
+    if (!enteredUrl) return;
+
+    const url = /^(https?:|mailto:|tel:)/i.test(enteredUrl)
+      ? enteredUrl
+      : `https://${enteredUrl}`;
+    editor.focus();
+    if (linkText) {
+      editor.createLink(url, linkText);
+    } else {
+      editor.insertInlineContent([{ type: "link", href: url, content: url }]);
+    }
+    setLinkOpen(false);
+  };
+
+  return (
+    <div className="masar-note-toolbar shrink-0 border-b border-border/60 bg-background/65">
+      <div
+        className="masar-note-toolbar-scroll"
+        role="toolbar"
+        aria-label="Note formatting"
+        aria-orientation="horizontal"
+      >
+        <NoteToolbarGroup label="Block style">
+          <NoteToolbarButton
+            label="Paragraph"
+            selected={currentType === "paragraph"}
+            onClick={() => setBlockType("paragraph")}
+          >
+            <Type />
+          </NoteToolbarButton>
+          <NoteToolbarButton
+            label="Heading 1"
+            selected={currentType === "heading" && block.props.level === 1}
+            onClick={() => setBlockType("heading", { level: 1 })}
+          >
+            <Heading1 />
+          </NoteToolbarButton>
+          <NoteToolbarButton
+            label="Heading 2"
+            selected={currentType === "heading" && block.props.level === 2}
+            onClick={() => setBlockType("heading", { level: 2 })}
+          >
+            <Heading2 />
+          </NoteToolbarButton>
+          <NoteToolbarButton
+            label="Heading 3"
+            selected={currentType === "heading" && block.props.level === 3}
+            onClick={() => setBlockType("heading", { level: 3 })}
+          >
+            <Heading3 />
+          </NoteToolbarButton>
+        </NoteToolbarGroup>
+
+        <span className="masar-note-toolbar-divider" aria-hidden="true" />
+
+        <NoteToolbarGroup label="Text formatting">
+          <NoteToolbarButton
+            label="Bold"
+            selected={"bold" in activeStyles}
+            onClick={() => toggleStyle("bold")}
+          >
+            <Bold />
+          </NoteToolbarButton>
+          <NoteToolbarButton
+            label="Italic"
+            selected={"italic" in activeStyles}
+            onClick={() => toggleStyle("italic")}
+          >
+            <Italic />
+          </NoteToolbarButton>
+          <NoteToolbarButton
+            label="Underline"
+            selected={"underline" in activeStyles}
+            onClick={() => toggleStyle("underline")}
+          >
+            <Underline />
+          </NoteToolbarButton>
+          <NoteToolbarButton
+            label="Strikethrough"
+            selected={"strike" in activeStyles}
+            onClick={() => toggleStyle("strike")}
+          >
+            <Strikethrough />
+          </NoteToolbarButton>
+          <NoteToolbarButton
+            label="Inline code"
+            selected={"code" in activeStyles}
+            onClick={() => toggleStyle("code")}
+          >
+            <Code />
+          </NoteToolbarButton>
+        </NoteToolbarGroup>
+
+        <span className="masar-note-toolbar-divider" aria-hidden="true" />
+
+        <NoteToolbarGroup label="Text alignment">
+          <NoteToolbarButton
+            label="Align left"
+            selected={textAlignment === "left"}
+            onClick={() => setTextAlignment("left")}
+          >
+            <AlignLeft />
+          </NoteToolbarButton>
+          <NoteToolbarButton
+            label="Align center"
+            selected={textAlignment === "center"}
+            onClick={() => setTextAlignment("center")}
+          >
+            <AlignCenter />
+          </NoteToolbarButton>
+          <NoteToolbarButton
+            label="Align right"
+            selected={textAlignment === "right"}
+            onClick={() => setTextAlignment("right")}
+          >
+            <AlignRight />
+          </NoteToolbarButton>
+          <NoteToolbarButton
+            label="Justify"
+            selected={textAlignment === "justify"}
+            onClick={() => setTextAlignment("justify")}
+          >
+            <AlignJustify />
+          </NoteToolbarButton>
+        </NoteToolbarGroup>
+
+        <span className="masar-note-toolbar-divider" aria-hidden="true" />
+
+        <NoteToolbarGroup label="Lists and links">
+          <NoteToolbarButton
+            label="Bulleted list"
+            selected={currentType === "bulletListItem"}
+            onClick={() => setBlockType("bulletListItem")}
+          >
+            <List />
+          </NoteToolbarButton>
+          <NoteToolbarButton
+            label="Numbered list"
+            selected={currentType === "numberedListItem"}
+            onClick={() => setBlockType("numberedListItem")}
+          >
+            <ListOrdered />
+          </NoteToolbarButton>
+          <NoteToolbarButton label="Insert link" onClick={openLinkEditor}>
+            <Link2 />
+          </NoteToolbarButton>
+          {linkOpen && (
+            <form
+              className="masar-note-link-form"
+              onSubmit={createLink}
+              role="group"
+              aria-label="Insert link"
+            >
+              <input
+                type="text"
+                aria-label="Link URL"
+                placeholder="Paste or type a link"
+                value={linkUrl}
+                inputMode="url"
+                onChange={(event) => setLinkUrl(event.currentTarget.value)}
+                onMouseDown={(event) => event.stopPropagation()}
+                autoFocus
+              />
+              <button type="submit" className="masar-note-link-submit">
+                Apply
+              </button>
+              <button
+                type="button"
+                className="masar-note-link-cancel"
+                onClick={() => setLinkOpen(false)}
+              >
+                Cancel
+              </button>
+            </form>
+          )}
+        </NoteToolbarGroup>
+
+        <span className="masar-note-toolbar-divider" aria-hidden="true" />
+
+        <NoteToolbarGroup label="Insert content">
+          <NoteToolbarButton
+            label="Insert image"
+            onClick={() => imageInputRef.current?.click()}
+          >
+            <ImagePlus />
+          </NoteToolbarButton>
+          <NoteToolbarButton
+            label="Code block"
+            selected={currentType === "codeBlock"}
+            onClick={() => setBlockType("codeBlock")}
+          >
+            <Code />
+          </NoteToolbarButton>
+          <input
+            ref={imageInputRef}
+            className="masar-note-image-input"
+            type="file"
+            accept={IMAGE_ACCEPT}
+            aria-label="Choose an image"
+            onChange={(event) => void insertImage(event)}
+          />
+        </NoteToolbarGroup>
+
+        <span className="masar-note-toolbar-divider" aria-hidden="true" />
+
+        <NoteToolbarGroup label="Note width">
+          {(
+            [
+              ["narrow", "Narrow"],
+              ["standard", "Standard"],
+              ["wide", "Wide"],
+            ] as const
+          ).map(([width, label]) => (
+            <NoteToolbarButton
+              key={width}
+              label={`${label} note width`}
+              selected={noteWidth === width}
+              className="masar-note-toolbar-width-button"
+              onClick={() => onNoteWidthChange(width)}
+            >
+              <NoteWidthIcon width={width} />
+            </NoteToolbarButton>
+          ))}
+        </NoteToolbarGroup>
+      </div>
+    </div>
+  );
+}
+
 export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
@@ -154,8 +572,17 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
   const [status, setStatus] = React.useState<NoteSaveStatus>({ phase: "idle" });
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [noteWidth, setNoteWidth] = React.useState<NoteWidth>(readNoteWidth);
   /** Tracks the board id for the save loop even if the prop is swapped. */
   const boardIdRef = React.useRef(board.id);
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem(NOTE_WIDTH_STORAGE_KEY, noteWidth);
+    } catch {
+      // The current selection still applies for this session.
+    }
+  }, [noteWidth]);
 
   React.useEffect(() => {
     setBoard(initialBoard);
@@ -224,19 +651,6 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
     }
   };
 
-  const getSlashMenuItems = React.useCallback(
-    async (query: string) => {
-      if (!editor) return [];
-      return filterSuggestionItems(
-        getDefaultReactSlashMenuItems(editor).filter(
-          (item) => !isNonImageUploadItem(item),
-        ),
-        query,
-      );
-    },
-    [editor],
-  );
-
   // Load the persisted document once, then create the editor.
   React.useEffect(() => {
     let active = true;
@@ -259,12 +673,22 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
         );
         if (!active) return;
         loopRef.current!.setSavedDocument(raw);
+        const initialBlocks = parseBlocks(hydrated.document);
         const instance = BlockNoteEditor.create({
           initialContent:
-            parseBlocks(hydrated.document).length > 0
-              ? parseBlocks(hydrated.document)
-              : undefined,
+            initialBlocks.length > 0
+              ? initialBlocks
+              : [{ type: "heading", props: { level: 1 } }],
           uploadFile: uploadFileRef.current,
+          dictionary: {
+            ...en,
+            placeholders: {
+              ...en.placeholders,
+              default: "",
+              emptyDocument: "",
+              heading: "Heading",
+            },
+          },
         });
         editorRef.current = instance;
         setEditor(instance);
@@ -522,33 +946,25 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
             onChange={handleChange}
             formattingToolbar={false}
             slashMenu={false}
+            sideMenu={false}
             renderEditor={false}
             className="flex min-h-0 flex-1 flex-col"
           >
             {!readOnly && (
-              <>
-                <SuggestionMenuController
-                  triggerCharacter="/"
-                  getItems={getSlashMenuItems}
-                />
-                <div className="masar-note-toolbar shrink-0 border-b border-border/60 bg-background/65">
-                  <div className="mx-auto flex w-full max-w-[760px] items-center px-3 py-1.5 sm:px-5">
-                    <FormattingToolbar
-                      blockTypeSelectItems={getBlockTypeSelectItems(
-                        editor,
-                      ).filter(
-                        (item) => !NON_IMAGE_UPLOAD_BLOCKS.has(item.type),
-                      )}
-                    />
-                  </div>
-                </div>
-              </>
+              <NoteFormattingToolbar
+                editor={editor}
+                boardId={board.id}
+                noteWidth={noteWidth}
+                onNoteWidthChange={setNoteWidth}
+              />
             )}
 
             <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
-              <div className="mx-auto w-full max-w-[760px] px-5 py-8 sm:px-8 sm:py-12">
-                {/* The space name is shown in the header bar above; the note
-                    itself starts blank so the user owns every word in it. */}
+              <div
+                className={`masar-note-content mx-auto w-full ${NOTE_WIDTH_CLASSES[noteWidth]} px-3 py-3 sm:px-4 sm:py-4`}
+              >
+                {/* The space name is shown in the header; a new note starts
+                    with an editable H1 block. */}
                 <BlockNoteViewEditor />
               </div>
             </div>

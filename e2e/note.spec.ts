@@ -35,33 +35,91 @@ test.describe("note workflows", () => {
       await expect(page).toHaveURL(/\/boards\/[0-9a-f-]+$/);
       boardId = page.url().split("/boards/")[1];
 
-      // The title is displayed in the header bar above the editor; the note
-      // itself starts blank.
+      // The space title is in the header; the note starts with an H1 block.
       await expect(
         page.getByRole("heading", { level: 1, name: noteName }),
+      ).toBeVisible();
+      const editor = page.locator(".masar-note .bn-editor");
+      await expect(
+        editor.locator('[data-content-type="heading"]').first(),
       ).toBeVisible();
       await expect(
         page.getByText(noteDescription, { exact: true }),
       ).toBeVisible();
 
+      const emptyDocumentPlaceholder = editor.locator(".bn-block-content").first();
+      await expect
+        .poll(() =>
+          emptyDocumentPlaceholder.evaluate((element) =>
+            getComputedStyle(element, "::after").content,
+          ),
+        )
+        .toContain("Start writing");
+
       // Type into the BlockNote editor and let the debounced autosave land.
-      const editor = page.locator(".masar-note .bn-editor");
       await editor.click();
       await page.keyboard.type("Hello from the note");
       await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+      await page.keyboard.press("Enter");
+      const nextLinePlaceholder = editor.locator(".bn-block-content").last();
+      await expect
+        .poll(() =>
+          nextLinePlaceholder.evaluate((element) =>
+            getComputedStyle(element, "::after").content,
+          ),
+        )
+        .not.toContain("Start writing");
+      await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+      await expect(page.locator(".masar-note .bn-side-menu")).toHaveCount(0);
+      const noteContent = page.locator(".masar-note-content");
+      await expect(noteContent).toHaveCSS("max-width", "none");
 
-      // The formatting toolbar is pinned above the editor rather than floating
-      // over the selection, so it stays available while writing.
-      const toolbar = page.locator(".masar-note-toolbar .bn-formatting-toolbar");
+      // Formatting controls stay in a full-width row above the editor.
+      const toolbar = page.locator(".masar-note-toolbar-scroll");
       await expect(toolbar).toBeVisible();
-      await expect(
-        toolbar.getByRole("button", { name: "Bold", exact: true }),
-      ).toBeVisible();
+      for (const label of [
+        "Paragraph",
+        "Heading 1",
+        "Heading 2",
+        "Heading 3",
+        "Bold",
+        "Italic",
+        "Underline",
+        "Strikethrough",
+        "Align left",
+        "Align center",
+        "Align right",
+        "Bulleted list",
+        "Numbered list",
+        "Insert link",
+        "Insert image",
+        "Code block",
+        "Narrow note width",
+        "Standard note width",
+        "Wide note width",
+      ]) {
+        await expect(
+          toolbar.getByRole("button", { name: label, exact: true }),
+        ).toBeVisible();
+      }
+
+      const wideWidthButton = toolbar.getByRole("button", {
+        name: "Wide note width",
+      });
+      await expect(wideWidthButton).toHaveText("");
+      await expect(wideWidthButton.locator("svg")).toBeVisible();
+
+      await toolbar.getByRole("button", { name: "Standard note width" }).click();
+      await expect(noteContent).toHaveCSS("max-width", "960px");
 
       // Content persists across a reload.
       await page.reload({ waitUntil: "networkidle" });
       await expect(page.locator(".masar-note .bn-editor")).toContainText(
         "Hello from the note",
+      );
+      await expect(page.locator(".masar-note-content")).toHaveCSS(
+        "max-width",
+        "960px",
       );
       await expect(
         page.getByText(noteDescription, { exact: true }),
@@ -127,8 +185,8 @@ test.describe("note workflows", () => {
     }
   });
 
-  test("hides non-image upload blocks from the note menu", async ({ page }) => {
-    const noteName = uniqueName("E2E Note Menu");
+  test("does not open a slash menu in the note editor", async ({ page }) => {
+    const noteName = uniqueName("E2E Note Slash");
     let boardId: string | undefined;
 
     try {
@@ -143,10 +201,8 @@ test.describe("note workflows", () => {
       await editor.click();
       await page.keyboard.type("/");
 
-      await expect(page.getByText("Image", { exact: true })).toBeVisible();
-      await expect(page.getByText("File", { exact: true })).toHaveCount(0);
-      await expect(page.getByText("Video", { exact: true })).toHaveCount(0);
-      await expect(page.getByText("Audio", { exact: true })).toHaveCount(0);
+      await expect(editor).toContainText("/");
+      await expect(page.locator(".bn-suggestion-menu")).toHaveCount(0);
     } finally {
       if (boardId) await deleteBoard(page.request, boardId);
     }

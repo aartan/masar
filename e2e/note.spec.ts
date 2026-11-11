@@ -47,6 +47,8 @@ test.describe("note workflows", () => {
         page.getByText(noteDescription, { exact: true }),
       ).toBeVisible();
 
+      // A brand-new note invites its title, like Apple Notes — and stays
+      // visible even though the editor opens focused.
       const emptyDocumentPlaceholder = editor.locator(".bn-block-content").first();
       await expect
         .poll(() =>
@@ -54,10 +56,18 @@ test.describe("note workflows", () => {
             getComputedStyle(element, "::after").content,
           ),
         )
-        .toContain("Start writing");
+        .toContain("Title");
 
-      // Type into the BlockNote editor and let the debounced autosave land.
-      await editor.click();
+      // The note opens ready to type: the editor holds focus, so typing
+      // lands without a click.
+      await expect
+        .poll(() =>
+          editor.evaluate((element) => {
+            const active = document.activeElement;
+            return Boolean(active && element.contains(active));
+          }),
+        )
+        .toBe(true);
       await page.keyboard.type("Hello from the note");
       await expect(page.getByText("Saved", { exact: true })).toBeVisible();
       await page.keyboard.press("Enter");
@@ -68,16 +78,19 @@ test.describe("note workflows", () => {
             getComputedStyle(element, "::after").content,
           ),
         )
-        .not.toContain("Start writing");
+        .not.toContain("Title");
       await expect(page.getByText("Saved", { exact: true })).toBeVisible();
       await expect(page.locator(".masar-note .bn-side-menu")).toHaveCount(0);
       const noteContent = page.locator(".masar-note-content");
-      await expect(noteContent).toHaveCSS("max-width", "none");
+      await expect(noteContent).toHaveCSS("max-width", "800px");
 
-      // Formatting controls stay in a full-width row above the editor.
+      // Formatting controls stay in a full-width row above the editor, with
+      // the frequently used controls visible and the rest in the More menu.
       const toolbar = page.locator(".masar-note-toolbar-scroll");
       await expect(toolbar).toBeVisible();
       for (const label of [
+        "Undo",
+        "Redo",
         "Paragraph",
         "Heading 1",
         "Heading 2",
@@ -85,18 +98,17 @@ test.describe("note workflows", () => {
         "Bold",
         "Italic",
         "Underline",
-        "Strikethrough",
-        "Align left",
-        "Align center",
-        "Align right",
         "Bulleted list",
         "Numbered list",
+        "Checklist",
+        "Quote",
+        "Highlight",
         "Insert link",
         "Insert image",
-        "Code block",
         "Narrow note width",
         "Standard note width",
         "Wide note width",
+        "More formatting",
       ]) {
         await expect(
           toolbar.getByRole("button", { name: label, exact: true }),
@@ -109,17 +121,87 @@ test.describe("note workflows", () => {
       await expect(wideWidthButton).toHaveText("");
       await expect(wideWidthButton.locator("svg")).toBeVisible();
 
+      // The three widths are meaningfully different and persist.
+      await toolbar.getByRole("button", { name: "Narrow note width" }).click();
+      await expect(noteContent).toHaveCSS("max-width", "640px");
+      await toolbar.getByRole("button", { name: "Wide note width" }).click();
+      await expect(noteContent).toHaveCSS("max-width", "1040px");
       await toolbar.getByRole("button", { name: "Standard note width" }).click();
-      await expect(noteContent).toHaveCSS("max-width", "960px");
+      await expect(noteContent).toHaveCSS("max-width", "800px");
 
-      // Content persists across a reload.
+      // Undo and redo from the toolbar.
+      await page.keyboard.type(" extra");
+      await toolbar.getByRole("button", { name: "Undo" }).click();
+      await expect(editor).not.toContainText(" extra");
+      await toolbar.getByRole("button", { name: "Redo" }).click();
+      await expect(editor).toContainText("Hello from the note extra");
+      await toolbar.getByRole("button", { name: "Undo" }).click();
+      await expect(editor).not.toContainText(" extra");
+
+      // Secondary formatting lives in the More menu.
+      await toolbar.getByRole("button", { name: "More formatting" }).click();
+      for (const label of [
+        "Strikethrough",
+        "Inline code",
+        "Code block",
+        "Divider",
+        "Table",
+        "Align left",
+        "Align center",
+        "Align right",
+        "Justify",
+      ]) {
+        await expect(
+          page.getByRole("menuitem", { name: label, exact: true }),
+        ).toBeVisible();
+      }
+
+      // Divider and table insert real blocks.
+      await page.getByRole("menuitem", { name: "Divider" }).click();
+      await expect(editor.locator('[data-content-type="divider"]').first()).toBeVisible();
+      await toolbar.getByRole("button", { name: "More formatting" }).click();
+      await page.getByRole("menuitem", { name: "Table" }).click();
+      await expect(editor.locator('[data-content-type="table"]').first()).toBeVisible();
+      await page.keyboard.press("Escape");
+
+      // Checklist blocks are available from the toolbar. Click into the
+      // paragraph (not the heading) so the round trip leaves the heading
+      // intact for the outline checks below.
+      await editor.locator('[data-content-type="paragraph"]').first().click();
+      await toolbar.getByRole("button", { name: "Checklist" }).click();
+      await expect(
+        editor.locator('[data-content-type="checkListItem"]').first(),
+      ).toBeVisible();
+      await toolbar.getByRole("button", { name: "Paragraph" }).click();
+
+      // The outline lists the note's headings.
+      await page.getByRole("button", { name: "Show outline" }).click();
+      const outline = page.getByRole("complementary", { name: "Note outline" });
+      await expect(outline).toBeVisible();
+      await expect(outline).toContainText("Hello from the note");
+      await page.getByRole("button", { name: "Close outline" }).click();
+      await expect(outline).toHaveCount(0);
+
+      // Links are validated before they are applied.
+      await toolbar.getByRole("button", { name: "Insert link" }).click();
+      await page.getByLabel("Link URL").fill("javascript:alert(1)");
+      await page.getByRole("button", { name: "Apply" }).click();
+      await expect(
+        page.getByText("Only https://, http://, mailto: and tel: links are allowed."),
+      ).toBeVisible();
+      await page.getByLabel("Link URL").fill("example.com");
+      await page.getByRole("button", { name: "Apply" }).click();
+      await expect(editor.locator('a[href="https://example.com"]')).toBeVisible();
+      await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+
+      // Content persists across a reload, including the width preference.
       await page.reload({ waitUntil: "networkidle" });
       await expect(page.locator(".masar-note .bn-editor")).toContainText(
         "Hello from the note",
       );
       await expect(page.locator(".masar-note-content")).toHaveCSS(
         "max-width",
-        "960px",
+        "800px",
       );
       await expect(
         page.getByText(noteDescription, { exact: true }),
@@ -205,6 +287,97 @@ test.describe("note workflows", () => {
       await expect(page.locator(".bn-suggestion-menu")).toHaveCount(0);
     } finally {
       if (boardId) await deleteBoard(page.request, boardId);
+    }
+  });
+
+  test("shows an error for damaged note content without overwriting it", async ({
+    page,
+  }) => {
+    const noteName = uniqueName("E2E Damaged Note");
+    let boardId: string | undefined;
+
+    try {
+      const board = await createBoard(page.request, noteName, {
+        type: "note",
+      });
+      boardId = board.id;
+
+      // Store an unparseable payload directly through the API.
+      const damaged = await page.request.put(`/api/boards/${boardId}/document`, {
+        data: { document: "{broken json" },
+      });
+      expect(damaged.ok()).toBeTruthy();
+
+      await page.goto(`/boards/${boardId}`);
+      await expect(
+        page.getByText("This note could not be read"),
+      ).toBeVisible();
+      // No editor is mounted, so nothing can overwrite the damaged payload.
+      await expect(page.locator(".masar-note .bn-editor")).toHaveCount(0);
+
+      const stored = await page.request.get(`/api/boards/${boardId}/document`);
+      const body = (await stored.json()) as { document: { document: string } };
+      expect(body.document.document).toBe("{broken json");
+    } finally {
+      if (boardId) await deleteBoard(page.request, boardId);
+    }
+  });
+
+  test("keeps unsaved edits when switching notes before autosave lands", async ({
+    page,
+  }) => {
+    const errors = collectPageErrors(page);
+    const noteA = uniqueName("E2E Switch A");
+    const noteB = uniqueName("E2E Switch B");
+    let boardA: string | undefined;
+    let boardB: string | undefined;
+
+    try {
+      const a = await createBoard(page.request, noteA, { type: "note" });
+      const b = await createBoard(page.request, noteB, { type: "note" });
+      boardA = a.id;
+      boardB = b.id;
+
+      await page.goto("/");
+      await page
+        .getByRole("link", { name: new RegExp(noteA) })
+        .first()
+        .click();
+      await expect(page).toHaveURL(new RegExp(`/boards/${a.id}$`));
+
+      // Type and switch away immediately — before the 1.2s autosave debounce
+      // can persist anything.
+      const editorA = page.locator(".masar-note .bn-editor");
+      await editorA.click();
+      await page.keyboard.type("Unsaved work in A");
+      await page
+        .getByRole("link", { name: new RegExp(noteB) })
+        .first()
+        .click();
+      await expect(page).toHaveURL(new RegExp(`/boards/${b.id}$`));
+      await expect(page.locator(".masar-note .bn-editor")).toBeVisible();
+
+      // Come back to A: the unsaved work must have survived the switch.
+      await page
+        .getByRole("link", { name: new RegExp(noteA) })
+        .first()
+        .click();
+      await expect(page).toHaveURL(new RegExp(`/boards/${a.id}$`));
+      await expect(page.locator(".masar-note .bn-editor")).toContainText(
+        "Unsaved work in A",
+      );
+      await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+
+      // And it persists for real after a reload.
+      await page.reload({ waitUntil: "networkidle" });
+      await expect(page.locator(".masar-note .bn-editor")).toContainText(
+        "Unsaved work in A",
+      );
+
+      expect(errors).toEqual([]);
+    } finally {
+      if (boardA) await deleteBoard(page.request, boardA);
+      if (boardB) await deleteBoard(page.request, boardB);
     }
   });
 });

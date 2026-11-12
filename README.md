@@ -21,7 +21,7 @@ Spaces have a name, an optional description, and a distinct icon per type. Reord
 The workspace overview brings everything together:
 
 - **Key metrics** — open tasks, work due this week, overdue tasks, completions in the last seven days, and active spaces.
-- **Effort Breakdown** — total Effort Points across all tasks, estimated vs unestimated work, and the distribution across XS, S, M, L, and XL sizes.
+- **Effort Breakdown** — total points across all tasks, estimated vs unestimated work, and the distribution across XS, S, M, L, and XL sizes.
 - **Projects** — a card for each project with its Kanban, whiteboard, and note counts plus task progress.
 - **Upcoming** — open tasks with due dates, soonest first.
 - **Space progress** — completion percentage and overdue counts for each space.
@@ -54,7 +54,7 @@ A heading outline lets you jump around long documents, and the reading width can
 
 ![Masar task details](docs/assets/task-details.png)
 
-Open any task to edit its title and description, change its status, priority, size, due date, and labels, and attach images. Sizes map to Effort Points: XS = 1, S = 2, M = 3, L = 5, XL = 8.
+Open any task to edit its title and description, change its status, priority, effort, due date, and labels, and attach images.
 
 Break work into subtasks, discuss it in comments, and duplicate or delete the task when plans change. Tasks can have up to 20 images, added by file picker or drag-and-drop, with preview and download.
 

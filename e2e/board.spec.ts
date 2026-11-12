@@ -102,10 +102,10 @@ test.describe("board workflows", () => {
         sheet.getByRole("combobox").filter({ hasText: "High" }),
       ).toBeVisible();
 
-      // Size (T-shirt size)
+      // Effort (T-shirt size)
       await sheet
         .getByRole("combobox")
-        .filter({ hasText: "No size" })
+        .filter({ hasText: "No effort" })
         .click();
       await page.getByRole("option", { name: /^Large\b/ }).click();
       await expect(
@@ -181,7 +181,7 @@ test.describe("board workflows", () => {
       await expect(
         page
           .getByRole("button", { name: `Open task: ${updatedTitle}` })
-          .getByLabel("Large, 5 Effort Points"),
+          .getByLabel("Large, 5 Points"),
       ).toBeVisible();
 
       // Everything survives a reload.

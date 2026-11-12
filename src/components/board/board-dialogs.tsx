@@ -207,7 +207,7 @@ function NewTaskForm({
             />
           </div>
           <div className="space-y-2">
-            <Label>Size</Label>
+            <Label>Effort</Label>
             <SizeSelect
               value={size}
               onChange={setSize}

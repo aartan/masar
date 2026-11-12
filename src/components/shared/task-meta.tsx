@@ -88,7 +88,7 @@ export function SizeBadge({
   const meta = TASK_COMPLEXITY_META[size];
   if (!meta) return null;
   const effortLabel =
-    meta.effortPoints === 1 ? "Effort Point" : "Effort Points";
+    meta.effortPoints === 1 ? "Point" : "Points";
   return (
     <span
       className={cn(

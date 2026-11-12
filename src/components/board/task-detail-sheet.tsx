@@ -785,7 +785,7 @@ export function TaskDetailSheet({
                       }
                     />
                   </MetaField>
-                  <MetaField label="Size">
+                  <MetaField label="Effort">
                     <SizeSelect
                       value={detail.complexity}
                       disabled={readOnly}

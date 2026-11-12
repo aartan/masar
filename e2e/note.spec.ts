@@ -7,6 +7,11 @@ import {
   uniqueName,
 } from "./helpers";
 
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl9sAAAAASUVORK5CYII=",
+  "base64",
+);
+
 test.describe("note workflows", () => {
   test("creates, edits, autosaves, reloads, renames and deletes a note", async ({
     page,
@@ -378,6 +383,87 @@ test.describe("note workflows", () => {
     } finally {
       if (boardA) await deleteBoard(page.request, boardA);
       if (boardB) await deleteBoard(page.request, boardB);
+    }
+  });
+
+  test("uploads images dropped anywhere on the note surface", async ({
+    page,
+  }) => {
+    const noteName = uniqueName("E2E Note Drop");
+    let boardId: string | undefined;
+
+    try {
+      const board = await createBoard(page.request, noteName, { type: "note" });
+      boardId = board.id;
+
+      await page.goto(`/boards/${boardId}`);
+      const editor = page.locator(".masar-note .bn-editor");
+      await expect(editor).toBeVisible();
+      await editor.click();
+      await page.keyboard.type("Drop images across the whole note");
+      await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+
+      const content = page.locator(".masar-note-content");
+      const contentBox = await content.boundingBox();
+      const editorBox = await editor.boundingBox();
+      if (!contentBox || !editorBox) {
+        throw new Error("Could not measure the note surface");
+      }
+
+      const dropImage = async (
+        point: { clientX: number; clientY: number },
+        name: string,
+      ) => {
+        const dataTransfer = await page.evaluateHandle(
+          ({ base64, fileName }) => {
+            const bytes = Uint8Array.from(atob(base64), (char) =>
+              char.charCodeAt(0),
+            );
+            const transfer = new DataTransfer();
+            transfer.items.add(new File([bytes], fileName, { type: "image/png" }));
+            return transfer;
+          },
+          { base64: PNG.toString("base64"), fileName: name },
+        );
+        await content.dispatchEvent("dragenter", { dataTransfer, ...point });
+        await content.dispatchEvent("dragover", { dataTransfer, ...point });
+        await content.dispatchEvent("drop", { dataTransfer, ...point });
+        await dataTransfer.dispose();
+      };
+
+      // The reading column's left padding is outside BlockNote's editable
+      // element, which is where drops previously did nothing.
+      await dropImage(
+        { clientX: contentBox.x + 2, clientY: editorBox.y + 10 },
+        "left-margin.png",
+      );
+      await expect(
+        editor.locator('[data-content-type="image"]'),
+      ).toHaveCount(1);
+
+      // Empty space below the document is outside the editor element too.
+      const grownContentBox = await content.boundingBox();
+      if (!grownContentBox) {
+        throw new Error("Could not measure the note content");
+      }
+      await dropImage(
+        {
+          clientX: grownContentBox.x + grownContentBox.width / 2,
+          clientY: grownContentBox.y + grownContentBox.height + 24,
+        },
+        "bottom-margin.png",
+      );
+      await expect(
+        editor.locator('[data-content-type="image"]'),
+      ).toHaveCount(2);
+      await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+
+      await page.reload({ waitUntil: "networkidle" });
+      await expect(
+        page.locator('.masar-note .bn-editor [data-content-type="image"]'),
+      ).toHaveCount(2);
+    } finally {
+      if (boardId) await deleteBoard(page.request, boardId);
     }
   });
 });

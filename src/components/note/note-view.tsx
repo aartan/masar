@@ -19,6 +19,11 @@ import { NoteHeader } from "@/components/note/note-header";
 import { api, errorMessage } from "@/lib/client-api";
 import { IMAGE_ACCEPT } from "@/lib/image-file";
 import { parseNoteDocument } from "@/lib/note-document";
+import {
+  hasFileDrag,
+  insertDroppedNoteImages,
+  isNoteEditorTarget,
+} from "@/lib/note-image-drop";
 import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useNoteAutosave } from "@/lib/use-note-autosave";
 import { useNoteDocument } from "@/lib/use-note-document";
@@ -56,6 +61,37 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
   const autosave = useNoteAutosave({ boardId: board.id, readOnly });
   const { uploadFile } = useNoteImages(board.id, editorRef);
   useNoteSync({ boardId: board.id, editor, autosave });
+
+  /**
+   * BlockNote only accepts file drops on the editable element itself. The
+   * surrounding margins and the blank space below the document would reject
+   * the drop, so the note surface handles files dropped outside the editor.
+   */
+  const handleNoteDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!editor || readOnly) return;
+    if (isNoteEditorTarget(editor, event.target)) return;
+    if (!hasFileDrag(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleNoteDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!editor || readOnly) return;
+    if (isNoteEditorTarget(editor, event.target)) return;
+
+    const files = Array.from(event.dataTransfer.files);
+    if (files.length === 0) return;
+
+    event.preventDefault();
+    void insertDroppedNoteImages({
+      editor,
+      files,
+      point: { clientX: event.clientX, clientY: event.clientY },
+      uploadFile,
+    }).catch((error: unknown) => {
+      toast.error("Could not add image", { description: errorMessage(error) });
+    });
+  };
 
   const showLoading = useDelayedLoading(
     editor === null && document.state.status === "loading",
@@ -218,6 +254,9 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
     <>
       <PageSurface
         ref={pageRef}
+        onDragEnter={handleNoteDragOver}
+        onDragOver={handleNoteDragOver}
+        onDrop={handleNoteDrop}
         className={`masar-note flex h-full flex-col${noteIsEmpty ? " masar-note-empty" : ""}`}
       >
         <NoteHeader

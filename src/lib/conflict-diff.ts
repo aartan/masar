@@ -63,7 +63,7 @@ const TASK_FIELDS: FieldDefinition[] = [
   { key: "description", label: "Description", kind: "longText" },
   { key: "column_id", label: "Column" },
   { key: "priority", label: "Priority" },
-  { key: "complexity", label: "Size" },
+  { key: "complexity", label: "Effort" },
   { key: "due_date", label: "Due date", kind: "date" },
   { key: "completed_at", label: "Completed", kind: "timestamp" },
   { key: "assignee", label: "Assignee" },

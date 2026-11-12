@@ -41,7 +41,7 @@ export function SizeSelect({
       </SelectTrigger>
       <SelectContent>
         <SelectItem value={NO_SIZE}>
-          <span className="text-muted-foreground">No size</span>
+          <span className="text-muted-foreground">No effort</span>
         </SelectItem>
         {TASK_COMPLEXITIES.map((size) => {
           const meta = TASK_COMPLEXITY_META[size];

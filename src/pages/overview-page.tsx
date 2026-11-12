@@ -521,12 +521,12 @@ function EffortBreakdownCard({ data }: { data: DashboardData }) {
             <div>
               <PageSectionTitle>Effort Breakdown</PageSectionTitle>
               <p className="-mt-2 text-[12px] text-muted-foreground">
-                Effort Points across all tasks, including completed work.
+                Points across all tasks, including completed work.
               </p>
             </div>
             <Badge variant="muted" className="shrink-0 tabular-nums">
               {totalEffort}{" "}
-              {totalEffort === 1 ? "Effort Point" : "Effort Points"}
+              {totalEffort === 1 ? "Point" : "Points"}
             </Badge>
           </div>
         </CardHeader>
@@ -552,7 +552,7 @@ function EffortBreakdownCard({ data }: { data: DashboardData }) {
                 totalEffort > 0
                   ? `Effort Breakdown: ${TASK_COMPLEXITIES.map(
                       (size) =>
-                        `${size} ${data.effortPointsBySize[size]} ${data.effortPointsBySize[size] === 1 ? "Effort Point" : "Effort Points"}`,
+                        `${size} ${data.effortPointsBySize[size]} ${data.effortPointsBySize[size] === 1 ? "Point" : "Points"}`,
                     ).join(", ")}`
                   : "No estimated tasks yet"
               }
@@ -566,7 +566,7 @@ function EffortBreakdownCard({ data }: { data: DashboardData }) {
                       key={size}
                       className={cn("h-full", SIZE_BAR_CLASS[size])}
                       style={{ width: `${(effortPoints / totalEffort) * 100}%` }}
-                      title={`${size} · ${effortPoints} ${effortPoints === 1 ? "Effort Point" : "Effort Points"}`}
+                      title={`${size} · ${effortPoints} ${effortPoints === 1 ? "Point" : "Points"}`}
                     />
                   );
                 })}
@@ -581,7 +581,7 @@ function EffortBreakdownCard({ data }: { data: DashboardData }) {
                   <div
                     key={size}
                     className="rounded-lg border border-border/60 bg-background/45 px-3 py-2"
-                    title={`${meta.label}: ${count} ${count === 1 ? "task" : "tasks"}, ${effortPoints} ${effortPoints === 1 ? "Effort Point" : "Effort Points"}`}
+                    title={`${meta.label}: ${count} ${count === 1 ? "task" : "tasks"}, ${effortPoints} ${effortPoints === 1 ? "Point" : "Points"}`}
                   >
                     <SizeBadge size={size} />
                     <p className="mt-1.5 text-[11px] font-medium tabular-nums">
@@ -589,7 +589,7 @@ function EffortBreakdownCard({ data }: { data: DashboardData }) {
                     </p>
                     <p className="mt-0.5 text-[10px] leading-tight tabular-nums text-muted-foreground">
                       {effortPoints}{" "}
-                      {effortPoints === 1 ? "Effort Point" : "Effort Points"}
+                      {effortPoints === 1 ? "Point" : "Points"}
                     </p>
                   </div>
                 );

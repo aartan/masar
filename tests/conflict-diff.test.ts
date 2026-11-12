@@ -79,7 +79,7 @@ describe("conflict diff", () => {
       cloud: "Low",
     });
     expect(changed.get("complexity")).toMatchObject({
-      label: "Size",
+      label: "Effort",
       local: "Extra large",
       cloud: "Small",
     });

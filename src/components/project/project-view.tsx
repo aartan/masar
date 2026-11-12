@@ -248,7 +248,7 @@ export function ProjectView({
               <div>
                 <p className="text-[13px] font-semibold">Recent activity</p>
                 <p className="text-[11px] text-muted-foreground">
-                  Task and whiteboard updates in this project.
+                  Task, whiteboard, and note updates in this project.
                 </p>
               </div>
             </div>

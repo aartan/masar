@@ -1,66 +1,77 @@
 # Masar
 
-Masar is a project management app for organising work across **projects and boards**, managing tasks and tracking progress. Group related boards into projects, work visually on Kanban boards or free-form whiteboards, set priorities and due dates, manage subtasks and comments, and monitor upcoming work from your dashboard.
+Masar is a project management app for organising work across projects and spaces. Group related work into projects, choose a Kanban space, a whiteboard, or a note for each space, and keep tasks, due dates, and progress in one place.
 
-## Projects and boards
+## Projects and spaces
 
-![Masar projects](docs/assets/projects.png)
+![Masar projects and spaces](docs/assets/projects.png)
 
-Work is organised as **Workspace → Projects → Boards → Tasks**. The sidebar shows an expandable Projects section: each project holds any mix of Kanban and whiteboard boards, with a distinct icon per board type. Reorder projects, reorder boards within a project, and drag boards between projects. Each project has a description, its own board overview, upcoming work and recent activity, while the workspace-level overview shows project cards plus activity across the whole workspace. Projects can be archived (preserving their contents read-only) and restored. Permanent deletion is available only for archived projects and requires typing the project name.
+Work is organised as **Workspace → Projects → Spaces → Tasks**. Each project can hold any mix of three space types:
+
+- **Kanban spaces** for task-based work with columns and task cards.
+- **Whiteboards** for free-form diagrams, sketches, and brainstorms.
+- **Notes** for rich-text documents such as meeting notes, specs, and research.
+
+Spaces have a name, an optional description, and a distinct icon per type. Reorder projects, reorder spaces within a project, and drag spaces between projects. Each project has its own overview with its spaces, completion progress, upcoming tasks, and recent activity.
 
 ## Overview dashboard
 
 ![Masar overview dashboard](docs/assets/overview.png)
 
-The overview brings the workspace together: open tasks, due dates, recent completions, progress by board, workload by priority and the newest work in one place.
+The workspace overview brings everything together:
 
-## Features
+- **Key metrics** — open tasks, work due this week, overdue tasks, completions in the last seven days, and active spaces.
+- **Effort Breakdown** — total Effort Points across all tasks, estimated vs unestimated work, and the distribution across XS, S, M, L, and XL sizes.
+- **Projects** — a card for each project with its Kanban, whiteboard, and note counts plus task progress.
+- **Upcoming** — open tasks with due dates, soonest first.
+- **Space progress** — completion percentage and overdue counts for each space.
+- **Workload by priority** — task counts across urgent, high, medium, low, and no priority.
+- **Recent activity** — recent task, whiteboard, and note updates across projects.
 
-- **Projects** — Group related boards into projects. Create, rename, reorder and archive projects; reorder boards within a project and drag them between projects. Open a project for its own overview, or keep working from the global workspace views.
-- **Kanban boards and columns** — Create boards with five starter columns, then add, rename, reorder or delete columns to match your workflow, and mark the columns that count as done.
-- **Whiteboards** — Add Excalidraw-powered whiteboard boards for free-form visual work: diagrams, sketches and brainstorms on an infinite canvas. Whiteboards match Masar's theme, autosave as you draw, and work offline. In the premium synced workspace, images are uploaded to Cloudflare R2 through the Premium API; the free local workspace keeps them embedded so it stays offline-first.
-- **Task management** — Capture descriptions, priorities, due dates and labels. Break work into subtasks, discuss it in comments, and duplicate or delete tasks when plans change.
-- **Board and list views** — Work visually on the Kanban board or switch to a compact list. Both views open the same task details and support the same filters.
-- **Search and filters** — Filter a board by priority, label, due date or status, and sort by manual order, due date, priority or newest. Use `Cmd/Ctrl+K` to search tasks and jump to any board.
-- **Calendar planning** — Plan scheduled work in month, week and day views. Drag tasks onto a date, or move them back to Unscheduled to clear the due date.
-- **Overview dashboard** — Review open tasks, due dates, recent completions, progress by board, workload by priority and recently added work.
-- **Local-first by default** — No account is needed. Projects, boards, tasks and whiteboards live in a local SQLite database and remain available offline.
-- **Optional cloud sync** — Sign in from Account settings to use a separate synced workspace. Projects, boards, tasks and whiteboards sync in the background while your subscription is active; local data is only uploaded when you choose to import it. If two devices edit the same item before they catch up, the conflict inbox shows a field-level diff and lets you keep either the cloud version or this device’s version, individually or in bulk.
-- **Desktop polish** — Light, dark and system themes, responsive layouts, mouse and keyboard drag-and-drop, and a clear offline indicator.
-- **Keyboard shortcuts** — Press `N` on a board to create a task, `?` for the shortcut guide, and `Cmd/Ctrl+K` for search.
+## Kanban spaces
 
-## Screenshots
+![Masar Kanban space](docs/assets/board.png)
 
-### Board view
+Kanban spaces start with five columns and can be shaped to fit your workflow: add, rename, reorder, or delete columns, and mark the columns that count as done. Drag tasks between columns and reorder them within a column.
 
-![Masar board view](docs/assets/board.png)
+Switch between the board and list views from the toolbar. Both support the same filters — priority, labels, due date, and status — and sorting by manual order, due date, priority, or newest. Create tasks inline, and use the task menu to duplicate, move, or delete them.
 
-Move tasks between columns with drag-and-drop, add tasks inline, and filter the board without losing context. Switch to the list view from the toolbar.
-
-### Whiteboard
+## Whiteboards
 
 ![Masar whiteboard](docs/assets/whiteboard.png)
 
-Sketch diagrams and ideas on an Excalidraw-powered canvas. Whiteboards use Masar's theme, save automatically with a clear save status, and are available offline and through cloud sync.
+Whiteboards are free-form infinite canvases for diagrams, sketches, and brainstorms. Draw, add shapes and text, and arrange ideas spatially. Changes save automatically with a visible save status, and whiteboards remain available offline. In the premium synced workspace, images are stored in the cloud; the free local workspace keeps them embedded so it stays offline-first.
 
-### Calendar view
+## Notes
 
-![Masar calendar view](docs/assets/calendar.png)
+![Masar note](docs/assets/notes.png)
 
-See scheduled work in month, week and day views. Drag tasks onto a date to schedule them, or move them back to the Unscheduled panel.
+Notes are rich-text spaces for meeting notes, specs, research, and longer-form writing. Format text with headings, bold, italic, underline, strikethrough, highlights, and inline code. Add bulleted, numbered, and checklist lists, quotes, code blocks, tables, links, images, and dividers.
 
-### Task details
+A heading outline lets you jump around long documents, and the reading width can be set to narrow, standard, or wide. Notes save automatically, show their save status, and remain available offline. In the premium synced workspace, note images are stored in the cloud; the free local workspace keeps them embedded.
+
+## Tasks
 
 ![Masar task details](docs/assets/task-details.png)
 
-Edit the title and description, change status, priority, due date and labels, check off subtasks and leave comments.
+Open any task to edit its title and description, change its status, priority, size, due date, and labels, and attach images. Sizes map to Effort Points: XS = 1, S = 2, M = 3, L = 5, XL = 8.
 
-## Keyboard shortcuts
+Break work into subtasks, discuss it in comments, and duplicate or delete the task when plans change. Tasks can have up to 20 images, added by file picker or drag-and-drop, with preview and download.
+
+## Calendar
+
+![Masar calendar](docs/assets/calendar.png)
+
+Plan scheduled work in month, week, and day views. Drag tasks onto a date to schedule them, or move them back to the Unscheduled panel to clear the due date. Open any task from the calendar to see or edit its details.
+
+## Search and shortcuts
+
+Press `Cmd/Ctrl+K` to search tasks and spaces and jump straight to them. Press `N` on a Kanban space to create a task and `?` to open the shortcut guide.
 
 | Shortcut | Action |
 | --- | --- |
-| `Cmd/Ctrl+K` | Search tasks and boards |
-| `N` | Create a task on the current board |
+| `Cmd/Ctrl+K` | Search tasks and spaces |
+| `N` | Create a task on the current Kanban space |
 | `?` | Show the shortcut guide |
 | `Space` | Pick up a task with its drag handle |
 | `Esc` | Close a panel or dialog |
@@ -80,4 +91,4 @@ The local workspace is free and does not require an account. Cloud sync runs on 
 
 ## Technology
 
-Built with Electron, Vite, React, React Router, Tailwind CSS, Hono, Drizzle ORM and SQLite (libSQL), with dnd-kit for drag-and-drop, Excalidraw for whiteboards, Zod for validation, and Vitest and Playwright for testing.
+Built with Electron, React, Vite, Tailwind CSS, Hono, Drizzle ORM, and SQLite (libSQL).

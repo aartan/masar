@@ -6,6 +6,7 @@ import { getDb, type AppDatabase } from "@/db";
 import {
   boards,
   columns,
+  folders,
   images as imagesTable,
   labels,
   notes,
@@ -27,6 +28,7 @@ import { deleteBoardsCache } from "./image-cache";
 import { taskImageIdsForBoards } from "./task-images";
 import { assertProjectWritable,
   fetchBoardSummaries,
+  fetchFolderSummaries,
   fetchProjectSummaries,
   nextProjectPosition,
   requireProject,
@@ -190,12 +192,14 @@ export async function getProjectDetail(
   await requireProject(database, projectId, ownerId);
   const summary = await fetchProjectSummary(database, projectId, ownerId);
   if (!summary) throw new ApiError("Project not found.", 404);
-  const [allBoards, dashboard] = await Promise.all([
+  const [allBoards, projectFolders, dashboard] = await Promise.all([
     fetchBoardSummaries(database, ownerId),
+    fetchFolderSummaries(database, ownerId, projectId),
     getDashboardData(ownerId, database, projectId),
   ]);
   return {
     project: summary,
+    folders: projectFolders,
     boards: allBoards.filter((board) => board.projectId === projectId),
     totals: {
       boards: dashboard.totals.boards,
@@ -308,6 +312,25 @@ export async function deleteProject(
       await tx.delete(notes).where(eq(notes.boardId, boardId));
       await tx.delete(boards).where(eq(boards.id, boardId));
     }
+    // Delete folder rows leaf-first so the self-reference never needs to
+    // promote or detach a folder that is also being deleted, while still
+    // firing one tombstone trigger per folder.
+    const folderRows = await tx
+      .select({ id: folders.id, parentId: folders.parentId })
+      .from(folders)
+      .where(eq(folders.projectId, projectId));
+    const remaining = new Map(folderRows.map((row) => [row.id, row.parentId]));
+    while (remaining.size > 0) {
+      const leafIds = Array.from(remaining.entries())
+        .filter(([, parentId]) => !parentId || !remaining.has(parentId))
+        .map(([id]) => id);
+      if (leafIds.length === 0) break;
+      for (const id of leafIds) {
+        await tx.delete(folders).where(eq(folders.id, id));
+        remaining.delete(id);
+      }
+    }
+
     await tx
       .delete(projects)
       .where(and(eq(projects.id, projectId), eq(projects.ownerId, ownerId)));

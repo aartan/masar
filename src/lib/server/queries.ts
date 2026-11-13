@@ -1,10 +1,11 @@
-import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import type { AppDatabase } from "@/db";
 import {
   boards,
   columns,
   comments,
+  folders,
   labels,
   projects,
   subtasks,
@@ -12,6 +13,7 @@ import {
   taskLabels,
   tasks,
   type BoardRow,
+  type FolderRow,
   type ProjectRow,
   type TaskRow,
 } from "@/db/schema";
@@ -19,6 +21,7 @@ import { ApiError } from "@/lib/api";
 import type {
   BoardColumn,
   BoardSummary,
+  FolderSummary,
   Label,
   ProjectSummary,
   Task,
@@ -44,6 +47,7 @@ export function serializeBoard(
   return {
     id: row.id,
     projectId: row.projectId,
+    folderId: row.folderId,
     type: row.type as BoardType,
     name: row.name,
     description: row.description,
@@ -53,6 +57,18 @@ export function serializeBoard(
     taskCount: counts.taskCount,
     doneCount: counts.doneCount,
     columnCount: counts.columnCount,
+  };
+}
+
+export function serializeFolder(row: FolderRow): FolderSummary {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    parentId: row.parentId,
+    name: row.name,
+    position: row.position,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
@@ -160,7 +176,12 @@ export async function fetchBoardSummaries(
     .select()
     .from(boards)
     .where(eq(boards.ownerId, ownerId))
-    .orderBy(asc(boards.position), asc(boards.createdAt));
+    .orderBy(
+      asc(boards.projectId),
+      asc(boards.folderId),
+      asc(boards.position),
+      asc(boards.createdAt),
+    );
 
   if (boardRows.length === 0) return [];
   const boardIds = boardRows.map((row) => row.id);
@@ -197,6 +218,27 @@ export async function fetchBoardSummaries(
       columnCount: columnMap.get(row.id) ?? 0,
     }),
   );
+}
+
+export async function fetchFolderSummaries(
+  database: AppDatabase,
+  ownerId: string,
+  projectId?: string,
+): Promise<FolderSummary[]> {
+  const conditions = [eq(folders.ownerId, ownerId)];
+  if (projectId) conditions.push(eq(folders.projectId, projectId));
+
+  const rows = await database
+    .select()
+    .from(folders)
+    .where(and(...conditions))
+    .orderBy(
+      asc(folders.projectId),
+      asc(folders.parentId),
+      asc(folders.position),
+      asc(folders.createdAt),
+    );
+  return rows.map(serializeFolder);
 }
 
 export async function fetchBoardSummary(
@@ -363,6 +405,20 @@ export async function requireProject(
     .where(and(eq(projects.id, projectId), eq(projects.ownerId, ownerId)))
     .limit(1);
   if (!row) throw new ApiError("Project not found.", 404);
+  return row;
+}
+
+export async function requireFolder(
+  database: AppDatabase,
+  folderId: string,
+  ownerId: string,
+): Promise<FolderRow> {
+  const [row] = await database
+    .select()
+    .from(folders)
+    .where(and(eq(folders.id, folderId), eq(folders.ownerId, ownerId)))
+    .limit(1);
+  if (!row) throw new ApiError("Folder not found.", 404);
   return row;
 }
 
@@ -653,15 +709,42 @@ export async function nextProjectPosition(
   return (row?.value ?? -1) + 1;
 }
 
-/** Position of the next board within a specific project, for scoped reorder. */
+/**
+ * Position of the next board within a specific project container: the project
+ * root when folderId is null, otherwise that folder's direct spaces.
+ */
 export async function nextBoardPositionInProject(
   database: AppDatabase,
   projectId: string,
+  folderId: string | null = null,
 ): Promise<number> {
   const [row] = await database
     .select({ value: sql<number>`coalesce(max(${boards.position}), -1)` })
     .from(boards)
-    .where(eq(boards.projectId, projectId));
+    .where(
+      and(
+        eq(boards.projectId, projectId),
+        folderId ? eq(boards.folderId, folderId) : isNull(boards.folderId),
+      ),
+    );
+  return (row?.value ?? -1) + 1;
+}
+
+/** Position of the next sibling folder under a project root or parent folder. */
+export async function nextFolderPosition(
+  database: AppDatabase,
+  projectId: string,
+  parentId: string | null = null,
+): Promise<number> {
+  const [row] = await database
+    .select({ value: sql<number>`coalesce(max(${folders.position}), -1)` })
+    .from(folders)
+    .where(
+      and(
+        eq(folders.projectId, projectId),
+        parentId ? eq(folders.parentId, parentId) : isNull(folders.parentId),
+      ),
+    );
   return (row?.value ?? -1) + 1;
 }
 

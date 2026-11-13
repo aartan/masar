@@ -22,9 +22,21 @@ export interface ProjectSummary {
   doneCount: number;
 }
 
+/** Optional folder inside a project. Folders may contain other folders. */
+export interface FolderSummary {
+  id: string;
+  projectId: string;
+  parentId: string | null;
+  name: string;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BoardSummary {
   id: string;
   projectId: string | null;
+  folderId: string | null;
   type: BoardType;
   name: string;
   description: string | null;
@@ -150,6 +162,7 @@ export interface SyncConflictView {
   id: string;
   entityType:
     | "project"
+    | "folder"
     | "board"
     | "column"
     | "task"
@@ -178,6 +191,7 @@ export interface SyncConflictView {
 
 export interface ProjectDetail {
   project: ProjectSummary;
+  folders: FolderSummary[];
   boards: BoardSummary[];
   totals: {
     boards: number;

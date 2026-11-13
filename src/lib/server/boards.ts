@@ -31,8 +31,10 @@ import {
   fetchTasks,
   nextBoardPositionInProject,
   requireBoard,
+  requireFolder,
   requireProject,
 } from "./queries";
+import { requireFolderInProject } from "./folders";
 import {
   premiumImageClient,
   removeSceneImages,
@@ -114,6 +116,10 @@ export async function moveBoard(
 ): Promise<BoardSummary[]> {
   const targetProject = await requireProject(database, input.projectId, ownerId);
   assertProjectWritable(targetProject);
+  const folderId = input.folderId ?? null;
+  if (folderId) {
+    await requireFolderInProject(database, folderId, targetProject.id, ownerId);
+  }
 
   const owned = await database
     .select({ id: boards.id, projectId: boards.projectId })
@@ -148,7 +154,12 @@ export async function moveBoard(
     for (const [index, boardId] of input.boardIds.entries()) {
       await tx
         .update(boards)
-        .set({ projectId: input.projectId, position: index, updatedAt: now })
+        .set({
+          projectId: input.projectId,
+          folderId,
+          position: index,
+          updatedAt: now,
+        })
         .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)));
     }
   });
@@ -184,11 +195,21 @@ export async function createBoard(
   database: AppDatabase = getDb(),
 ): Promise<BoardSummary> {
   // Resolve the target project. An explicit projectId must be owned and
-  // writable; otherwise fall back to the workspace's default project, creating
-  // it on first use so a board always has a home.
+  // writable; a folder can also imply its project. Otherwise fall back to the
+  // workspace's default project, creating it on first use so a board always
+  // has a home.
   let projectId: string;
+  const folderId = input.folderId ?? null;
   if (input.projectId) {
     const project = await requireProject(database, input.projectId, ownerId);
+    assertProjectWritable(project);
+    projectId = project.id;
+    if (folderId) {
+      await requireFolderInProject(database, folderId, projectId, ownerId);
+    }
+  } else if (folderId) {
+    const folder = await requireFolder(database, folderId, ownerId);
+    const project = await requireProject(database, folder.projectId, ownerId);
     assertProjectWritable(project);
     projectId = project.id;
   } else {
@@ -197,7 +218,11 @@ export async function createBoard(
   }
 
   const type: BoardType = input.type ?? "kanban";
-  const position = await nextBoardPositionInProject(database, projectId);
+  const position = await nextBoardPositionInProject(
+    database,
+    projectId,
+    folderId,
+  );
   const boardId = randomUUID();
   const now = new Date();
 
@@ -206,6 +231,7 @@ export async function createBoard(
       id: boardId,
       ownerId,
       projectId,
+      folderId,
       type,
       name: input.name,
       description: input.description?.trim() || null,
@@ -255,12 +281,56 @@ export async function updateBoard(
   database: AppDatabase = getDb(),
 ): Promise<BoardSummary> {
   const existing = await assertBoardWritable(database, boardId, ownerId);
-  let position: number | undefined;
-  if (input.projectId && input.projectId !== existing.projectId) {
+
+  let targetProjectId = input.projectId ?? existing.projectId;
+  let targetFolderId =
+    input.folderId !== undefined ? (input.folderId ?? null) : existing.folderId;
+
+  if (input.folderId) {
+    const folder = await requireFolder(database, input.folderId, ownerId);
+    if (input.projectId && folder.projectId !== input.projectId) {
+      throw new ApiError("That folder belongs to another project.", 400);
+    }
+    targetProjectId = folder.projectId;
+    targetFolderId = folder.id;
+  }
+
+  if (input.projectId !== undefined && input.projectId !== existing.projectId) {
     const target = await requireProject(database, input.projectId, ownerId);
     assertProjectWritable(target);
-    position = await nextBoardPositionInProject(database, target.id);
+    targetProjectId = target.id;
+    // A project move must never leave the space pointing at a folder from the
+    // old project. Only keep a folder when it was explicitly supplied above.
+    if (input.folderId === undefined) targetFolderId = null;
   }
+
+  if (targetProjectId) {
+    const target = await requireProject(database, targetProjectId, ownerId);
+    assertProjectWritable(target);
+    if (targetFolderId) {
+      await requireFolderInProject(
+        database,
+        targetFolderId,
+        targetProjectId,
+        ownerId,
+      );
+    }
+  } else if (targetFolderId) {
+    throw new ApiError("A folder requires a project.", 400);
+  }
+
+  const containerChanged =
+    targetProjectId !== existing.projectId ||
+    targetFolderId !== existing.folderId;
+  const position =
+    containerChanged && targetProjectId
+      ? await nextBoardPositionInProject(
+          database,
+          targetProjectId,
+          targetFolderId,
+        )
+      : undefined;
+
   await database
     .update(boards)
     .set({
@@ -268,7 +338,12 @@ export async function updateBoard(
       ...(input.description !== undefined
         ? { description: input.description?.trim() || null }
         : {}),
-      ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+      ...(targetProjectId !== existing.projectId || input.projectId !== undefined
+        ? { projectId: targetProjectId }
+        : {}),
+      ...(targetFolderId !== existing.folderId || input.folderId !== undefined
+        ? { folderId: targetFolderId }
+        : {}),
       ...(position !== undefined ? { position } : {}),
       updatedAt: new Date(),
     })

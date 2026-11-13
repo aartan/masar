@@ -7,6 +7,7 @@ import {
   sqliteTable,
   text,
   uniqueIndex,
+  type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core";
 
 /**
@@ -132,6 +133,50 @@ export const projects = sqliteTable(
   ],
 );
 
+/**
+ * Optional folder used to organise spaces inside a project. Folders form a
+ * tree: `parentId` is null for a top-level folder and otherwise points at
+ * another folder in the same project. There is deliberately no depth limit.
+ * Deleting a folder promotes its direct children to the deleted folder's
+ * parent, so spaces and subfolders are never lost.
+ */
+export const folders = sqliteTable(
+  "folders",
+  {
+    id: text("id").primaryKey(),
+    /**
+     * Nullable for the same migration-first reason as projects/boards. New
+     * code always writes the owner; the legacy claim command reassigns rows.
+     */
+    ownerId: text("owner_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    parentId: text("parent_id").references(
+      (): AnySQLiteColumn => folders.id,
+      { onDelete: "set null" },
+    ),
+    name: text("name").notNull(),
+    position: integer("position").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("folders_project_parent_position_idx").on(
+      table.projectId,
+      table.parentId,
+      table.position,
+    ),
+    index("folders_owner_parent_position_idx").on(
+      table.ownerId,
+      table.parentId,
+      table.position,
+    ),
+  ],
+);
+
 export const boards = sqliteTable(
   "boards",
   {
@@ -159,6 +204,15 @@ export const boards = sqliteTable(
       onDelete: "set null",
     }),
     /**
+     * Optional folder inside the project. Null places the space directly in
+     * the project root. Deleting a folder promotes its spaces rather than
+     * deleting them, so the FK uses SET NULL as a safety net; the folder
+     * service performs the promotion explicitly so sync tombstones are queued.
+     */
+    folderId: text("folder_id").references(() => folders.id, {
+      onDelete: "set null",
+    }),
+    /**
      * Board type, immutable after creation. 'kanban' is the default so every
      * existing board keeps its behaviour; 'whiteboard' renders an Excalidraw
      * canvas and has no columns; 'note' renders a BlockNote rich-text
@@ -175,6 +229,7 @@ export const boards = sqliteTable(
     index("boards_position_idx").on(table.position),
     index("boards_owner_position_idx").on(table.ownerId, table.position),
     index("boards_project_position_idx").on(table.projectId, table.position),
+    index("boards_folder_position_idx").on(table.folderId, table.position),
   ],
 );
 
@@ -607,6 +662,7 @@ export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type AccountRow = typeof accounts.$inferSelect;
 export type ProjectRow = typeof projects.$inferSelect;
+export type FolderRow = typeof folders.$inferSelect;
 export type BoardRow = typeof boards.$inferSelect;
 export type ColumnRow = typeof columns.$inferSelect;
 export type TaskRow = typeof tasks.$inferSelect;

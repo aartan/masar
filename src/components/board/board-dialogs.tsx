@@ -30,6 +30,7 @@ import { PrioritySelect } from "@/components/shared/priority-select";
 import { SizeSelect } from "@/components/shared/size-select";
 import { LabelChip } from "@/components/shared/task-meta";
 import { api, errorMessage } from "@/lib/client-api";
+import { folderPathLabel } from "@/lib/folder-tree";
 import type {
   BoardColumn,
   BoardSummary,
@@ -466,12 +467,27 @@ function BoardSettingsForm({
   onClose: () => void;
   onRequestDelete: () => void;
 }) {
-  const { projects } = useWorkspace();
+  const { projects, folders } = useWorkspace();
   const [name, setName] = React.useState(board.name);
   const [description, setDescription] = React.useState(board.description ?? "");
   const [projectId, setProjectId] = React.useState(board.projectId ?? "");
+  const [folderId, setFolderId] = React.useState<string | null>(
+    board.folderId,
+  );
   const [loading, setLoading] = React.useState(false);
   const activeProjects = projects.filter((project) => !project.archived);
+  const projectFolders = folders
+    .filter((folder) => folder.projectId === projectId)
+    .map((folder) => ({
+      folder,
+      label: folderPathLabel(folders, folder.id),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  function handleProjectChange(value: string) {
+    setProjectId(value);
+    setFolderId(null);
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -486,6 +502,7 @@ function BoardSettingsForm({
             name: name.trim(),
             description: description.trim() || null,
             ...(projectId ? { projectId } : {}),
+            folderId,
           }),
         },
       );
@@ -510,7 +527,7 @@ function BoardSettingsForm({
             ? "Rename the canvas, update its description, or move it to another project."
             : board.type === "note"
               ? "Rename the note, update its description, or move it to another project."
-              : "Rename your space, update its description, move it between projects, and manage its labels."}
+              : "Rename your space, update its description, move it between projects or folders, and manage its labels."}
         </DialogDescription>
       </DialogHeader>
       <form
@@ -541,7 +558,7 @@ function BoardSettingsForm({
             <Label>Project</Label>
             <Select
               value={projectId}
-              onValueChange={setProjectId}
+              onValueChange={handleProjectChange}
               disabled={loading || activeProjects.length === 0}
             >
               <SelectTrigger>
@@ -557,6 +574,30 @@ function BoardSettingsForm({
             </Select>
           </div>
         </div>
+        {projectFolders.length > 0 && (
+          <div className="space-y-2">
+            <Label>Folder</Label>
+            <Select
+              value={folderId ?? "__root__"}
+              onValueChange={(value) =>
+                setFolderId(value === "__root__" ? null : value)
+              }
+              disabled={loading}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__root__">Project root</SelectItem>
+                {projectFolders.map(({ folder, label }) => (
+                  <SelectItem key={folder.id} value={folder.id}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <div className="space-y-2">
           <Label htmlFor="board-settings-description">Description</Label>
           <Textarea

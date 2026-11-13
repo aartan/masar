@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { and, count, eq, isNull, or } from "drizzle-orm";
 
 import type { AppDatabase } from "@/db";
-import { boards, projects, users } from "@/db/schema";
+import { boards, folders, projects, users } from "@/db/schema";
 
 export const LEGACY_WORKSPACE_ID = "legacy-workspace";
 
@@ -62,6 +62,12 @@ export async function claimLegacyWorkspace(
       .set({ ownerId: owner.id })
       .where(
         or(eq(projects.ownerId, LEGACY_WORKSPACE_ID), isNull(projects.ownerId)),
+      );
+    await tx
+      .update(folders)
+      .set({ ownerId: owner.id })
+      .where(
+        or(eq(folders.ownerId, LEGACY_WORKSPACE_ID), isNull(folders.ownerId)),
       );
     await tx
       .update(boards)

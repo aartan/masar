@@ -296,3 +296,119 @@ describe("0001 auth and workspace ownership migration", () => {
     expect(legacyUser).toBeUndefined();
   });
 });
+
+describe("0013 recursive folders", () => {
+  it("adds the folder tree, nullable space folder, and sync snapshots backward-compatibly", async () => {
+    await migrateToLatest();
+
+    const folderColumns = await fixture.client
+      .execute("PRAGMA table_info(folders)")
+      .then((result) => result.rows.map((row) => row.name));
+    expect(folderColumns).toEqual([
+      "id",
+      "owner_id",
+      "project_id",
+      "parent_id",
+      "name",
+      "position",
+      "created_at",
+      "updated_at",
+    ]);
+
+    const boardColumns = await fixture.client
+      .execute("PRAGMA table_info(boards)")
+      .then((result) => result.rows.map((row) => row.name));
+    expect(boardColumns).toContain("folder_id");
+
+    // The rollout board predates folders and must remain a root-level space.
+    const [rolloutBoard] = await fixture.db
+      .select({ folderId: boards.folderId })
+      .from(boards)
+      .where(eq(boards.id, "rollout-board"));
+    expect(rolloutBoard?.folderId).toBeNull();
+
+    const snapshotTriggers = await fixture.client.execute(
+      `SELECT name, sql FROM sqlite_master
+       WHERE type = 'trigger' AND name IN
+         ('sync_folders_insert', 'sync_folders_update', 'sync_folders_delete',
+          'sync_boards_insert', 'sync_boards_update', 'sync_boards_delete')`,
+    );
+    const triggerSql = new Map(
+      snapshotTriggers.rows.map((row) => [String(row.name), String(row.sql)]),
+    );
+    expect(triggerSql.get("sync_folders_insert")).toContain("'parent_id'");
+    expect(triggerSql.get("sync_boards_insert")).toContain("'folder_id'");
+    expect(triggerSql.get("sync_boards_update")).toContain("'folder_id'");
+
+    const owner = await createTestUser(fixture.db, {
+      id: randomUUID(),
+      name: "Folder owner",
+      email: `folders-${randomUUID()}@example.test`,
+    });
+    const projectId = randomUUID();
+    await fixture.db.insert(schema.projects).values({
+      id: projectId,
+      ownerId: owner.id,
+      name: "Folder project",
+      position: 0,
+    });
+    // Sync triggers are gated on an existing idle sync_state row, which the
+    // app normally creates on first launch.
+    await fixture.client.execute(
+      `INSERT OR IGNORE INTO sync_state (id, device_id, last_revision, bootstrapped, applying)
+       VALUES (1, 'migration-test', 0, 0, 0)`,
+    );
+    const rootId = randomUUID();
+    const childId = randomUUID();
+    await fixture.db.insert(schema.folders).values([
+      {
+        id: rootId,
+        ownerId: owner.id,
+        projectId,
+        parentId: null,
+        name: "Root",
+        position: 0,
+      },
+      {
+        id: childId,
+        ownerId: owner.id,
+        projectId,
+        parentId: rootId,
+        name: "Child",
+        position: 0,
+      },
+    ]);
+
+    const changes = await fixture.client.execute({
+      sql: `SELECT entity_id, data FROM sync_changes
+            WHERE entity_type = 'folder' AND entity_id IN (?, ?)`,
+      args: [rootId, childId],
+    });
+    expect(changes.rows).toHaveLength(2);
+    const childChange = changes.rows.find((row) => row.entity_id === childId);
+    expect(JSON.parse(String(childChange?.data))).toMatchObject({
+      id: childId,
+      project_id: projectId,
+      parent_id: rootId,
+      name: "Child",
+    });
+
+    // A legacy-style board insert still works without the folder column.
+    await fixture.client.execute({
+      sql: `INSERT INTO boards (id, name, description, position, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [
+        randomUUID(),
+        "Inserted after folders",
+        null,
+        3,
+        Date.now(),
+        Date.now(),
+      ],
+    });
+    const [foreignKeyProblem] = await fixture.client
+      .execute("PRAGMA foreign_key_check")
+      .then((result) => result.rows);
+    expect(foreignKeyProblem).toBeUndefined();
+  });
+});

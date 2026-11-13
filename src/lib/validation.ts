@@ -42,6 +42,7 @@ export const boardCreateSchema = z.object({
   description: z.string().trim().max(400).nullish(),
   type: z.enum(BOARD_TYPES).optional(),
   projectId: idSchema.optional(),
+  folderId: idSchema.nullish(),
 });
 
 export const boardUpdateSchema = z
@@ -49,10 +50,30 @@ export const boardUpdateSchema = z
     name: nameSchema(80, "Space name").optional(),
     description: z.string().trim().max(400).nullable().optional(),
     projectId: idSchema.optional(),
+    folderId: idSchema.nullish(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "Nothing to update",
   });
+
+export const folderCreateSchema = z.object({
+  projectId: idSchema,
+  parentId: idSchema.nullish(),
+  name: nameSchema(80, "Folder name"),
+});
+
+export const folderUpdateSchema = z
+  .object({
+    name: nameSchema(80, "Folder name").optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "Nothing to update",
+  });
+
+export const moveFolderSchema = z.object({
+  parentId: idSchema.nullish(),
+  index: z.number().int().min(0).max(100000),
+});
 
 export const projectCreateSchema = z.object({
   name: nameSchema(80, "Project name"),
@@ -72,10 +93,11 @@ export const reorderProjectsSchema = z.object({
   projectIds: z.array(idSchema).min(1).max(200),
 });
 
-/** Move a board to a project and/or reorder the boards within a project. */
+/** Move spaces into a project/folder and set the target container's order. */
 export const moveBoardSchema = z.object({
   projectId: idSchema,
-  boardIds: z.array(idSchema).min(1).max(200),
+  folderId: idSchema.nullish(),
+  boardIds: z.array(idSchema).min(1).max(1000),
 });
 
 export const deleteProjectSchema = z.object({
@@ -256,6 +278,9 @@ export type BoardUpdateInput = z.infer<typeof boardUpdateSchema>;
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
 export type ProjectUpdateInput = z.infer<typeof projectUpdateSchema>;
 export type MoveBoardInput = z.infer<typeof moveBoardSchema>;
+export type FolderCreateInput = z.infer<typeof folderCreateSchema>;
+export type FolderUpdateInput = z.infer<typeof folderUpdateSchema>;
+export type MoveFolderInput = z.infer<typeof moveFolderSchema>;
 export type WhiteboardSceneInput = z.infer<typeof whiteboardSceneSchema>;
 export type NoteDocumentInput = z.infer<typeof noteDocumentSchema>;
 export type ColumnCreateInput = z.infer<typeof columnCreateSchema>;

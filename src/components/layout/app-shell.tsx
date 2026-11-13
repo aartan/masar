@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const {
     projects,
+    folders,
     boards,
     user,
     conflictCount,
@@ -31,6 +32,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     refresh,
     reorderProjects,
     moveBoards,
+    moveFolder,
   } = useWorkspace();
   const location = useLocation();
   const {
@@ -43,7 +45,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [createBoard, setCreateBoard] = React.useState<{
     open: boolean;
     projectId: string | null;
-  }>({ open: false, projectId: null });
+    folderId: string | null;
+  }>({ open: false, projectId: null, folderId: null });
 
   React.useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -70,9 +73,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  function openCreateBoard(projectId: string | null = null) {
+  function openCreateBoard(
+    projectId: string | null = null,
+    folderId: string | null = null,
+  ) {
     setMobileOpen(false);
-    setCreateBoard({ open: true, projectId });
+    setCreateBoard({ open: true, projectId, folderId });
   }
 
   if (error) {
@@ -109,6 +115,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="h-full animate-fade">
               <SidebarContent
                 projects={projects}
+                folders={folders}
                 boards={boards}
                 conflictCount={conflictCount}
                 user={user}
@@ -119,6 +126,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 onOpenShortcuts={() => setShortcutsOpen(true)}
                 onReorderProjects={reorderProjects}
                 onMoveBoards={moveBoards}
+                onMoveFolder={moveFolder}
                 onRefresh={refresh}
               />
             </div>
@@ -140,6 +148,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="h-full animate-fade">
               <SidebarContent
                 projects={projects}
+                folders={folders}
                 boards={boards}
                 conflictCount={conflictCount}
                 user={user}
@@ -157,6 +166,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 onClose={() => setMobileOpen(false)}
                 onReorderProjects={reorderProjects}
                 onMoveBoards={moveBoards}
+                onMoveFolder={moveFolder}
                 onRefresh={refresh}
               />
             </div>
@@ -216,6 +226,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <CommandPalette
         boards={boards}
+        folders={folders}
         open={searchOpen}
         onOpenChange={setSearchOpen}
       />
@@ -223,6 +234,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <CreateBoardDialog
         open={createBoard.open}
         projectId={createBoard.projectId}
+        folderId={createBoard.folderId}
         onOpenChange={(open) =>
           setCreateBoard((state) => ({ ...state, open }))
         }

@@ -17,7 +17,12 @@ import {
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { PriorityBars, DueDateChip } from "@/components/shared/task-meta";
 import { Kbd } from "@/components/shared/empty-state";
-import type { BoardSummary, SearchResult } from "@/lib/types";
+import { folderPathLabel } from "@/lib/folder-tree";
+import type {
+  BoardSummary,
+  FolderSummary,
+  SearchResult,
+} from "@/lib/types";
 import { api } from "@/lib/client-api";
 import { cn } from "@/lib/utils";
 
@@ -53,10 +58,12 @@ type PaletteItem = NavItem | TaskItem;
 
 export function CommandPalette({
   boards,
+  folders,
   open,
   onOpenChange,
 }: {
   boards: BoardSummary[];
+  folders: FolderSummary[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -119,11 +126,16 @@ export function CommandPalette({
 
     for (const board of boards) {
       if (trimmed && !board.name.toLowerCase().includes(trimmed)) continue;
+      const taskLabel = `${board.taskCount} ${
+        board.taskCount === 1 ? "task" : "tasks"
+      }`;
       navItems.push({
         kind: "nav",
         key: `nav-board-${board.id}`,
         title: board.name,
-        subtitle: `${board.taskCount} ${board.taskCount === 1 ? "task" : "tasks"}`,
+        subtitle: board.folderId
+          ? `${folderPathLabel(folders, board.folderId)} · ${taskLabel}`
+          : taskLabel,
         href: `/boards/${board.id}`,
         boardType: board.type,
       });
@@ -139,7 +151,7 @@ export function CommandPalette({
       : [];
 
     return [...navItems, ...taskItems];
-  }, [boards, query, results]);
+  }, [boards, folders, query, results]);
 
   const activeItemIndex =
     items.length === 0 ? 0 : Math.min(activeIndex, items.length - 1);

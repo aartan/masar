@@ -6,13 +6,13 @@ Masar is a project management app for organising work across projects and spaces
 
 ![Masar projects and spaces](docs/assets/projects.png)
 
-Work is organised as **Workspace → Projects → Spaces → Tasks**. Each project can hold any mix of three space types:
+Work is organised as **Workspace → Projects → Folders → Spaces → Tasks**. Folders are optional: projects can hold spaces directly, folders, or a mix, and folders can contain both spaces and more folders with no depth limit. Create, rename, move, and delete folders from the sidebar or project overview; deleting a folder promotes its contents to the parent instead of deleting them. Each project can hold any mix of three space types:
 
 - **Kanban spaces** for task-based work with columns and task cards.
 - **Whiteboards** for free-form diagrams, sketches, and brainstorms.
 - **Notes** for rich-text documents such as meeting notes, specs, and research.
 
-Spaces have a name, an optional description, and a distinct icon per type. Reorder projects, reorder spaces within a project, and drag spaces between projects. Each project has its own overview with its spaces, completion progress, upcoming tasks, and recent activity.
+Spaces have a name, an optional description, and a distinct icon per type. Reorder projects, drag spaces and folders to reorder or nest them, and move spaces between folders or projects. Each project has its own overview with its folders, spaces, completion progress, upcoming tasks, and recent activity.
 
 ## Overview dashboard
 
@@ -87,7 +87,7 @@ Masar is distributed as a desktop application. Download the latest build for you
 
 ## Cloud sync
 
-The local workspace is free and does not require an account. Cloud sync runs on hosted infrastructure and requires an active subscription.
+The local workspace is free and does not require an account. Cloud sync keeps projects, folders, spaces, and their contents consistent across devices and requires an active subscription.
 
 ## Technology
 

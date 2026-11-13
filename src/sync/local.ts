@@ -5,6 +5,7 @@ import { getClient } from "@/db";
 
 export type SyncEntityType =
   | "project"
+  | "folder"
   | "board"
   | "column"
   | "task"
@@ -81,6 +82,7 @@ export interface RemoteEntitySnapshot {
 
 const ENTITY_TYPES = new Set<SyncEntityType>([
   "project",
+  "folder",
   "board",
   "column",
   "task",
@@ -236,9 +238,35 @@ async function bootstrapChanges(tx: Transaction): Promise<void> {
        coalesce(updated_at, unixepoch() * 1000)
      from projects
      order by position, created_at`,
+    // Parent folders must be pushed before their children. The recursive CTE
+    // orders the tree by path; the fallback catches orphaned/corrupt rows so no
+    // folder is silently omitted from a bootstrap.
+    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+     with recursive tree(id, path) as (
+       select id, printf('%012d/%s', position, id) from folders where parent_id is null
+       union all
+       select f.id, tree.path || '/' || printf('%012d/%s', f.position, f.id)
+       from folders f join tree on f.parent_id = tree.id
+     )
+     select 'folder', f.id, 0,
+       json_object('id', f.id, 'owner_id', f.owner_id, 'project_id', f.project_id,
+                   'parent_id', f.parent_id, 'name', f.name, 'position', f.position,
+                   'created_at', f.created_at, 'updated_at', f.updated_at),
+       coalesce(f.updated_at, unixepoch() * 1000)
+     from tree join folders f on f.id = tree.id
+     order by tree.path`,
+    `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+     select 'folder', id, 0,
+       json_object('id', id, 'owner_id', owner_id, 'project_id', project_id,
+                   'parent_id', parent_id, 'name', name, 'position', position,
+                   'created_at', created_at, 'updated_at', updated_at),
+       coalesce(updated_at, unixepoch() * 1000)
+     from folders
+     where id not in (select entity_id from sync_changes where entity_type = 'folder')`,
     `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
      select 'board', id, 0,
-       json_object('id', id, 'owner_id', owner_id, 'project_id', project_id, 'type', type,
+       json_object('id', id, 'owner_id', owner_id, 'project_id', project_id,
+                   'folder_id', folder_id, 'type', type,
                    'name', name, 'description', description,
                    'position', position, 'created_at', created_at, 'updated_at', updated_at),
        coalesce(updated_at, unixepoch() * 1000)
@@ -447,9 +475,21 @@ export async function applyRemoteChanges(
     const deletions = changes
       .filter((change) => change.deleted)
       .sort((a, b) => dependencyRank(b.entityType) - dependencyRank(a.entityType));
+    const folderDepths = folderUpsertDepths(changes);
     const upserts = changes
       .filter((change) => !change.deleted)
-      .sort((a, b) => dependencyRank(a.entityType) - dependencyRank(b.entityType));
+      .sort((a, b) => {
+        const rank =
+          dependencyRank(a.entityType) - dependencyRank(b.entityType);
+        if (rank !== 0) return rank;
+        if (a.entityType === "folder" && b.entityType === "folder") {
+          return (
+            (folderDepths.get(a.entityId) ?? 0) -
+            (folderDepths.get(b.entityId) ?? 0)
+          );
+        }
+        return 0;
+      });
 
     for (const change of deletions) {
       if (await hasUnresolvedConflict(tx, change.entityType, change.entityId)) {
@@ -623,6 +663,28 @@ async function conflictContext(
         projectId: entityId,
         projectName: name,
         entityLabel: name,
+      };
+    }
+    case "folder": {
+      const result = await tx.execute({
+        sql: `select f.name, f.project_id, p.name as project_name
+              from folders f left join projects p on p.id = f.project_id
+              where f.id = ? limit 1`,
+        args: [entityId],
+      });
+      const row = result.rows[0];
+      return {
+        ...empty,
+        projectId:
+          typeof row?.project_id === "string"
+            ? row.project_id
+            : asNullableString(data.project_id),
+        projectName:
+          typeof row?.project_name === "string" ? row.project_name : null,
+        entityLabel:
+          typeof row?.name === "string"
+            ? row.name
+            : asNullableString(data.name),
       };
     }
     case "board": {
@@ -946,30 +1008,67 @@ async function hasUnresolvedConflict(
   return result.rows.length > 0;
 }
 
+/**
+ * Depth of each folder upsert in the incoming batch. Folders sort parent-first
+ * so a child never arrives before the self-referencing FK target. A parent that
+ * is not part of the batch is assumed to already exist, so it contributes no
+ * extra depth. Cyclic data is treated as a root rather than recursing forever.
+ */
+function folderUpsertDepths(
+  changes: RemoteSyncChange[],
+): Map<string, number> {
+  const parents = new Map<string, string | null>();
+  for (const change of changes) {
+    if (change.entityType !== "folder" || change.deleted) continue;
+    const parentId = change.data.parent_id;
+    parents.set(
+      change.entityId,
+      typeof parentId === "string" ? parentId : null,
+    );
+  }
+
+  const depths = new Map<string, number>();
+  const visit = (id: string, trail: Set<string>): number => {
+    const cached = depths.get(id);
+    if (cached !== undefined) return cached;
+    if (trail.has(id)) return 0;
+    trail.add(id);
+    const parentId = parents.get(id);
+    const depth =
+      parentId && parents.has(parentId) ? 1 + visit(parentId, trail) : 0;
+    depths.set(id, depth);
+    return depth;
+  };
+  for (const id of parents.keys()) visit(id, new Set());
+  return depths;
+}
+
 function dependencyRank(type: SyncEntityType): number {
   switch (type) {
     case "project":
       return 0;
-    case "board":
+    case "folder":
       return 1;
-    case "column":
+    case "board":
       return 2;
-    case "label":
+    case "column":
       return 3;
-    case "task":
+    case "label":
       return 4;
-    case "task_image":
+    case "task":
       return 5;
-    case "task_label":
+    case "task_image":
       return 6;
-    case "subtask":
+    case "task_label":
       return 7;
-    case "comment":
+    case "subtask":
       return 8;
-    case "whiteboard":
+    case "comment":
       return 9;
-    case "note":
+    case "whiteboard":
       return 10;
+    case "note":
+      return 11;
     default:
       return 99;
   }
@@ -982,6 +1081,7 @@ async function localTimestamp(
 ): Promise<number | null> {
   const queries: Record<Exclude<SyncEntityType, "task_label">, string> = {
     project: "select updated_at as value from projects where id = ?",
+    folder: "select updated_at as value from folders where id = ?",
     board: "select updated_at as value from boards where id = ?",
     column: "select updated_at as value from columns where id = ?",
     task: "select updated_at as value from tasks where id = ?",
@@ -1071,9 +1171,17 @@ async function queueCurrentEntity(
                     'created_at', created_at, 'updated_at', updated_at),
         coalesce(updated_at, unixepoch() * 1000)
       from projects where id = ?`,
+    folder: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
+      select 'folder', id, 0,
+        json_object('id', id, 'owner_id', owner_id, 'project_id', project_id,
+                    'parent_id', parent_id, 'name', name, 'position', position,
+                    'created_at', created_at, 'updated_at', updated_at),
+        coalesce(updated_at, unixepoch() * 1000)
+      from folders where id = ?`,
     board: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
       select 'board', id, 0,
-        json_object('id', id, 'owner_id', owner_id, 'project_id', project_id, 'type', type,
+        json_object('id', id, 'owner_id', owner_id, 'project_id', project_id,
+                    'folder_id', folder_id, 'type', type,
                     'name', name, 'description', description,
                     'position', position, 'created_at', created_at, 'updated_at', updated_at),
         coalesce(updated_at, unixepoch() * 1000)
@@ -1198,6 +1306,31 @@ async function deleteEntity(tx: Transaction, change: RemoteSyncChange): Promise<
       }
       break;
     }
+    case "folder": {
+      // Match server deletion semantics: promote direct children to the
+      // deleted folder's parent before removing it.
+      const result = await tx.execute({
+        sql: "select parent_id from folders where id = ? limit 1",
+        args: [change.entityId],
+      });
+      const parentId =
+        typeof result.rows[0]?.parent_id === "string"
+          ? result.rows[0].parent_id
+          : null;
+      await tx.execute({
+        sql: "update boards set folder_id = ? where folder_id = ?",
+        args: [parentId, change.entityId],
+      });
+      await tx.execute({
+        sql: "update folders set parent_id = ? where parent_id = ?",
+        args: [parentId, change.entityId],
+      });
+      await tx.execute({
+        sql: "delete from folders where id = ?",
+        args: [change.entityId],
+      });
+      break;
+    }
     case "board":
       await tx.execute({ sql: "delete from boards where id = ?", args: [change.entityId] });
       break;
@@ -1279,6 +1412,42 @@ async function applyUpsert(
       });
       return null;
     }
+    case "folder": {
+      // A folder can arrive before its project or parent in an unusual pull.
+      // Keep it visible by falling back to the default project/root rather
+      // than dropping the row.
+      const projectId = asNullableString(data.project_id);
+      const resolvedProjectId =
+        projectId && (await exists(tx, "projects", projectId))
+          ? projectId
+          : await defaultProjectForTx(tx);
+      let parentId = asNullableString(data.parent_id);
+      if (parentId) {
+        const parent = await tx.execute({
+          sql: "select project_id from folders where id = ? limit 1",
+          args: [parentId],
+        });
+        if (parent.rows[0]?.project_id !== resolvedProjectId) parentId = null;
+      }
+      await tx.execute({
+        sql: `insert into folders (id, owner_id, project_id, parent_id, name, position, created_at, updated_at)
+              values (?, 'local-user', ?, ?, ?, ?, ?, ?)
+              on conflict(id) do update set
+                owner_id = 'local-user', project_id = excluded.project_id,
+                parent_id = excluded.parent_id, name = excluded.name,
+                position = excluded.position, updated_at = excluded.updated_at`,
+        args: [
+          change.entityId,
+          resolvedProjectId,
+          parentId,
+          asString(data.name, "Untitled folder"),
+          asNumber(data.position),
+          toMs(data.created_at, now),
+          toMs(data.updated_at, now),
+        ],
+      });
+      return null;
+    }
     case "board": {
       // Legacy cloud rows have no project, and an out-of-order parent can be
       // missing. Assign the board to the default project instead of leaving it
@@ -1288,16 +1457,26 @@ async function applyUpsert(
         projectId && (await exists(tx, "projects", projectId))
           ? projectId
           : await defaultProjectForTx(tx);
+      let folderId = asNullableString(data.folder_id);
+      if (folderId) {
+        const folder = await tx.execute({
+          sql: "select project_id from folders where id = ? limit 1",
+          args: [folderId],
+        });
+        if (folder.rows[0]?.project_id !== resolvedProjectId) folderId = null;
+      }
       await tx.execute({
-        sql: `insert into boards (id, owner_id, project_id, type, name, description, position, created_at, updated_at)
-              values (?, 'local-user', ?, ?, ?, ?, ?, ?, ?)
+        sql: `insert into boards (id, owner_id, project_id, folder_id, type, name, description, position, created_at, updated_at)
+              values (?, 'local-user', ?, ?, ?, ?, ?, ?, ?, ?)
               on conflict(id) do update set
-                owner_id = 'local-user', project_id = excluded.project_id, type = excluded.type,
+                owner_id = 'local-user', project_id = excluded.project_id,
+                folder_id = excluded.folder_id, type = excluded.type,
                 name = excluded.name, description = excluded.description,
                 position = excluded.position, updated_at = excluded.updated_at`,
         args: [
           change.entityId,
           resolvedProjectId,
+          folderId,
           asString(data.type, "kanban"),
           asString(data.name, "Untitled space"),
           asNullableString(data.description),

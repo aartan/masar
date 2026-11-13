@@ -17,6 +17,7 @@ import {
 
 const ENTITY_TYPES = [
   "project",
+  "folder",
   "board",
   "column",
   "task",

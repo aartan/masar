@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { eq } from "drizzle-orm";
 
 import { createLocalApp } from "@/server/app";
-import { boards, columns, tasks } from "@/db/schema";
+import { boards, columns, folders, projects, tasks } from "@/db/schema";
 import { getDb } from "@/db";
 import { getLocalUser, LOCAL_USER_ID } from "@/lib/server/desktop";
 import { listPendingChanges } from "@/sync/local";
@@ -36,6 +36,8 @@ beforeEach(async () => {
   delete process.env.MASAR_SYNC_USER_EMAIL;
   delete process.env.MASAR_LOCAL_DB_URL;
   await test.db.delete(boards);
+  await test.client.execute("delete from folders");
+  await test.client.execute("delete from projects");
   await test.client.execute("delete from sync_changes");
   await test.client.execute("delete from sync_conflicts");
   await test.client.execute(
@@ -311,8 +313,14 @@ describe("import local workspace", () => {
       });
       await source.client.batch(
         [
-          `INSERT INTO boards (id, owner_id, name, description, position, created_at, updated_at)
-             VALUES ('local-board-1', 'local-user', 'Local board', NULL, 0, ${timestamp}, ${timestamp})`,
+          `INSERT INTO projects (id, owner_id, name, position, created_at, updated_at)
+             VALUES ('local-project-1', 'local-user', 'Local project', 0, ${timestamp}, ${timestamp})`,
+          `INSERT INTO folders (id, owner_id, project_id, parent_id, name, position, created_at, updated_at)
+             VALUES ('local-folder-root', 'local-user', 'local-project-1', NULL, 'Marketing', 0, ${timestamp}, ${timestamp})`,
+          `INSERT INTO folders (id, owner_id, project_id, parent_id, name, position, created_at, updated_at)
+             VALUES ('local-folder-child', 'local-user', 'local-project-1', 'local-folder-root', 'Q3', 0, ${timestamp}, ${timestamp})`,
+          `INSERT INTO boards (id, owner_id, project_id, folder_id, name, description, position, created_at, updated_at)
+             VALUES ('local-board-1', 'local-user', 'local-project-1', 'local-folder-child', 'Local board', NULL, 0, ${timestamp}, ${timestamp})`,
           `INSERT INTO columns (id, board_id, name, position, is_done, created_at, updated_at)
              VALUES ('local-column-1', 'local-board-1', 'To Do', 0, 0, ${timestamp}, ${timestamp})`,
           `INSERT INTO tasks (id, board_id, column_id, title, priority, position, created_at, updated_at)
@@ -332,11 +340,29 @@ describe("import local workspace", () => {
       });
 
       // The mirror owns the copied board under its implicit account.
+      const [project] = await test.db
+        .select()
+        .from(projects)
+        .where(eq(projects.id, "local-project-1"));
+      expect(project?.ownerId).toBe(LOCAL_USER_ID);
+
+      const importedFolders = await test.db.select().from(folders);
+      expect(
+        importedFolders
+          .map((folder) => ({ id: folder.id, parentId: folder.parentId }))
+          .sort((a, b) => a.id.localeCompare(b.id)),
+      ).toEqual([
+        { id: "local-folder-child", parentId: "local-folder-root" },
+        { id: "local-folder-root", parentId: null },
+      ]);
+
       const [board] = await test.db
         .select()
         .from(boards)
         .where(eq(boards.id, "local-board-1"));
       expect(board?.ownerId).toBe(LOCAL_USER_ID);
+      expect(board?.projectId).toBe("local-project-1");
+      expect(board?.folderId).toBe("local-folder-child");
 
       const [column] = await test.db
         .select()
@@ -355,6 +381,12 @@ describe("import local workspace", () => {
       expect(
         pending.some((change) => change.entityType === "board" && change.entityId === "local-board-1"),
       ).toBe(true);
+      expect(
+        pending
+          .filter((change) => change.entityType === "folder")
+          .map((change) => change.entityId)
+          .sort(),
+      ).toEqual(["local-folder-child", "local-folder-root"]);
 
       // The local workspace file is untouched.
       const [sourceBoard] = await source.db

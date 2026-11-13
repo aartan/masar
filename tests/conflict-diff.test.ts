@@ -14,6 +14,7 @@ const lookup: ConflictLookup = {
   ]),
   labels: new Map([["label-1", "Design"]]),
   projects: new Map([["project-1", "Website"]]),
+  folders: new Map([["folder-1", "Marketing"]]),
 };
 
 function conflict(overrides: Partial<SyncConflictView> = {}): SyncConflictView {

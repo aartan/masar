@@ -7,6 +7,7 @@ export interface ConflictLookup {
   columns: Map<string, string>;
   labels: Map<string, string>;
   projects: Map<string, string>;
+  folders: Map<string, string>;
 }
 
 export interface ConflictDiffRow {
@@ -82,7 +83,15 @@ const BOARD_FIELDS: FieldDefinition[] = [
   { key: "name", label: "Name" },
   { key: "description", label: "Description", kind: "longText" },
   { key: "project_id", label: "Project" },
+  { key: "folder_id", label: "Folder" },
   { key: "type", label: "Type" },
+  { key: "position", label: "Order" },
+];
+
+const FOLDER_FIELDS: FieldDefinition[] = [
+  { key: "name", label: "Name" },
+  { key: "parent_id", label: "Parent folder" },
+  { key: "project_id", label: "Project" },
   { key: "position", label: "Order" },
 ];
 
@@ -119,6 +128,8 @@ function fieldDefinitions(type: SyncConflictView["entityType"]): FieldDefinition
       return TASK_FIELDS;
     case "project":
       return PROJECT_FIELDS;
+    case "folder":
+      return FOLDER_FIELDS;
     case "board":
       return BOARD_FIELDS;
     case "column":
@@ -169,6 +180,22 @@ function formatValue(
   kind: FieldKind | undefined,
   lookup: ConflictLookup,
 ): string {
+  if (key === "parent_id") {
+    if (value === null || value === undefined || value === "") {
+      return "Project root";
+    }
+    return typeof value === "string"
+      ? (lookup.folders.get(value) ?? "Unknown folder")
+      : "Unknown folder";
+  }
+  if (key === "folder_id") {
+    if (value === null || value === undefined || value === "") {
+      return "Project root";
+    }
+    return typeof value === "string"
+      ? (lookup.folders.get(value) ?? "Unknown folder")
+      : "Unknown folder";
+  }
   if (value === null || value === undefined || value === "") return "Not set";
   if (kind === "boolean") return value === true || value === 1 ? "Yes" : "No";
   if (kind === "timestamp") return formatTimestamp(value);

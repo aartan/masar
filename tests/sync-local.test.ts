@@ -2,10 +2,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { eq } from "drizzle-orm";
 
-import { boards } from "@/db/schema";
+import { boards, folders } from "@/db/schema";
 import { getClient, getDb } from "@/db";
 import { getLocalUser, LOCAL_USER_ID } from "@/lib/server/desktop";
 import { createBoard, getBoardDetail } from "@/lib/server/boards";
+import { createFolder } from "@/lib/server/folders";
 import { saveWhiteboardScene } from "@/lib/server/whiteboards";
 import { saveNoteDocument } from "@/lib/server/notes";
 import { addTaskImage } from "@/lib/server/task-images";
@@ -43,6 +44,7 @@ beforeEach(async () => {
   const client = getClient();
   // Boards cascade-delete columns/tasks/whiteboards; clear the remaining
   // top-level tables and sync bookkeeping so each test starts clean.
+  await client.execute("delete from folders");
   await client.execute("delete from projects");
   await client.execute("delete from sync_changes");
   await client.execute("delete from sync_entity_revisions");
@@ -83,6 +85,51 @@ describe("local sync outbox", () => {
     expect(pending.filter((change) => change.entityType === "column")).toHaveLength(
       detail.columns.length,
     );
+  });
+
+  it("bootstraps folders parent-first with their spaces and folder assignments", async () => {
+    const rootBoard = await createBoard(
+      { name: "Root space" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+    const projectId = rootBoard.projectId!;
+    const parent = await createFolder(
+      { projectId, name: "Parent" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+    const child = await createFolder(
+      { projectId, parentId: parent.id, name: "Child" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+    const nestedBoard = await createBoard(
+      { name: "Nested space", projectId, folderId: child.id },
+      LOCAL_USER_ID,
+      test.db,
+    );
+
+    await prepareSync("remote-user-a");
+    const pending = await listPendingChanges(0, 500);
+    const folderChanges = pending.filter(
+      (change) => change.entityType === "folder",
+    );
+    expect(folderChanges.map((change) => change.entityId)).toEqual([
+      parent.id,
+      child.id,
+    ]);
+    expect(folderChanges[1]?.data).toMatchObject({
+      id: child.id,
+      project_id: projectId,
+      parent_id: parent.id,
+    });
+    expect(
+      pending.find(
+        (change) =>
+          change.entityType === "board" && change.entityId === nestedBoard.id,
+      )?.data,
+    ).toMatchObject({ project_id: projectId, folder_id: child.id });
   });
 
   it("records inserts, updates and deletes once sync is prepared", async () => {
@@ -199,6 +246,92 @@ describe("local sync outbox", () => {
     expect(pending.filter((change) => change.entityType === "project")).toHaveLength(1);
     const state = await getSyncState();
     expect(state.lastRevision).toBe(1);
+  });
+
+  it("applies incoming folders parent-first and links spaces to them", async () => {
+    await prepareSync("remote-user-a");
+    const now = Date.now();
+    const remoteChange = (
+      entityType: "project" | "folder" | "board",
+      entityId: string,
+      data: Record<string, unknown>,
+    ) => ({
+      entityType,
+      entityId,
+      deleted: false,
+      data,
+      updatedAt: new Date(now).toISOString(),
+      revision: 1,
+    });
+
+    const result = await applyRemoteChanges(1, [
+      // Deliberately child-first: the pull applies folders by depth.
+      remoteChange("folder", "remote-child", {
+        id: "remote-child",
+        project_id: "remote-project",
+        parent_id: "remote-parent",
+        name: "Child",
+        position: 0,
+        created_at: now,
+        updated_at: now,
+      }),
+      remoteChange("folder", "remote-parent", {
+        id: "remote-parent",
+        project_id: "remote-project",
+        parent_id: null,
+        name: "Parent",
+        position: 0,
+        created_at: now,
+        updated_at: now,
+      }),
+      remoteChange("board", "remote-nested-board", {
+        id: "remote-nested-board",
+        project_id: "remote-project",
+        folder_id: "remote-child",
+        type: "kanban",
+        name: "Nested remote space",
+        description: null,
+        position: 0,
+        created_at: now,
+        updated_at: now,
+      }),
+      remoteChange("project", "remote-project", {
+        id: "remote-project",
+        name: "Remote project",
+        description: null,
+        position: 0,
+        archived: false,
+        archived_at: null,
+        created_at: now,
+        updated_at: now,
+      }),
+    ]);
+
+    expect(result.applied).toBe(4);
+    expect(result.skipped).toHaveLength(0);
+    const remoteFolders = await test.db.select().from(folders);
+    expect(
+      remoteFolders.find((folder) => folder.id === "remote-child"),
+    ).toMatchObject({
+      projectId: "remote-project",
+      parentId: "remote-parent",
+    });
+    const [nested] = await test.db
+      .select()
+      .from(boards)
+      .where(eq(boards.id, "remote-nested-board"));
+    expect(nested).toMatchObject({
+      projectId: "remote-project",
+      folderId: "remote-child",
+    });
+    // Remote apply is suppressed, so nothing echoes back to the cloud.
+    const pending = await listPendingChanges(0, 500);
+    expect(pending.filter((change) => change.entityType === "folder")).toHaveLength(
+      0,
+    );
+    expect(pending.filter((change) => change.entityType === "board")).toHaveLength(
+      0,
+    );
   });
 
   it("applies remote task size estimates", async () => {
@@ -940,6 +1073,53 @@ describe("local sync outbox", () => {
     const pending = await listPendingChanges(0, 50);
     const boardChange = pending.find((change) => change.entityId === board.id);
     expect(boardChange?.baseRevision).toBe(2);
+  });
+
+  it("promotes local children when a remote folder tombstone arrives", async () => {
+    await prepareSync("remote-user-a");
+    const { board } = await makeBoard("Folder host");
+    const projectId = board.projectId!;
+    const parent = await createFolder(
+      { projectId, name: "Parent" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+    const child = await createFolder(
+      { projectId, parentId: parent.id, name: "Child" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+    const nested = await createBoard(
+      { name: "Nested space", projectId, folderId: parent.id },
+      LOCAL_USER_ID,
+      test.db,
+    );
+    await getClient().execute("delete from sync_changes");
+
+    // Future timestamp guarantees the tombstone wins over the just-created
+    // local rows regardless of same-millisecond clock ties.
+    const result = await applyRemoteChanges(2, [
+      {
+        entityType: "folder",
+        entityId: parent.id,
+        deleted: true,
+        data: {},
+        updatedAt: new Date(Date.now() + 60_000).toISOString(),
+        revision: 2,
+      },
+    ]);
+
+    expect(result.applied).toBe(1);
+    const remainingFolders = await test.db.select().from(folders);
+    expect(remainingFolders.map((folder) => folder.id)).toEqual([child.id]);
+    expect(remainingFolders[0]?.parentId).toBeNull();
+    const [promoted] = await test.db
+      .select()
+      .from(boards)
+      .where(eq(boards.id, nested.id));
+    expect(promoted?.folderId).toBeNull();
+    // Promotion updates happen with triggers suppressed; they must not echo.
+    expect(await listPendingChanges(0, 500)).toHaveLength(0);
   });
 
   it("records conflicts, skips pull for them, and applies the cloud choice", async () => {

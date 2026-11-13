@@ -32,6 +32,7 @@ type Choice = "cloud" | "local";
 
 const TYPE_LABEL: Record<SyncConflictView["entityType"], string> = {
   project: "Project",
+  folder: "Folder",
   board: "Space",
   column: "Column",
   task: "Task",
@@ -45,7 +46,7 @@ const TYPE_LABEL: Record<SyncConflictView["entityType"], string> = {
 };
 
 export function ConflictsPage() {
-  const { refresh, projects } = useWorkspace();
+  const { refresh, projects, folders } = useWorkspace();
   const bridge = window.masarDesktop;
   const [conflicts, setConflicts] = React.useState<SyncConflictView[]>([]);
   const [boardLookups, setBoardLookups] = React.useState<
@@ -145,6 +146,11 @@ export function ConflictsPage() {
     [projects],
   );
 
+  const folderMap = React.useMemo(
+    () => new Map(folders.map((folder) => [folder.id, folder.name])),
+    [folders],
+  );
+
   function lookupFor(conflict: SyncConflictView): ConflictLookup {
     const board = conflict.boardId
       ? boardLookups[conflict.boardId]
@@ -153,6 +159,7 @@ export function ConflictsPage() {
       columns: board?.columns ?? new Map(),
       labels: board?.labels ?? new Map(),
       projects: projectMap,
+      folders: folderMap,
     };
   }
 

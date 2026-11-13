@@ -1,4 +1,9 @@
-import { createClient, type Client, type Transaction } from "@libsql/client";
+import {
+  createClient,
+  type Client,
+  type Row,
+  type Transaction,
+} from "@libsql/client";
 
 import { getClient } from "@/db";
 import { ApiError } from "@/lib/api";
@@ -21,9 +26,14 @@ const TABLES = [
       "id, owner_id, name, position, archived, archived_at, created_at, updated_at",
   },
   {
+    table: "folders",
+    columns:
+      "id, owner_id, project_id, parent_id, name, position, created_at, updated_at",
+  },
+  {
     table: "boards",
     columns:
-      "id, owner_id, project_id, type, name, description, position, created_at, updated_at",
+      "id, owner_id, project_id, folder_id, type, name, description, position, created_at, updated_at",
   },
   {
     table: "columns",
@@ -61,19 +71,47 @@ const TABLES = [
   },
 ] as const;
 
+/**
+ * Copy parent folders before their children so the self-referencing foreign key
+ * holds during import. Normal workspaces contain no cycles; corrupt rows are
+ * emitted in map order rather than dropped.
+ */
+function orderFoldersParentFirst(rows: Row[]): Row[] {
+  const remaining = new Map(rows.map((row) => [String(row.id), row]));
+  const ordered: Row[] = [];
+  while (remaining.size > 0) {
+    let progressed = false;
+    for (const [id, row] of remaining) {
+      const parentId = row.parent_id == null ? null : String(row.parent_id);
+      if (parentId === null || !remaining.has(parentId)) {
+        ordered.push(row);
+        remaining.delete(id);
+        progressed = true;
+      }
+    }
+    if (!progressed) {
+      ordered.push(...remaining.values());
+      break;
+    }
+  }
+  return ordered;
+}
+
 async function copyTable(
   source: Client,
   target: Transaction,
   table: string,
   columns: string,
 ): Promise<number> {
-  const rows = await source.execute(`select ${columns} from ${table}`);
-  if (rows.rows.length === 0) return 0;
+  const result = await source.execute(`select ${columns} from ${table}`);
+  const rows = result.rows;
+  if (rows.length === 0) return 0;
+  const ordered = table === "folders" ? orderFoldersParentFirst(rows) : rows;
 
   const cols = columns.split(", ").map((column) => column.trim());
   const placeholders = cols.map(() => "?").join(", ");
 
-  for (const row of rows.rows) {
+  for (const row of ordered) {
     const values = cols.map((column) =>
       column === "owner_id" ? LOCAL_USER_ID : (row[column] ?? null),
     );
@@ -82,7 +120,7 @@ async function copyTable(
       args: values,
     });
   }
-  return rows.rows.length;
+  return rows.length;
 }
 
 /**

@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { api, errorMessage } from "@/lib/client-api";
+import { folderPathLabel } from "@/lib/folder-tree";
 import type { BoardType } from "@/lib/constants";
 import type { BoardSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -35,12 +36,15 @@ export function CreateBoardDialog({
   onOpenChange,
   onCreated,
   projectId = null,
+  folderId = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated?: () => void;
   /** Project the new board is created in; null falls back to the default. */
   projectId?: string | null;
+  /** Optional folder inside the project. */
+  folderId?: string | null;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -48,6 +52,7 @@ export function CreateBoardDialog({
         <CreateBoardForm
           key={open ? "open" : "closed"}
           projectId={projectId}
+          folderId={folderId}
           onClose={() => onOpenChange(false)}
           onCreated={onCreated}
         />
@@ -86,13 +91,15 @@ function CreateBoardForm({
   onClose,
   onCreated,
   projectId,
+  folderId,
 }: {
   onClose: () => void;
   onCreated?: () => void;
   projectId: string | null;
+  folderId: string | null;
 }) {
   const navigate = useNavigate();
-  const { projects } = useWorkspace();
+  const { projects, folders } = useWorkspace();
   const activeProjects = React.useMemo(
     () =>
       [...projects]
@@ -106,7 +113,28 @@ function CreateBoardForm({
   const [selectedProjectId, setSelectedProjectId] = React.useState(
     projectId ?? activeProjects[0]?.id ?? "",
   );
+  const [selectedFolderId, setSelectedFolderId] = React.useState<string | null>(
+    folderId,
+  );
   const [loading, setLoading] = React.useState(false);
+
+  const projectFolders = React.useMemo(
+    () =>
+      folders
+        .filter((folder) => folder.projectId === selectedProjectId)
+        .map((folder) => ({
+          folder,
+          label: folderPathLabel(folders, folder.id),
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [folders, selectedProjectId],
+  );
+
+  function handleProjectChange(value: string) {
+    setSelectedProjectId(value);
+    // A folder only belongs to its own project; reset when the project moves.
+    setSelectedFolderId(null);
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -120,6 +148,7 @@ function CreateBoardForm({
           description: description.trim() || null,
           type,
           ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
+          ...(selectedFolderId ? { folderId: selectedFolderId } : {}),
         }),
       });
       onClose();
@@ -191,7 +220,7 @@ function CreateBoardForm({
           {activeProjects.length > 0 ? (
             <Select
               value={selectedProjectId}
-              onValueChange={setSelectedProjectId}
+              onValueChange={handleProjectChange}
               disabled={loading}
             >
               <SelectTrigger>
@@ -211,6 +240,30 @@ function CreateBoardForm({
             </p>
           )}
         </div>
+        {projectFolders.length > 0 && (
+          <div className="space-y-2">
+            <Label>Folder</Label>
+            <Select
+              value={selectedFolderId ?? "__root__"}
+              onValueChange={(value) =>
+                setSelectedFolderId(value === "__root__" ? null : value)
+              }
+              disabled={loading}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__root__">Project root</SelectItem>
+                {projectFolders.map(({ folder, label }) => (
+                  <SelectItem key={folder.id} value={folder.id}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         <div className="space-y-2">
           <Label htmlFor="board-name">Space name</Label>
           <Input

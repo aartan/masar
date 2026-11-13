@@ -2,7 +2,11 @@ import * as React from "react";
 
 import { api } from "@/lib/client-api";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
-import type { BoardSummary, ProjectSummary } from "@/lib/types";
+import type {
+  BoardSummary,
+  FolderSummary,
+  ProjectSummary,
+} from "@/lib/types";
 
 interface WorkspaceUser {
   name: string;
@@ -11,6 +15,7 @@ interface WorkspaceUser {
 
 interface WorkspaceContextValue {
   projects: ProjectSummary[];
+  folders: FolderSummary[];
   boards: BoardSummary[];
   user: WorkspaceUser;
   conflictCount: number;
@@ -20,11 +25,21 @@ interface WorkspaceContextValue {
   refreshBoards(): Promise<void>;
   reorderProjects(projectIds: string[]): Promise<void>;
   /**
-   * Set the exact ordering of a project's boards, moving any board dragged in
-   * from another project. Powers both reorder-within-project and cross-project
-   * drag.
+   * Set the exact ordering of a project container's boards, moving any board
+   * dragged in from another project or folder. Pass `folderId = null` for the
+   * project root.
    */
-  moveBoards(projectId: string, boardIds: string[]): Promise<void>;
+  moveBoards(
+    projectId: string,
+    folderId: string | null,
+    boardIds: string[],
+  ): Promise<void>;
+  /** Re-parent and re-index a folder among its new siblings. */
+  moveFolder(
+    folderId: string,
+    parentId: string | null,
+    index: number,
+  ): Promise<void>;
 }
 
 const FALLBACK_USER: WorkspaceUser = {
@@ -36,6 +51,7 @@ const WorkspaceContext = React.createContext<WorkspaceContextValue | null>(null)
 
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [projects, setProjects] = React.useState<ProjectSummary[]>([]);
+  const [folders, setFolders] = React.useState<FolderSummary[]>([]);
   const [boards, setBoards] = React.useState<BoardSummary[]>([]);
   const [user, setUser] = React.useState<WorkspaceUser>(FALLBACK_USER);
   const [conflictCount, setConflictCount] = React.useState(0);
@@ -46,8 +62,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const refresh = React.useCallback(async () => {
     const request = ++requestRef.current;
     try {
-      const [projectData, boardData, syncData] = await Promise.all([
+      const [projectData, folderData, boardData, syncData] = await Promise.all([
         api<{ projects: ProjectSummary[] }>("/api/projects"),
+        api<{ folders: FolderSummary[] }>("/api/folders"),
         api<{ boards: BoardSummary[] }>("/api/boards"),
         api<{ state: { conflictCount: number } }>("/api/sync/state").catch(
           () => ({ state: { conflictCount: 0 } }),
@@ -55,6 +72,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       ]);
       if (request !== requestRef.current) return;
       setProjects(projectData.projects);
+      setFolders(folderData.folders);
       setBoards(boardData.boards);
       setConflictCount(syncData.state.conflictCount ?? 0);
       setError(null);
@@ -98,7 +116,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   );
 
   const moveBoards = React.useCallback(
-    async (projectId: string, boardIds: string[]) => {
+    async (projectId: string, folderId: string | null, boardIds: string[]) => {
       const request = ++requestRef.current;
       const previous = boards;
       // Optimistically re-home and re-order the affected boards.
@@ -106,14 +124,19 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       setBoards((current) =>
         current.map((board) =>
           order.has(board.id)
-            ? { ...board, projectId, position: order.get(board.id)! }
+            ? {
+                ...board,
+                projectId,
+                folderId,
+                position: order.get(board.id)!,
+              }
             : board,
         ),
       );
       try {
         const data = await api<{ boards: BoardSummary[] }>("/api/boards/move", {
           method: "POST",
-          body: JSON.stringify({ projectId, boardIds }),
+          body: JSON.stringify({ projectId, folderId, boardIds }),
         });
         if (request !== requestRef.current) return;
         setBoards(data.boards);
@@ -126,21 +149,54 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     [boards],
   );
 
+  const moveFolder = React.useCallback(
+    async (folderId: string, parentId: string | null, index: number) => {
+      const request = ++requestRef.current;
+      const previous = folders;
+      // Optimistically re-parent so the dragged subtree follows the cursor.
+      // Sibling positions are reconciled from the server response.
+      setFolders((current) =>
+        current.map((folder) =>
+          folder.id === folderId ? { ...folder, parentId } : folder,
+        ),
+      );
+      try {
+        const data = await api<{ folders: FolderSummary[] }>(
+          `/api/folders/${folderId}/move`,
+          {
+            method: "POST",
+            body: JSON.stringify({ parentId, index }),
+          },
+        );
+        if (request !== requestRef.current) return;
+        setFolders(data.folders);
+        setError(null);
+      } catch (caught) {
+        if (request === requestRef.current) setFolders(previous);
+        throw caught;
+      }
+    },
+    [folders],
+  );
+
   React.useEffect(() => {
     let active = true;
     void (async () => {
       try {
-        const [me, projectData, boardData, syncData] = await Promise.all([
-          api<{ user: WorkspaceUser }>("/api/me"),
-          api<{ projects: ProjectSummary[] }>("/api/projects"),
-          api<{ boards: BoardSummary[] }>("/api/boards"),
-          api<{ state: { conflictCount: number } }>("/api/sync/state").catch(
-            () => ({ state: { conflictCount: 0 } }),
-          ),
-        ]);
+        const [me, projectData, folderData, boardData, syncData] =
+          await Promise.all([
+            api<{ user: WorkspaceUser }>("/api/me"),
+            api<{ projects: ProjectSummary[] }>("/api/projects"),
+            api<{ folders: FolderSummary[] }>("/api/folders"),
+            api<{ boards: BoardSummary[] }>("/api/boards"),
+            api<{ state: { conflictCount: number } }>("/api/sync/state").catch(
+              () => ({ state: { conflictCount: 0 } }),
+            ),
+          ]);
         if (!active) return;
         setUser({ name: me.user.name, email: me.user.email });
         setProjects(projectData.projects);
+        setFolders(folderData.folders);
         setBoards(boardData.boards);
         setConflictCount(syncData.state.conflictCount ?? 0);
         setError(null);
@@ -170,6 +226,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const value = React.useMemo(
     () => ({
       projects,
+      folders,
       boards,
       user,
       conflictCount,
@@ -179,9 +236,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       refreshBoards,
       reorderProjects,
       moveBoards,
+      moveFolder,
     }),
     [
       projects,
+      folders,
       boards,
       user,
       conflictCount,
@@ -191,6 +250,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       refreshBoards,
       reorderProjects,
       moveBoards,
+      moveFolder,
     ],
   );
 

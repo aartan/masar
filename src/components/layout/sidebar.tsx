@@ -26,6 +26,8 @@ import {
   ChevronRight,
   ChevronsUpDown,
   FileText,
+  Folder,
+  FolderOpen,
   FolderPlus,
   GripVertical,
   Keyboard,
@@ -55,6 +57,11 @@ import {
   DeleteProjectDialog,
   RenameProjectDialog,
 } from "@/components/project/project-dialogs";
+import {
+  CreateFolderDialog,
+  DeleteFolderDialog,
+  FolderSettingsDialog,
+} from "@/components/project/folder-dialogs";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -75,22 +82,45 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { api, errorMessage } from "@/lib/client-api";
+import {
+  buildProjectHierarchy,
+  folderSubtreeIds,
+  type FolderTreeNode,
+  type ProjectHierarchy,
+} from "@/lib/folder-tree";
 import { useSyncStatus } from "@/lib/use-sync-status";
-import type { BoardSummary, ProjectSummary } from "@/lib/types";
+import type {
+  BoardSummary,
+  FolderSummary,
+  ProjectSummary,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface SidebarContentProps {
   projects: ProjectSummary[];
+  folders: FolderSummary[];
   boards: BoardSummary[];
   conflictCount: number;
   user: { name: string; email: string };
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   onOpenSearch: () => void;
-  onCreateBoard: (projectId: string | null) => void;
+  onCreateBoard: (
+    projectId: string | null,
+    folderId?: string | null,
+  ) => void;
   onOpenShortcuts: () => void;
   onReorderProjects: (projectIds: string[]) => Promise<void>;
-  onMoveBoards: (projectId: string, boardIds: string[]) => Promise<void>;
+  onMoveBoards: (
+    projectId: string,
+    folderId: string | null,
+    boardIds: string[],
+  ) => Promise<void>;
+  onMoveFolder: (
+    folderId: string,
+    parentId: string | null,
+    index: number,
+  ) => Promise<void>;
   onRefresh: () => Promise<void> | void;
   onNavigate?: () => void;
   showClose?: boolean;
@@ -98,12 +128,24 @@ interface SidebarContentProps {
 }
 
 interface DragData {
-  type: "project" | "board";
+  type: "project" | "folder" | "board" | "container";
   projectId?: string;
+  /** Folder id for a folder row, or the container of a board/container. */
+  folderId?: string | null;
+  /** Parent folder of a folder row, or null for a root-level row. */
+  parentId?: string | null;
+}
+
+function byPosition(
+  a: { position: number; createdAt: string },
+  b: { position: number; createdAt: string },
+): number {
+  return a.position - b.position || a.createdAt.localeCompare(b.createdAt);
 }
 
 export function SidebarContent({
   projects,
+  folders,
   boards,
   conflictCount,
   user,
@@ -114,6 +156,7 @@ export function SidebarContent({
   onOpenShortcuts,
   onReorderProjects,
   onMoveBoards,
+  onMoveFolder,
   onRefresh,
   onNavigate,
   showClose,
@@ -131,6 +174,19 @@ export function SidebarContent({
   const [deleteProject, setDeleteProject] = React.useState<ProjectSummary | null>(null);
   const [collapsedProjects, setCollapsedProjects] = React.useState<Set<string>>(
     () => new Set(),
+  );
+  const [collapsedFolders, setCollapsedFolders] = React.useState<Set<string>>(
+    () => new Set(),
+  );
+  const [createFolder, setCreateFolder] = React.useState<{
+    projectId: string;
+    parentId: string | null;
+    parentName?: string;
+  } | null>(null);
+  const [folderSettings, setFolderSettings] =
+    React.useState<FolderSummary | null>(null);
+  const [deleteFolder, setDeleteFolder] = React.useState<FolderSummary | null>(
+    null,
   );
 
   const activeProjectId = React.useMemo(() => {
@@ -153,6 +209,24 @@ export function SidebarContent({
     });
   }
 
+  function toggleFolder(folderId: string) {
+    setCollapsedFolders((current) => {
+      const next = new Set(current);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  }
+
+  function expandFolder(folderId: string) {
+    setCollapsedFolders((current) => {
+      if (!current.has(folderId)) return current;
+      const next = new Set(current);
+      next.delete(folderId);
+      return next;
+    });
+  }
+
   const active = React.useMemo(
     () => projects.filter((project) => !project.archived),
     [projects],
@@ -162,17 +236,19 @@ export function SidebarContent({
     [projects],
   );
 
-  const boardsByProject = React.useMemo(() => {
-    const map = new Map<string, BoardSummary[]>();
-    for (const board of boards) {
-      if (!board.projectId) continue;
-      const list = map.get(board.projectId) ?? [];
-      list.push(board);
-      map.set(board.projectId, list);
+  const hierarchies = React.useMemo(() => {
+    const map = new Map<
+      string,
+      ReturnType<typeof buildProjectHierarchy>
+    >();
+    for (const project of projects) {
+      map.set(
+        project.id,
+        buildProjectHierarchy(project.id, folders, boards),
+      );
     }
-    for (const list of map.values()) list.sort((a, b) => a.position - b.position);
     return map;
-  }, [boards]);
+  }, [boards, folders, projects]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -217,39 +293,159 @@ export function SidebarContent({
       return;
     }
 
-    // Board drag: resolve the destination project from the drop target.
     const overData = over.data.current as DragData | undefined;
-    const boardId = String(dragged.id);
-    const sourceProjectId = data.projectId;
-    const destProjectId =
-      overData?.type === "board"
-        ? overData.projectId
-        : overData?.type === "project"
-          ? overData.projectId
-          : (String(over.id).startsWith("project-drop:")
-              ? String(over.id).slice("project-drop:".length)
-              : undefined);
-    if (!destProjectId) return;
+    const translated = dragged.rect.current.translated;
+    const centerY = translated
+      ? translated.top + translated.height / 2
+      : null;
+    const afterRow = (ratio = 0.5) =>
+      centerY !== null && centerY > over.rect.top + over.rect.height * ratio;
+    const folderDropMode =
+      centerY === null
+        ? "inside"
+        : centerY < over.rect.top + over.rect.height * 0.3
+          ? "before"
+          : centerY > over.rect.bottom - over.rect.height * 0.3
+            ? "after"
+            : "inside";
 
-    const destBoards = (boardsByProject.get(destProjectId) ?? []).map((b) => b.id);
-    let nextIds: string[];
-    if (sourceProjectId === destProjectId) {
-      const oldIndex = destBoards.indexOf(boardId);
-      const overIndex =
-        overData?.type === "board" ? destBoards.indexOf(String(over.id)) : destBoards.length - 1;
-      if (oldIndex === -1 || overIndex === -1 || oldIndex === overIndex) return;
-      nextIds = arrayMove(destBoards, oldIndex, overIndex);
-    } else {
-      const insertAt =
-        overData?.type === "board"
-          ? Math.max(0, destBoards.indexOf(String(over.id)))
-          : destBoards.length;
-      nextIds = [...destBoards];
-      nextIds.splice(insertAt, 0, boardId);
+    if (data.type === "board") {
+      const boardId = String(dragged.id);
+      let destProjectId: string | undefined;
+      let destFolderId: string | null = null;
+
+      if (overData?.type === "board") {
+        destProjectId = overData.projectId;
+        destFolderId = overData.folderId ?? null;
+      } else if (overData?.type === "folder") {
+        destProjectId = overData.projectId;
+        destFolderId =
+          folderDropMode === "inside"
+            ? (overData.folderId ?? null)
+            : (overData.parentId ?? null);
+      } else if (overData?.type === "container") {
+        destProjectId = overData.projectId;
+        destFolderId = overData.folderId ?? null;
+      } else if (overData?.type === "project") {
+        destProjectId = overData.projectId;
+        destFolderId = null;
+      }
+      if (!destProjectId) return;
+
+      const destBoards = boards
+        .filter(
+          (board) =>
+            board.projectId === destProjectId &&
+            (board.folderId ?? null) === destFolderId,
+        )
+        .sort(byPosition)
+        .map((board) => board.id);
+      const sourceContainer = data.folderId ?? null;
+      const sameContainer =
+        data.projectId === destProjectId &&
+        sourceContainer === destFolderId;
+      const overBoardId =
+        overData?.type === "board" ? String(over.id) : null;
+
+      let nextIds: string[];
+      if (sameContainer && overBoardId) {
+        const oldIndex = destBoards.indexOf(boardId);
+        const overIndex = destBoards.indexOf(overBoardId);
+        if (oldIndex === -1 || overIndex === -1 || oldIndex === overIndex) {
+          return;
+        }
+        nextIds = arrayMove(destBoards, oldIndex, overIndex);
+      } else {
+        const without = destBoards.filter((id) => id !== boardId);
+        let insertAt = without.length;
+        if (overBoardId) {
+          const overIndex = without.indexOf(overBoardId);
+          if (overIndex !== -1) insertAt = overIndex + (afterRow() ? 1 : 0);
+        }
+        nextIds = [...without];
+        nextIds.splice(
+          Math.max(0, Math.min(insertAt, nextIds.length)),
+          0,
+          boardId,
+        );
+        if (sameContainer && nextIds.join() === destBoards.join()) return;
+      }
+
+      if (destFolderId) expandFolder(destFolderId);
+      void onMoveBoards(destProjectId, destFolderId, nextIds).catch((error) =>
+        toast.error("Could not move space", { description: errorMessage(error) }),
+      );
+      return;
     }
-    void onMoveBoards(destProjectId, nextIds).catch((error) =>
-      toast.error("Could not move space", { description: errorMessage(error) }),
-    );
+
+    if (data.type === "folder") {
+      const folderId = data.folderId;
+      const projectId = data.projectId;
+      if (!folderId || !projectId) return;
+
+      let parentId: string | null = null;
+      let overRowId: string | null = null;
+      let insertBefore = false;
+
+      if (overData?.type === "folder") {
+        if (!overData.folderId || overData.folderId === folderId) return;
+        if (folderDropMode === "inside") {
+          parentId = overData.folderId;
+        } else {
+          parentId = overData.parentId ?? null;
+          overRowId = overData.folderId;
+          insertBefore = folderDropMode === "before";
+        }
+      } else if (overData?.type === "container") {
+        parentId = overData.folderId ?? null;
+      } else if (overData?.type === "project") {
+        parentId = null;
+      } else if (overData?.type === "board") {
+        // Dropping a folder onto a space targets that space's container.
+        parentId = overData.folderId ?? null;
+      } else {
+        return;
+      }
+
+      if (parentId && folderSubtreeIds(folders, folderId).has(parentId)) {
+        return;
+      }
+
+      const siblings = folders
+        .filter(
+          (folder) =>
+            folder.projectId === projectId &&
+            (folder.parentId ?? null) === parentId &&
+            folder.id !== folderId,
+        )
+        .sort(byPosition);
+      let index = siblings.length;
+      if (overRowId) {
+        const overIndex = siblings.findIndex(
+          (folder) => folder.id === overRowId,
+        );
+        if (overIndex !== -1) index = overIndex + (insertBefore ? 0 : 1);
+      }
+
+      const current = folders
+        .filter(
+          (folder) =>
+            folder.projectId === projectId &&
+            (folder.parentId ?? null) === parentId,
+        )
+        .sort(byPosition)
+        .map((folder) => folder.id);
+      const next = siblings.map((folder) => folder.id);
+      next.splice(Math.max(0, Math.min(index, next.length)), 0, folderId);
+      if (next.join() === current.join()) return;
+
+      if (parentId) expandFolder(parentId);
+      void onMoveFolder(folderId, parentId, index).catch((error) =>
+        toast.error("Could not move folder", {
+          description: errorMessage(error),
+        }),
+      );
+    }
   }
 
   const syncLabel =
@@ -485,13 +681,29 @@ export function SidebarContent({
                     <SortableProjectGroup
                       key={project.id}
                       project={project}
-                      boards={boardsByProject.get(project.id) ?? []}
+                      hierarchy={
+                        hierarchies.get(project.id) ?? EMPTY_HIERARCHY
+                      }
                       pathname={pathname}
                       expanded={!collapsedProjects.has(project.id)}
                       draggingBoard={activeType === "board"}
+                      draggingFolder={activeType === "folder"}
+                      collapsedFolders={collapsedFolders}
                       onNavigate={onNavigate}
                       onToggleExpanded={() => toggleProject(project.id)}
-                      onCreateBoard={() => onCreateBoard(project.id)}
+                      onToggleFolder={toggleFolder}
+                      onCreateBoard={(folderId) =>
+                        onCreateBoard(project.id, folderId)
+                      }
+                      onCreateFolder={(parentId, parentName) =>
+                        setCreateFolder({
+                          projectId: project.id,
+                          parentId,
+                          parentName,
+                        })
+                      }
+                      onFolderSettings={setFolderSettings}
+                      onDeleteFolder={setDeleteFolder}
                       onOpenProject={() => {
                         onNavigate?.();
                         navigate(`/projects/${project.id}`);
@@ -629,6 +841,30 @@ export function SidebarContent({
         onOpenChange={(open) => !open && setDeleteProject(null)}
         onDeleted={refresh}
       />
+      {createFolder && (
+        <CreateFolderDialog
+          open
+          projectId={createFolder.projectId}
+          parentId={createFolder.parentId}
+          parentName={createFolder.parentName}
+          onOpenChange={(open) => !open && setCreateFolder(null)}
+          onDone={refresh}
+        />
+      )}
+      <FolderSettingsDialog
+        folder={folderSettings}
+        folders={folders}
+        open={folderSettings !== null}
+        onOpenChange={(open) => !open && setFolderSettings(null)}
+        onDone={refresh}
+      />
+      <DeleteFolderDialog
+        folder={deleteFolder}
+        folders={folders}
+        open={deleteFolder !== null}
+        onOpenChange={(open) => !open && setDeleteFolder(null)}
+        onDeleted={refresh}
+      />
     </div>
   );
 }
@@ -639,27 +875,48 @@ const BOARD_TYPE_ICON = {
   note: FileText,
 } as const;
 
+const EMPTY_HIERARCHY: ProjectHierarchy = { folders: [], boards: [] };
+
+function countSpaces(node: FolderTreeNode): number {
+  return (
+    node.boards.length +
+    node.folders.reduce((total, child) => total + countSpaces(child), 0)
+  );
+}
+
 function SortableProjectGroup({
   project,
-  boards,
+  hierarchy,
   pathname,
   expanded,
   draggingBoard,
+  draggingFolder,
+  collapsedFolders,
   onNavigate,
   onToggleExpanded,
+  onToggleFolder,
   onCreateBoard,
+  onCreateFolder,
+  onFolderSettings,
+  onDeleteFolder,
   onOpenProject,
   onRename,
   onArchive,
 }: {
   project: ProjectSummary;
-  boards: BoardSummary[];
+  hierarchy: ProjectHierarchy;
   pathname: string;
   expanded: boolean;
   draggingBoard: boolean;
+  draggingFolder: boolean;
+  collapsedFolders: Set<string>;
   onNavigate?: () => void;
   onToggleExpanded: () => void;
-  onCreateBoard: () => void;
+  onToggleFolder: (folderId: string) => void;
+  onCreateBoard: (folderId?: string | null) => void;
+  onCreateFolder: (parentId: string | null, parentName?: string) => void;
+  onFolderSettings: (folder: FolderSummary) => void;
+  onDeleteFolder: (folder: FolderSummary) => void;
   onOpenProject: () => void;
   onRename: () => void;
   onArchive: () => void;
@@ -674,14 +931,19 @@ function SortableProjectGroup({
     isDragging,
   } = useSortable({ id: project.id, data: { type: "project" } satisfies DragData });
 
-  // A droppable for the whole project so a board can be dropped onto a
-  // collapsed or empty project.
+  // A droppable for the project's root contents so a space or folder can be
+  // dropped onto a collapsed or empty project.
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `project-drop:${project.id}`,
-    data: { type: "project", projectId: project.id } satisfies DragData,
+    data: {
+      type: "container",
+      projectId: project.id,
+      folderId: null,
+    } satisfies DragData,
   });
 
   const projectActive = pathname === `/projects/${project.id}`;
+  const dragging = draggingBoard || draggingFolder;
 
   return (
     <li
@@ -695,7 +957,7 @@ function SortableProjectGroup({
           projectActive
             ? "bg-sidebar-accent text-sidebar-accent-foreground"
             : "text-sidebar-foreground/90 hover:bg-sidebar-accent/50",
-          isOver && draggingBoard && "ring-2 ring-primary/60",
+          isOver && dragging && "ring-2 ring-primary/60",
         )}
       >
         <button
@@ -715,30 +977,35 @@ function SortableProjectGroup({
           className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="truncate">{project.name}</span>
-          {boards.length > 0 && (
+          {project.boardCount > 0 && (
             <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
-              {boards.length}
+              {project.boardCount}
             </span>
           )}
         </button>
-        <Tooltip>
-          <TooltipTrigger asChild>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
             <button
               type="button"
-              onClick={onCreateBoard}
-              className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/0 transition-colors group-hover/project:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              aria-label={`Add space to ${project.name}`}
+              className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/50 transition-colors group-hover/project:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:text-sidebar-foreground"
+              aria-label={`Add to ${project.name}`}
+              title="Add a space or folder"
             >
               <Plus className="size-3.5" />
             </button>
-          </TooltipTrigger>
-          <TooltipContent side="right">New space</TooltipContent>
-        </Tooltip>
-        <ProjectActionsMenu
-          onRename={onRename}
-          onArchive={onArchive}
-          onAddBoard={onCreateBoard}
-        />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[170px]">
+            <DropdownMenuItem onSelect={() => onCreateBoard(null)}>
+              <Plus />
+              New space
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onCreateFolder(null)}>
+              <FolderPlus />
+              New folder
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <ProjectActionsMenu onRename={onRename} onArchive={onArchive} />
         <button
           ref={setActivatorNodeRef}
           type="button"
@@ -753,50 +1020,290 @@ function SortableProjectGroup({
       </div>
 
       {expanded && (
-        <div ref={setDropRef} className="mt-0.5 ml-5 min-h-[2px]">
-          {boards.length === 0 ? (
-            <button
-              type="button"
-              onClick={onCreateBoard}
-              className={cn(
-                "flex h-7 w-full items-center gap-2 rounded-lg px-2 text-[12px] text-muted-foreground transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-                isOver && draggingBoard && "bg-sidebar-accent/40",
-              )}
-            >
-              <Plus className="size-3" />
-              Add a space
-            </button>
-          ) : (
-            <SortableContext
-              items={boards.map((board) => board.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              <ul className="space-y-0.5">
-                {boards.map((board) => (
-                  <SortableBoardLink
-                    key={board.id}
-                    board={board}
-                    active={pathname === `/boards/${board.id}`}
-                    onNavigate={onNavigate}
-                  />
-                ))}
-              </ul>
-            </SortableContext>
+        <div
+          ref={setDropRef}
+          className={cn(
+            "mt-0.5 ml-5 min-h-[2px] rounded-md transition-colors",
+            isOver && dragging && "bg-sidebar-accent/30",
           )}
+        >
+          <SortableContext
+            items={hierarchy.folders.map((node) => node.folder.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ul className="space-y-0.5">
+              {hierarchy.folders.map((node) => (
+                <SortableFolderNode
+                  key={node.folder.id}
+                  node={node}
+                  projectId={project.id}
+                  pathname={pathname}
+                  expanded={!collapsedFolders.has(node.folder.id)}
+                  dragging={dragging}
+                  collapsedFolders={collapsedFolders}
+                  onNavigate={onNavigate}
+                  onToggleFolder={onToggleFolder}
+                  onCreateBoard={onCreateBoard}
+                  onCreateFolder={onCreateFolder}
+                  onFolderSettings={onFolderSettings}
+                  onDeleteFolder={onDeleteFolder}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+
+          <SortableContext
+            items={hierarchy.boards.map((board) => board.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ul className="space-y-0.5">
+              {hierarchy.boards.map((board) => (
+                <SortableBoardLink
+                  key={board.id}
+                  board={board}
+                  active={pathname === `/boards/${board.id}`}
+                  onNavigate={onNavigate}
+                />
+              ))}
+            </ul>
+          </SortableContext>
         </div>
       )}
     </li>
   );
 }
 
+function SortableFolderNode({
+  node,
+  projectId,
+  pathname,
+  expanded,
+  dragging,
+  collapsedFolders,
+  onNavigate,
+  onToggleFolder,
+  onCreateBoard,
+  onCreateFolder,
+  onFolderSettings,
+  onDeleteFolder,
+}: {
+  node: FolderTreeNode;
+  projectId: string;
+  pathname: string;
+  expanded: boolean;
+  dragging: boolean;
+  collapsedFolders: Set<string>;
+  onNavigate?: () => void;
+  onToggleFolder: (folderId: string) => void;
+  onCreateBoard: (folderId?: string | null) => void;
+  onCreateFolder: (parentId: string | null, parentName?: string) => void;
+  onFolderSettings: (folder: FolderSummary) => void;
+  onDeleteFolder: (folder: FolderSummary) => void;
+}) {
+  const folder = node.folder;
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: folder.id,
+    data: {
+      type: "folder",
+      projectId,
+      folderId: folder.id,
+      parentId: folder.parentId,
+    } satisfies DragData,
+  });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `folder-drop:${folder.id}`,
+    data: {
+      type: "container",
+      projectId,
+      folderId: folder.id,
+    } satisfies DragData,
+  });
+  const Icon = expanded ? FolderOpen : Folder;
+  const spaceCount = countSpaces(node);
+
+  return (
+    <li className="group/folder">
+      <div
+        ref={setNodeRef}
+        style={{ transform: CSS.Transform.toString(transform), transition }}
+        className={cn(
+          "flex h-8 items-center gap-1 rounded-lg pr-1 text-[13px] transition-colors",
+          pathname === `/projects/${projectId}` &&
+            "text-sidebar-foreground/80",
+          isOver && dragging && "ring-2 ring-primary/40",
+          isDragging && "relative z-20 opacity-60",
+          "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => onToggleFolder(folder.id)}
+          className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-sidebar-foreground"
+          aria-label={expanded ? `Collapse ${folder.name}` : `Expand ${folder.name}`}
+          aria-expanded={expanded}
+        >
+          <ChevronRight
+            className={cn("size-3.5 transition-transform", expanded && "rotate-90")}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={() => onToggleFolder(folder.id)}
+          className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate">{folder.name}</span>
+          {spaceCount > 0 && (
+            <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
+              {spaceCount}
+            </span>
+          )}
+        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/50 transition-colors group-hover/folder:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:text-sidebar-foreground"
+              aria-label={`Add to ${folder.name}`}
+              title="Add a space or folder"
+            >
+              <Plus className="size-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[170px]">
+            <DropdownMenuItem onSelect={() => onCreateBoard(folder.id)}>
+              <Plus />
+              New space
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => onCreateFolder(folder.id, folder.name)}
+            >
+              <FolderPlus />
+              New folder
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <FolderActionsMenu
+          folder={folder}
+          onSettings={() => onFolderSettings(folder)}
+          onDelete={() => onDeleteFolder(folder)}
+        />
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          data-drag-handle=""
+          className="grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground/0 transition-colors group-hover/folder:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:cursor-grabbing"
+          aria-label={`Move folder ${folder.name}`}
+          title="Drag to reorder or move into another folder"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="size-3.5" />
+        </button>
+      </div>
+
+      {expanded && (
+        <div
+          ref={setDropRef}
+          className={cn(
+            "ml-3 rounded-md border-l border-sidebar-border/60 pl-1.5 transition-colors",
+            isOver && dragging && "bg-sidebar-accent/30",
+          )}
+        >
+          <SortableContext
+            items={node.folders.map((child) => child.folder.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ul className="space-y-0.5">
+              {node.folders.map((child) => (
+                <SortableFolderNode
+                  key={child.folder.id}
+                  node={child}
+                  projectId={projectId}
+                  pathname={pathname}
+                  expanded={!collapsedFolders.has(child.folder.id)}
+                  dragging={dragging}
+                  collapsedFolders={collapsedFolders}
+                  onNavigate={onNavigate}
+                  onToggleFolder={onToggleFolder}
+                  onCreateBoard={onCreateBoard}
+                  onCreateFolder={onCreateFolder}
+                  onFolderSettings={onFolderSettings}
+                  onDeleteFolder={onDeleteFolder}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+
+          <SortableContext
+            items={node.boards.map((board) => board.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <ul className="space-y-0.5">
+              {node.boards.map((board) => (
+                <SortableBoardLink
+                  key={board.id}
+                  board={board}
+                  active={pathname === `/boards/${board.id}`}
+                  onNavigate={onNavigate}
+                />
+              ))}
+            </ul>
+          </SortableContext>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function FolderActionsMenu({
+  folder,
+  onSettings,
+  onDelete,
+}: {
+  folder: FolderSummary;
+  onSettings: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/0 transition-colors group-hover/folder:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground data-[state=open]:text-sidebar-foreground"
+          aria-label={`Folder actions for ${folder.name}`}
+        >
+          <Settings2 className="size-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-[190px]">
+        <DropdownMenuItem onSelect={onSettings}>
+          <Pencil />
+          Rename or move
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onDelete} className="text-destructive">
+          <Trash2 />
+          Delete folder
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function ProjectActionsMenu({
   onRename,
   onArchive,
-  onAddBoard,
 }: {
   onRename: () => void;
   onArchive: () => void;
-  onAddBoard: () => void;
 }) {
   return (
     <DropdownMenu>
@@ -809,11 +1316,7 @@ function ProjectActionsMenu({
           <Settings2 className="size-3.5" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[180px]">
-        <DropdownMenuItem onSelect={onAddBoard}>
-          <Plus />
-          New space
-        </DropdownMenuItem>
+      <DropdownMenuContent align="start" className="w-[160px]">
         <DropdownMenuItem onSelect={onRename}>
           <Pencil />
           Rename
@@ -955,7 +1458,11 @@ function SortableBoardLink({
     isDragging,
   } = useSortable({
     id: board.id,
-    data: { type: "board", projectId: board.projectId ?? undefined } satisfies DragData,
+    data: {
+      type: "board",
+      projectId: board.projectId ?? undefined,
+      folderId: board.folderId,
+    } satisfies DragData,
   });
   const handlePointerDown = listeners?.onPointerDown as
     | React.PointerEventHandler<HTMLElement>

@@ -25,6 +25,7 @@ import {
   type SceneImageStorage,
 } from "./images";
 import { deleteBoardsCache } from "./image-cache";
+import { imageIdsReferencedElsewhere } from "./image-references";
 import { taskImageIdsForBoards } from "./task-images";
 import { assertProjectWritable,
   fetchBoardSummaries,
@@ -336,5 +337,13 @@ export async function deleteProject(
       .where(and(eq(projects.id, projectId), eq(projects.ownerId, ownerId)));
   });
 
-  await removeSceneImages(images, imageIds);
+  const shared = await imageIdsReferencedElsewhere(
+    database,
+    imageIds,
+    boardIds,
+  );
+  await removeSceneImages(
+    images,
+    [...imageIds].filter((imageId) => !shared.has(imageId)),
+  );
 }

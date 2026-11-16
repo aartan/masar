@@ -14,7 +14,7 @@ import {
   decodeVerifiedImageDataUrl,
   verifyImageBytes,
 } from "@/lib/server/image-data";
-import { imageStorageClientFromEnv } from "@/lib/server/images";
+import { premiumImageClient } from "@/lib/server/images";
 import { MAX_IMAGE_UPLOAD_BYTES } from "@/lib/image-file";
 import { requireImageBoard } from "@/lib/server/whiteboards";
 import { imageCachePutSchema, imageUploadSchema } from "@/lib/validation";
@@ -32,7 +32,7 @@ const variantSchema = z.enum(["original", "thumb"]).default("original");
 export const imageRoutes = new Hono();
 
 function requireImageStorage() {
-  const client = imageStorageClientFromEnv();
+  const client = premiumImageClient();
   if (!client) {
     throw new ApiError(
       "Sign in to premium sync to store and view images.",
@@ -127,7 +127,8 @@ imageRoutes.delete("/images/:imageId", async (c) => {
 imageRoutes.put("/boards/:boardId/images/:fileId/cache", async (c) => {
   try {
     const user = await requireApiUser();
-    requireImageStorage();
+    // This cache is local SQLite bookkeeping. It must work in the free
+    // workspace too, so it deliberately does not require premium storage.
     const boardId = boardIdSchema.parse(c.req.param("boardId"));
     const fileId = fileIdSchema.parse(c.req.param("fileId"));
     await requireImageBoard(getDb(), boardId, user.id);

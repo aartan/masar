@@ -11,6 +11,7 @@ import {
   type SceneFileRecord,
 } from "@/lib/whiteboard-scene";
 import { decodeVerifiedImageDataUrl, validateSceneEmbeddedImages } from "./image-data";
+import { imageIdsReferencedElsewhere } from "./image-references";
 import {
   cachedRemoteIdsFor,
   pruneBoardCache,
@@ -370,7 +371,19 @@ export async function saveWhiteboardScene(
   }
 
   // Best-effort: local saves must not depend on the object store being up.
-  await removeSceneImages(images, removedIds);
+  // Keep objects that another board still references (for example a copied
+  // note image or a duplicated task attachment).
+  if (removedIds.length > 0) {
+    const shared = await imageIdsReferencedElsewhere(
+      database,
+      removedIds,
+      [boardId],
+    );
+    await removeSceneImages(
+      images,
+      removedIds.filter((imageId) => !shared.has(imageId)),
+    );
+  }
   await pruneBoardCache(boardId, liveFileIds, database);
 
   // Do not touch the board row here. It used to refresh boards.updated_at for

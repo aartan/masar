@@ -13,6 +13,7 @@ import { PageSurface } from "@/components/layout/page-surface";
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { useTheme } from "@/components/theme-provider";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { ImageUploadDock } from "@/components/shared/image-upload-dock";
 import { Button } from "@/components/ui/button";
 import { NoteEditorSession } from "@/components/note/note-editor-session";
 import { NoteHeader } from "@/components/note/note-header";
@@ -24,6 +25,10 @@ import {
   insertDroppedNoteImages,
   isNoteEditorTarget,
 } from "@/lib/note-image-drop";
+import {
+  registerEmbeddedNoteImages,
+  retryEmbeddedNoteImages,
+} from "@/lib/note-image-retry";
 import { useDelayedLoading } from "@/lib/use-delayed-loading";
 import { useNoteAutosave } from "@/lib/use-note-autosave";
 import { useNoteDocument } from "@/lib/use-note-document";
@@ -31,12 +36,13 @@ import { useNoteImages } from "@/lib/use-note-images";
 import { useNoteSync } from "@/lib/use-note-sync";
 import { useNoteWidth } from "@/lib/use-note-width";
 import { useOnline } from "@/lib/use-online";
+import type { ImageUploadItem } from "@/lib/use-image-uploads";
 import type { BoardSummary } from "@/lib/types";
 
 export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
-  const { projects, refresh } = useWorkspace();
+  const { projects, refresh, imageStorage } = useWorkspace();
   const [board, setBoard] = React.useState(initialBoard);
   const readOnly =
     projects.find((project) => project.id === board.projectId)?.archived ?? false;
@@ -59,8 +65,14 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
 
   const document = useNoteDocument(board.id);
   const autosave = useNoteAutosave({ boardId: board.id, readOnly });
-  const { uploadFile } = useNoteImages(board.id, editorRef);
+  const { uploadFile, uploads } = useNoteImages(board.id, editorRef, {
+    imageStorageAvailable: imageStorage,
+  });
   useNoteSync({ boardId: board.id, editor, autosave });
+
+  /** Embedded images already registered as local-only dock items. */
+  const embeddedRegisteredRef = React.useRef(new Set<string>());
+  const embeddedRegistrationRef = React.useRef(false);
 
   /**
    * BlockNote only accepts file drops on the editable element itself. The
@@ -87,7 +99,6 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
       editor,
       files,
       point: { clientX: event.clientX, clientY: event.clientY },
-      uploadFile,
     }).catch((error: unknown) => {
       toast.error("Could not add image", { description: errorMessage(error) });
     });
@@ -104,7 +115,39 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
     setEditor(null);
     setOutlineOpen(false);
     setNoteIsEmpty(false);
+    embeddedRegisteredRef.current.clear();
+    embeddedRegistrationRef.current = false;
   }, [board.id]);
+
+  /**
+   * Surface images that were persisted as embedded data URLs. In a premium
+   * workspace they are only local copies; the dock offers a retry that
+   * uploads them to R2 and rewrites the blocks.
+   */
+  React.useEffect(() => {
+    if (embeddedRegistrationRef.current) return;
+    if (!editor || !imageStorage || readOnly) return;
+    embeddedRegistrationRef.current = true;
+    registerEmbeddedNoteImages(editor, uploads, embeddedRegisteredRef.current);
+  }, [editor, imageStorage, readOnly, uploads]);
+
+  const handleUploadRetry = React.useCallback(
+    (item: ImageUploadItem) => {
+      const instance = editorRef.current;
+      if (!instance || !imageStorage) return;
+      if (item.phase !== "local" && item.phase !== "failed") return;
+      void retryEmbeddedNoteImages({
+        editor: instance,
+        boardId: board.id,
+        uploads,
+      }).catch((error: unknown) => {
+        toast.error("Could not upload image", {
+          description: errorMessage(error),
+        });
+      });
+    },
+    [board.id, imageStorage, uploads],
+  );
 
   /**
    * Focus the title of a brand-new empty note so writing can start
@@ -287,7 +330,7 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
         onDragEnter={handleNoteDragOver}
         onDragOver={handleNoteDragOver}
         onDrop={handleNoteDrop}
-        className={`masar-note flex h-full flex-col${noteIsEmpty ? " masar-note-empty" : ""}`}
+        className={`masar-note relative flex h-full flex-col${noteIsEmpty ? " masar-note-empty" : ""}`}
       >
         <NoteHeader
           board={board}
@@ -328,9 +371,9 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
             outlineOpen={outlineOpen}
             onOutlineClose={() => setOutlineOpen(false)}
             handleEditorChange={autosave.handleEditorChange}
-            uploadFile={uploadFile}
           />
         )}
+        <ImageUploadDock uploads={uploads} onRetry={handleUploadRetry} />
       </PageSurface>
       <BoardSettingsDialog
         open={settingsOpen}

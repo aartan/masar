@@ -59,6 +59,91 @@ test("rejects non-image task attachments with a clear error", async ({
   }
 });
 
+test("shows upload progress while a task image is stored in cloud storage", async ({
+  page,
+}) => {
+  const boardName = uniqueName("Task Image Progress");
+  const taskTitle = "Progress task";
+  const imageId = "image-e2e-task";
+  let boardId: string | undefined;
+
+  try {
+    const board = await createBoard(page.request, boardName);
+    boardId = board.id;
+    const boardDetail = await getBoardDetail(page.request, boardId);
+    const todo = columnByName(boardDetail.columns, "To Do");
+    const task = await createTask(page.request, boardId, {
+      columnId: todo.id,
+      title: taskTitle,
+    });
+
+    await page.route("**/api/me", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          user: {
+            id: "local-user",
+            name: "Premium Person",
+            email: "premium@example.test",
+            premium: true,
+            imageStorage: true,
+          },
+        }),
+      }),
+    );
+    await page.route("**/api/images", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1_200));
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ image: { id: imageId } }),
+      });
+    });
+    await page.route(`**/api/images/${imageId}*`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "image/png",
+        body: PNG,
+      });
+    });
+
+    await page.goto(`/boards/${boardId}`);
+    await page
+      .getByRole("button", { name: `Open task: ${taskTitle}` })
+      .click();
+
+    const sheet = page.getByRole("dialog", { name: "Task details" });
+    await sheet.locator('input[type="file"]').setInputFiles({
+      name: "reference.png",
+      mimeType: "image/png",
+      buffer: PNG,
+    });
+
+    await expect(sheet.getByLabel("Uploading reference.png")).toBeVisible();
+    const thumbnail = sheet.getByRole("button", {
+      name: "Preview reference.png",
+    });
+    await expect(thumbnail).toBeVisible();
+
+    await expect
+      .poll(async () => {
+        const response = await page.request.get(`/api/tasks/${task.id}`);
+        const body = (await response.json()) as {
+          task: { images: Array<{ url: string }> };
+        };
+        return body.task.images[0]?.url;
+      })
+      .toBe(`/api/images/${imageId}`);
+  } finally {
+    if (boardId) await deleteBoard(page.request, boardId);
+  }
+});
+
 test("attaches, previews, persists and removes a task image offline", async ({
   page,
 }) => {

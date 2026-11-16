@@ -8,6 +8,12 @@ import type { NoteDocument } from "@/lib/types";
 import { assertBoardWritable } from "./queries";
 import { pruneBoardCache } from "./image-cache";
 import { validateNoteEmbeddedImages } from "./image-data";
+import { imageIdsReferencedElsewhere } from "./image-references";
+import {
+  premiumImageClient,
+  removeSceneImages,
+  type SceneImageStorage,
+} from "./images";
 
 /**
  * Maximum serialized BlockNote document size. Premium notes store only image
@@ -64,6 +70,7 @@ export async function saveNoteDocument(
   document: string,
   ownerId: string,
   database: AppDatabase = getDb(),
+  images: SceneImageStorage | null = premiumImageClient(),
 ): Promise<NoteDocument> {
   await requireNoteBoard(database, boardId, ownerId);
   // Rejects mutations while the owning project is archived.
@@ -78,6 +85,12 @@ export async function saveNoteDocument(
     );
   }
 
+  const [existing] = await database
+    .select({ document: notes.document })
+    .from(notes)
+    .where(eq(notes.boardId, boardId))
+    .limit(1);
+
   const now = new Date();
   await database
     .insert(notes)
@@ -88,7 +101,30 @@ export async function saveNoteDocument(
     });
 
   // Cache rows for images that no longer exist in the document are stale.
-  await pruneBoardCache(boardId, new Set(collectNoteImageIds(document)), database);
+  const nextImageIds = new Set(collectNoteImageIds(document));
+  await pruneBoardCache(boardId, nextImageIds, database);
+
+  // Image objects live in R2, outside SQLite. Remove the ones this document
+  // dropped, matching the whiteboard save's reconciliation.
+  const previousImageIds = new Set(
+    collectNoteImageIds(existing?.document),
+  );
+  const candidates = [...previousImageIds].filter(
+    (imageId) => !nextImageIds.has(imageId),
+  );
+  if (candidates.length > 0) {
+    // Images can be copied between notes. Keep the object while any other
+    // document, scene or task still references it.
+    const shared = await imageIdsReferencedElsewhere(
+      database,
+      candidates,
+      [boardId],
+    );
+    await removeSceneImages(
+      images,
+      candidates.filter((imageId) => !shared.has(imageId)),
+    );
+  }
 
   // Do not touch the board row here. It used to refresh boards.updated_at for
   // activity, but activity reads the content rows' updated_at directly and an

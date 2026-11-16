@@ -19,7 +19,6 @@ export function NoteEditorSession({
   outlineOpen,
   onOutlineClose,
   handleEditorChange,
-  uploadFile,
 }: {
   editor: BlockNoteEditor;
   readOnly: boolean;
@@ -29,7 +28,6 @@ export function NoteEditorSession({
   outlineOpen: boolean;
   onOutlineClose: () => void;
   handleEditorChange: (editor: BlockNoteEditor) => void;
-  uploadFile: (file: File, blockId?: string) => Promise<string>;
 }) {
   return (
     <BlockNoteView
@@ -48,7 +46,6 @@ export function NoteEditorSession({
           editor={editor}
           noteWidth={noteWidth}
           onNoteWidthChange={onNoteWidthChange}
-          uploadFile={uploadFile}
         />
       )}
       <NoteEditorContent

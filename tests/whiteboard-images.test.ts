@@ -400,6 +400,157 @@ describe("note image cleanup", () => {
     ]);
   }
 
+  it("deletes images removed from a note document", async () => {
+    const board = await createBoard(
+      { name: "Editable image note", type: "note" },
+      owner.id,
+      test.db,
+    );
+    const images = new FakeImageStorage();
+
+    await saveNoteDocument(
+      board.id,
+      noteDocumentWithImages("image-1", "image-2"),
+      owner.id,
+      test.db,
+      images,
+    );
+    await saveNoteDocument(
+      board.id,
+      noteDocumentWithImages("image-1"),
+      owner.id,
+      test.db,
+      images,
+    );
+
+    expect(images.removed).toEqual(["image-2"]);
+    expect(images.uploads).toEqual([]);
+  });
+
+  it("keeps an image while another note still references it", async () => {
+    const first = await createBoard(
+      { name: "Copied image A", type: "note" },
+      owner.id,
+      test.db,
+    );
+    const second = await createBoard(
+      { name: "Copied image B", type: "note" },
+      owner.id,
+      test.db,
+    );
+    const images = new FakeImageStorage();
+
+    await saveNoteDocument(
+      first.id,
+      noteDocumentWithImages("image-shared"),
+      owner.id,
+      test.db,
+      images,
+    );
+    await saveNoteDocument(
+      second.id,
+      noteDocumentWithImages("image-shared"),
+      owner.id,
+      test.db,
+      images,
+    );
+    await saveNoteDocument(first.id, "[]", owner.id, test.db, images);
+    expect(images.removed).toEqual([]);
+
+    await saveNoteDocument(second.id, "[]", owner.id, test.db, images);
+    expect(images.removed).toEqual(["image-shared"]);
+  });
+
+  it("keeps a project image still referenced by a board outside it", async () => {
+    const project = await createProject(
+      { name: "Shared project images" },
+      owner.id,
+      test.db,
+    );
+    const otherProject = await createProject(
+      { name: "Surviving project" },
+      owner.id,
+      test.db,
+    );
+    const inside = await createBoard(
+      { name: "Inside project", type: "note", projectId: project.id },
+      owner.id,
+      test.db,
+    );
+    const outside = await createBoard(
+      {
+        name: "Outside project",
+        type: "note",
+        projectId: otherProject.id,
+      },
+      owner.id,
+      test.db,
+    );
+    const images = new FakeImageStorage();
+
+    await saveNoteDocument(
+      inside.id,
+      noteDocumentWithImages("image-project-shared"),
+      owner.id,
+      test.db,
+      images,
+    );
+    await saveNoteDocument(
+      outside.id,
+      noteDocumentWithImages("image-project-shared"),
+      owner.id,
+      test.db,
+      images,
+    );
+    await archiveProject(project.id, owner.id, test.db);
+    await deleteProject(
+      project.id,
+      owner.id,
+      project.name,
+      test.db,
+      images,
+    );
+    expect(images.removed).toEqual([]);
+
+    await deleteBoard(outside.id, owner.id, test.db, images);
+    expect(images.removed).toEqual(["image-project-shared"]);
+  });
+
+  it("keeps a shared image when deleting one of its boards", async () => {
+    const first = await createBoard(
+      { name: "Shared delete A", type: "note" },
+      owner.id,
+      test.db,
+    );
+    const second = await createBoard(
+      { name: "Shared delete B", type: "note" },
+      owner.id,
+      test.db,
+    );
+    const images = new FakeImageStorage();
+
+    await saveNoteDocument(
+      first.id,
+      noteDocumentWithImages("image-shared-delete"),
+      owner.id,
+      test.db,
+      images,
+    );
+    await saveNoteDocument(
+      second.id,
+      noteDocumentWithImages("image-shared-delete"),
+      owner.id,
+      test.db,
+      images,
+    );
+
+    await deleteBoard(first.id, owner.id, test.db, images);
+    expect(images.removed).toEqual([]);
+
+    await deleteBoard(second.id, owner.id, test.db, images);
+    expect(images.removed).toEqual(["image-shared-delete"]);
+  });
+
   it("deletes a note board's images using document references", async () => {
     const board = await createBoard(
       { name: "Image note", type: "note" },

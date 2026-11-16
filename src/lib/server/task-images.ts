@@ -163,6 +163,55 @@ export async function addTaskImage(
   return serializeTaskImage(row);
 }
 
+/**
+ * Replace an embedded attachment URL with the canonical URL of an image the
+ * renderer has already uploaded. Every duplicated attachment sharing the old
+ * data URL is updated in place, preserving gallery order and avoiding a
+ * second upload for task copies.
+ */
+export async function reuploadTaskImage(
+  taskId: string,
+  attachmentId: string,
+  imageId: string,
+  ownerId: string,
+  database: AppDatabase = getDb(),
+  images: SceneImageStorage | null = premiumImageClient(),
+): Promise<{ url: string; updated: number }> {
+  await assertTaskWritable(database, taskId, ownerId);
+
+  const [row] = await database
+    .select()
+    .from(taskImages)
+    .where(
+      and(eq(taskImages.id, attachmentId), eq(taskImages.taskId, taskId)),
+    )
+    .limit(1);
+  if (!row) throw new ApiError("Image not found.", 404);
+
+  // Already canonical (or concurrently retried): idempotent success.
+  if (taskImageUrlId(row.url)) return { url: row.url, updated: 0 };
+  if (!images) {
+    throw new ApiError(
+      "Sign in to premium sync to store images in the cloud.",
+      409,
+    );
+  }
+
+  const url = taskImageUrl(imageId);
+  try {
+    const result = await database
+      .update(taskImages)
+      .set({ url, updatedAt: new Date() })
+      .where(eq(taskImages.url, row.url));
+    return { url, updated: result.rowsAffected };
+  } catch (error) {
+    // The renderer already uploaded the bytes; do not leave an unreachable
+    // R2 object behind when the attachment could not be updated.
+    await removeSceneImages(images, [imageId]);
+    throw error;
+  }
+}
+
 /** Remove one attachment, its cache copy, and its R2 object when unreferenced. */
 export async function deleteTaskImage(
   taskId: string,

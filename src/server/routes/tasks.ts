@@ -15,6 +15,7 @@ import {
 import {
   addTaskImage,
   deleteTaskImage,
+  reuploadTaskImage,
 } from "@/lib/server/task-images";
 import {
   deleteTask,
@@ -28,6 +29,7 @@ import {
   subtaskCreateSchema,
   subtaskUpdateSchema,
   taskImageCreateSchema,
+  taskImageReuploadSchema,
   taskUpdateSchema,
 } from "@/lib/validation";
 
@@ -122,6 +124,26 @@ taskRoutes.post("/tasks/:taskId/images", async (c) => {
     return handleRouteError(error);
   }
 });
+
+taskRoutes.post(
+  "/tasks/:taskId/images/:attachmentId/reupload",
+  async (c) => {
+    try {
+      const user = await requireApiUser();
+      const input = await parseJsonBody(c.req.raw, taskImageReuploadSchema);
+      return jsonOk(
+        await reuploadTaskImage(
+          c.req.param("taskId"),
+          c.req.param("attachmentId"),
+          input.imageId,
+          user.id,
+        ),
+      );
+    } catch (error) {
+      return handleRouteError(error);
+    }
+  },
+);
 
 taskRoutes.delete("/tasks/:taskId/images/:attachmentId", async (c) => {
   try {

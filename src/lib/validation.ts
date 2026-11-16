@@ -197,6 +197,11 @@ function isSupportedImageDataUrl(value: string): boolean {
  * `POST /api/images`; the free/offline fallback sends the image as a data URL.
  * Exactly one source must be present.
  */
+/** Promote an embedded task attachment to an already-uploaded R2 image. */
+export const taskImageReuploadSchema = z.object({
+  imageId: z.string().trim().min(1).max(120),
+});
+
 export const taskImageCreateSchema = z
   .object({
     imageId: z.string().trim().min(1).max(120).optional(),

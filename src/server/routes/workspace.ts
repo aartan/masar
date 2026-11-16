@@ -5,6 +5,7 @@ import { getDb } from "@/db";
 import { handleRouteError, jsonOk } from "@/lib/api";
 import { requireApiUser } from "@/lib/server/auth";
 import { addDemoWorkspace } from "@/lib/server/demo";
+import { imageStorageEnabled } from "@/lib/server/images";
 import { getSyncState, listPendingChanges } from "@/sync/local";
 
 export const workspaceRoutes = new Hono();
@@ -23,6 +24,9 @@ workspaceRoutes.get("/me", async (_c) => {
     const user = await requireApiUser();
     const syncName = process.env.MASAR_SYNC_USER_NAME?.trim();
     const syncEmail = process.env.MASAR_SYNC_USER_EMAIL?.trim();
+    // The same capability the image proxy and whiteboard saves use, so the
+    // renderer can tell an expected local fallback from a failed cloud upload.
+    const imageStorage = imageStorageEnabled();
     if (syncName) {
       // The local API is serving a premium sync mirror: report the premium
       // account so the UI can distinguish the cloud workspace from local.
@@ -32,11 +36,17 @@ workspaceRoutes.get("/me", async (_c) => {
           name: syncName,
           email: syncEmail || "",
           premium: true,
+          imageStorage,
         },
       });
     }
     return jsonOk({
-      user: { id: user.id, name: user.name, email: user.email },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        imageStorage,
+      },
     });
   } catch (error) {
     return handleRouteError(error);

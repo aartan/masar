@@ -101,52 +101,91 @@ function findNoteDropAnchor(
   return lastBlock ? { blockId: lastBlock.id, placement: "after" } : null;
 }
 
+function uploadedImageUrl(result: string | Record<string, unknown>): string {
+  if (typeof result === "string") return result;
+  const url = (result as { props?: { url?: unknown } }).props?.url;
+  if (typeof url === "string") return url;
+  throw new Error("The image upload returned no URL.");
+}
+
 /**
- * Upload files dropped outside BlockNote's editable surface and insert them as
- * image blocks at the drop position. Upload failures are reported by
- * `uploadFile`; insertion failures are left to the caller.
+ * Insert image blocks at the drop position immediately, then upload the files
+ * and fill each block in. Starting from empty blocks gives BlockNote's own
+ * per-block loading state and the shared upload dock immediate feedback,
+ * instead of leaving the drop looking ignored until the network finishes.
+ * Upload failures are reported by `uploadFile`; insertion failures are left
+ * to the caller.
  */
 export async function insertDroppedNoteImages({
   editor,
   files,
   point,
-  uploadFile,
 }: {
   editor: BlockNoteEditor;
   files: File[];
   point: NoteDropPoint;
-  uploadFile: (file: File) => Promise<string>;
 }): Promise<void> {
   if (files.length === 0) return;
 
   let anchor = findNoteDropAnchor(editor, point);
   if (!anchor) return;
 
-  for (const file of files) {
-    let url: string;
-    try {
-      url = await uploadFile(file);
-    } catch {
-      // uploadFile already reports validation and storage failures.
-      continue;
-    }
+  const placements: Array<{ file: File; blockId: string }> = [];
+  try {
+    for (const file of files) {
+      if (!editor.getBlock(anchor.blockId)) {
+        const lastBlock = editor.document[editor.document.length - 1];
+        if (!lastBlock) break;
+        anchor = { blockId: lastBlock.id, placement: "after" };
+      }
 
-    if (!editor.getBlock(anchor.blockId)) {
-      const lastBlock = editor.document[editor.document.length - 1];
-      if (!lastBlock) return;
-      anchor = { blockId: lastBlock.id, placement: "after" };
+      const [inserted] = editor.insertBlocks(
+        [{ type: "image", props: { url: "" } }],
+        anchor.blockId,
+        anchor.placement,
+      );
+      if (!inserted) {
+        throw new Error("BlockNote did not insert the image block");
+      }
+      placements.push({ file, blockId: inserted.id });
+      // Keep multiple dropped images in the order they were dropped.
+      anchor = { blockId: inserted.id, placement: "after" };
     }
-
-    const [inserted] = editor.insertBlocks(
-      [{ type: "image", props: { url } }],
-      anchor.blockId,
-      anchor.placement,
-    );
-    if (!inserted) {
-      throw new Error("BlockNote did not insert the image block");
+  } catch (error) {
+    for (const placement of placements) {
+      if (editor.getBlock(placement.blockId)) {
+        editor.removeBlocks([placement.blockId]);
+      }
     }
-
-    // Keep multiple dropped images in the order they were dropped.
-    anchor = { blockId: inserted.id, placement: "after" };
+    throw error;
   }
+
+  const upload = editor.uploadFile;
+  if (!upload) {
+    for (const placement of placements) {
+      if (editor.getBlock(placement.blockId)) {
+        editor.removeBlocks([placement.blockId]);
+      }
+    }
+    throw new Error("Image uploads are not available in this editor.");
+  }
+
+  await Promise.all(
+    placements.map(async ({ file, blockId }) => {
+      try {
+        const result = await upload(file, blockId);
+        const url = uploadedImageUrl(result);
+        if (editor.getBlock(blockId)) {
+          editor.updateBlock(blockId, { props: { url } });
+        }
+      } catch {
+        // uploadFile already reports validation and storage failures and
+        // schedules removal of the placeholder block. Remove it here too if
+        // that did not happen (for example the editor changed underneath).
+        if (editor.getBlock(blockId)) {
+          editor.removeBlocks([blockId]);
+        }
+      }
+    }),
+  );
 }

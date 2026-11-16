@@ -11,6 +11,7 @@ import type {
 interface WorkspaceUser {
   name: string;
   email: string;
+  imageStorage: boolean;
 }
 
 interface WorkspaceContextValue {
@@ -18,6 +19,8 @@ interface WorkspaceContextValue {
   folders: FolderSummary[];
   boards: BoardSummary[];
   user: WorkspaceUser;
+  /** True when premium image storage is configured for this workspace. */
+  imageStorage: boolean;
   conflictCount: number;
   loading: boolean;
   error: string | null;
@@ -45,6 +48,7 @@ interface WorkspaceContextValue {
 const FALLBACK_USER: WorkspaceUser = {
   name: "Local workspace",
   email: "local@masar.app",
+  imageStorage: false,
 };
 
 const WorkspaceContext = React.createContext<WorkspaceContextValue | null>(null);
@@ -194,7 +198,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
             ),
           ]);
         if (!active) return;
-        setUser({ name: me.user.name, email: me.user.email });
+        setUser({
+          name: me.user.name,
+          email: me.user.email,
+          imageStorage: me.user.imageStorage === true,
+        });
         setProjects(projectData.projects);
         setFolders(folderData.folders);
         setBoards(boardData.boards);
@@ -229,6 +237,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       folders,
       boards,
       user,
+      imageStorage: user.imageStorage,
       conflictCount,
       loading,
       error,

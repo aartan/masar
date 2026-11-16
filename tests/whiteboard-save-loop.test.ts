@@ -309,6 +309,33 @@ describe("WhiteboardSaveLoop", () => {
     expect(lastPhase(statuses)).toBe("saved");
   });
 
+  it("force-retries content that is equivalent to the persisted scene", async () => {
+    const scene = (dataURL: string) =>
+      JSON.stringify({
+        elements: [{ id: "el", type: "image", fileId: "f" }],
+        appState: {},
+        files: {
+          f: { id: "f", mimeType: "image/png", dataURL, created: 1 },
+        },
+      });
+
+    const { loop, saves, requests, statuses } = harness();
+    const embedded = scene("data:image/png;base64,cG5n");
+    loop.setSavedScene(embedded);
+
+    // The embedded scene is already stored, but the images still need R2
+    // externalisation. A forced change must reach the server anyway.
+    loop.change(embedded, { force: true });
+    loop.flush();
+    expect(saves).toEqual([embedded]);
+
+    requests.get(0)!.resolve(scene("masar://img-1"));
+    await settle();
+    expect(lastPhase(statuses)).toBe("saved");
+    expect(loop.lastSavedScene).toBe(scene("masar://img-1"));
+    expect(loop.pendingScene).toBeNull();
+  });
+
   it("still re-persists the canvas when an in-flight save stores genuinely older content", async () => {
     const scene = (files: Record<string, string>) =>
       JSON.stringify({

@@ -504,6 +504,12 @@ export const syncChanges = sqliteTable(
     deleted: integer("deleted", { mode: "boolean" }).notNull().default(false),
     data: text("data").notNull().default("{}"),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    /**
+     * Server revision this snapshot was created against. Captured by a trigger
+     * at enqueue time, never recomputed at push time, so a later pull or ack
+     * cannot silently change the meaning of a local edit.
+     */
+    baseRevision: integer("base_revision"),
     createdAt: createdAt(),
   },
   (table) => [

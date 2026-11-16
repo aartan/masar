@@ -44,10 +44,16 @@ export interface PushChange {
   updatedAt: string;
   /**
    * Server revision this change was based on. `null` for an entity the server
-   * has never seen (a creation); a number proves a sequential edit. Omitting
-   * it caused every edit to an existing entity to be rejected as a conflict.
+   * has never seen (a creation); a number proves a sequential edit. Captured
+   * when the outbox row is created, never recomputed at push time.
    */
   baseRevision: number | null;
+  /**
+   * Monotonic local outbox id. Lets the server recognise that a change
+   * continues this device's own last accepted state even when the response to
+   * the earlier push was lost.
+   */
+  clientSequence: number;
 }
 
 export interface PushResponse {
@@ -64,6 +70,17 @@ export interface PushResponse {
     entityType: string;
     entityId: string;
     revision: number;
+  }>;
+  /**
+   * Every non-conflicting change the server resolved, including idempotent
+   * ignores. The engine records these before acking so an ambiguous retry
+   * cannot leave local causality stale.
+   */
+  resolvedChanges?: Array<{
+    entityType: string;
+    entityId: string;
+    revision: number;
+    status: "accepted" | "ignored";
   }>;
   conflicts: Array<{
     id: string;

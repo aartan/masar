@@ -934,24 +934,38 @@ app.on("before-quit", () => {
   syncEngine.stop();
 });
 
-registerLifecycle({
-  getServer: () => server,
-  createWindow,
-  hasWindow: () => mainWindow !== null,
-});
+// A second process sharing the same mirror would run a second sync engine with
+// the same device id, producing overlapping pushes and ack races. Only one
+// process may own the local database.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
 
-void app.whenReady().then(async () => {
-  app.setAppUserModelId(APP_USER_MODEL_ID);
-  log("[boot] app ready");
-  try {
-    nativeTheme.themeSource = readThemePreference();
-    registerIpc();
-    refreshMenu();
-    await bootstrap();
-  } catch (error) {
-    fatal("Masar failed to start", error instanceof Error ? error.message : String(error));
-  }
-});
+  registerLifecycle({
+    getServer: () => server,
+    createWindow,
+    hasWindow: () => mainWindow !== null,
+  });
+
+  void app.whenReady().then(async () => {
+    app.setAppUserModelId(APP_USER_MODEL_ID);
+    log("[boot] app ready");
+    try {
+      nativeTheme.themeSource = readThemePreference();
+      registerIpc();
+      refreshMenu();
+      await bootstrap();
+    } catch (error) {
+      fatal("Masar failed to start", error instanceof Error ? error.message : String(error));
+    }
+  });
+}
 
 process.on("uncaughtException", (error) =>
   log(`[process] uncaughtException: ${error.stack ?? error.message}`),

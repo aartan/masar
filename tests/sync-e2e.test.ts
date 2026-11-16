@@ -35,6 +35,14 @@ interface RemoteRow {
   data: Record<string, unknown>;
   updatedAt: string;
   revision: number;
+  lastClientId: string | null;
+  lastClientSequence: number | null;
+}
+
+function comparableData(data: Record<string, unknown>): Record<string, unknown> {
+  if (!("updated_at" in data)) return data;
+  const { updated_at: _ignored, ...rest } = data;
+  return rest;
 }
 
 /**
@@ -78,6 +86,26 @@ class FakeSyncApi {
   private conflictSeq = 0;
   /** When set, the next pull throws, simulating a network failure. */
   failNextPull = false;
+  /** Delay the next push so tests can queue edits while it is in flight. */
+  nextPushDelayMs = 0;
+  /** Commit the next push, then simulate a lost response. */
+  loseNextPushResponse = false;
+  /** Delay the next pull so tests can queue a local edit during it. */
+  nextPullDelayMs = 0;
+  private pushStartedResolvers: Array<() => void> = [];
+  private pushInFlight = false;
+  private pullStartedResolvers: Array<() => void> = [];
+  private pullInFlight = false;
+
+  waitForPushStart(): Promise<void> {
+    if (this.pushInFlight) return Promise.resolve();
+    return new Promise((resolve) => this.pushStartedResolvers.push(resolve));
+  }
+
+  waitForPullStart(): Promise<void> {
+    if (this.pullInFlight) return Promise.resolve();
+    return new Promise((resolve) => this.pullStartedResolvers.push(resolve));
+  }
 
   private rowsFor(userId: string): Map<string, RemoteRow> {
     let rows = this.workspaces.get(userId);
@@ -140,6 +168,8 @@ class FakeSyncApi {
       data,
       updatedAt: new Date().toISOString(),
       revision,
+      lastClientId: "remote-device",
+      lastClientSequence: null,
     };
     this.rowsFor(userId).set(`${entityType}:${entityId}`, row);
     return row;
@@ -154,8 +184,19 @@ class FakeSyncApi {
       data: Record<string, unknown>;
       updatedAt: string;
       baseRevision?: number | null;
+      clientSequence?: number | null;
     }>,
+    clientId: string | null = null,
   ) {
+    this.pushInFlight = true;
+    const delay = this.nextPushDelayMs;
+    if (delay > 0) {
+      this.nextPushDelayMs = 0;
+      const resolvers = this.pushStartedResolvers.splice(0);
+      for (const resolve of resolvers) resolve();
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    try {
     const rows = this.rowsFor(userId);
     let revision = this.revisions.get(userId) ?? 0;
     let accepted = 0;
@@ -165,6 +206,12 @@ class FakeSyncApi {
       entityType: string;
       entityId: string;
       revision: number;
+    }> = [];
+    const resolvedChanges: Array<{
+      entityType: string;
+      entityId: string;
+      revision: number;
+      status: "accepted" | "ignored";
     }> = [];
     const conflicts: Array<{
       id: string;
@@ -176,19 +223,29 @@ class FakeSyncApi {
       const key = `${change.entityType}:${change.entityId}`;
       const existing = rows.get(key);
 
-      // Faithful reproduction of masar-api decideChange: causality is proven
-      // only by baseRevision, never by comparing timestamps. Omitting
-      // baseRevision on an existing entity is a conflict — this is what makes
-      // the e2e suite actually catch the revision bug. Whiteboards are the
-      // exception: whole-scene snapshots converge last-write-wins.
+      // Faithful reproduction of masar-api decideChange: same-device
+      // continuation is proven by a higher outbox sequence; otherwise
+      // causality is proven only by baseRevision, never by timestamps.
+      // Whiteboards converge last-write-wins across devices.
       let decision: "apply" | "ignore" | "conflict";
+      const sameClient =
+        clientId != null &&
+        existing?.lastClientId === clientId &&
+        change.clientSequence != null;
       if (!existing) {
         decision = "apply";
       } else if (
         existing.deleted === change.deleted &&
-        stableStringify(existing.data ?? {}) === stableStringify(change.data ?? {})
+        stableStringify(comparableData(existing.data ?? {})) ===
+          stableStringify(comparableData(change.data ?? {}))
       ) {
         decision = "ignore";
+      } else if (sameClient) {
+        decision =
+          existing.lastClientSequence == null ||
+          change.clientSequence! > existing.lastClientSequence
+            ? "apply"
+            : "ignore";
       } else if (change.entityType === "whiteboard") {
         decision = "apply";
       } else {
@@ -201,6 +258,21 @@ class FakeSyncApi {
 
       if (decision === "ignore") {
         ignored += 1;
+        if (existing) {
+          resolvedChanges.push({
+            entityType: change.entityType,
+            entityId: change.entityId,
+            revision: existing.revision,
+            status: "ignored",
+          });
+          if (
+            sameClient &&
+            (existing.lastClientSequence == null ||
+              change.clientSequence! > existing.lastClientSequence)
+          ) {
+            existing.lastClientSequence = change.clientSequence!;
+          }
+        }
         continue;
       }
       if (decision === "conflict") {
@@ -251,6 +323,8 @@ class FakeSyncApi {
         data: change.data,
         updatedAt: change.updatedAt,
         revision,
+        lastClientId: clientId,
+        lastClientSequence: change.clientSequence ?? null,
       });
       accepted += 1;
       acceptedChanges.push({
@@ -258,12 +332,43 @@ class FakeSyncApi {
         entityId: change.entityId,
         revision,
       });
+      resolvedChanges.push({
+        entityType: change.entityType,
+        entityId: change.entityId,
+        revision,
+        status: "accepted",
+      });
     }
     this.revisions.set(userId, revision);
-    return { revision, accepted, ignored, rejected, acceptedChanges, conflicts };
+    const result = {
+      revision,
+      accepted,
+      ignored,
+      rejected,
+      acceptedChanges,
+      resolvedChanges,
+      conflicts,
+    };
+    if (this.loseNextPushResponse) {
+      this.loseNextPushResponse = false;
+      throw new Error("simulated timeout after the server committed");
+    }
+    return result;
+    } finally {
+      this.pushInFlight = false;
+    }
   }
 
   async pull(userId: string, since: number, limit = 500) {
+    this.pullInFlight = true;
+    const delay = this.nextPullDelayMs;
+    if (delay > 0) {
+      this.nextPullDelayMs = 0;
+      const resolvers = this.pullStartedResolvers.splice(0);
+      for (const resolve of resolvers) resolve();
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    try {
     if (this.failNextPull) {
       this.failNextPull = false;
       throw new Error("simulated pull failure");
@@ -279,6 +384,9 @@ class FakeSyncApi {
       hasMore: rows.length > limit,
       changes: page,
     };
+    } finally {
+      this.pullInFlight = false;
+    }
   }
 
   entityCount(userId: string): number {
@@ -329,9 +437,12 @@ function clientFor(user: typeof USER_A) {
         data: Record<string, unknown>;
         updatedAt: string;
         baseRevision?: number | null;
+        clientSequence?: number | null;
       }>,
+      _idempotencyKey?: string,
+      deviceId?: string,
     ) {
-      return remote.push(user.id, changes);
+      return remote.push(user.id, changes, deviceId ?? null);
     },
     async pullChanges(since: number, limit?: number) {
       return remote.pull(user.id, since, limit ?? 500);
@@ -669,6 +780,100 @@ describe("cross-device premium sync lifecycle", () => {
     }
   });
 
+  it("coalesces rapid edits made while a push is already in flight", async () => {
+    const userId = "user-rapid-cycle";
+    const user = { id: userId, name: "Rapid cycle", email: "rapid-cycle@example.test" };
+    const mirror = await createTestDatabase();
+    await mirror.client.execute(LOCAL_USER_STUB);
+    await activateDatabase(mirror.url);
+
+    const fakeClient = clientFor(user);
+    const api = await startLocalApi(userId);
+    const engine = new SyncEngine({
+      getClient: () => fakeClient as unknown as PremiumApiClient,
+      getLocalOrigin: () => api.url,
+      isOnline: () => true,
+      log: () => undefined,
+      onStatus: () => undefined,
+      onUnauthorized: () => undefined,
+    });
+    try {
+      await engine.syncNow("startup");
+      const board = await createBoard({ name: "Slow push board" }, "local-user", getDb());
+      await engine.syncNow("initial");
+
+      // Give the next cycle something to push, then hold that request while
+      // two more edits are queued. Both edits must be coalesced into one
+      // snapshot instead of conflicting with each other.
+      await updateBoard(board.id, { name: "Seed edit" }, "local-user", getDb());
+      remote.nextPushDelayMs = 500;
+      const cycle = engine.syncNow("rapid-cycle");
+      await remote.waitForPushStart();
+      await updateBoard(board.id, { name: "Queued edit 1" }, "local-user", getDb());
+      await updateBoard(board.id, { name: "Queued edit 2" }, "local-user", getDb());
+      const status = await cycle;
+
+      expect(remote.entity(userId, "board", board.id)?.data.name).toBe(
+        "Queued edit 2",
+      );
+      expect(remote.conflictCount(userId)).toBe(0);
+      expect(status).toMatchObject({ phase: "idle", lastConflictCount: 0 });
+
+      const state = await fetch(`${api.url}/api/sync/state`).then((r) => r.json());
+      expect(state.state.pendingChanges).toBe(0);
+      expect(state.state.conflictCount).toBe(0);
+    } finally {
+      remote.nextPushDelayMs = 0;
+      api.close();
+      await mirror.close();
+    }
+  });
+
+  it("recovers when a committed push response is lost", async () => {
+    const userId = "user-lost-ack";
+    const user = { id: userId, name: "Lost ack", email: "lost-ack@example.test" };
+    const mirror = await createTestDatabase();
+    await mirror.client.execute(LOCAL_USER_STUB);
+    await activateDatabase(mirror.url);
+
+    const fakeClient = clientFor(user);
+    const api = await startLocalApi(userId);
+    const engine = new SyncEngine({
+      getClient: () => fakeClient as unknown as PremiumApiClient,
+      getLocalOrigin: () => api.url,
+      isOnline: () => true,
+      log: () => undefined,
+      onStatus: () => undefined,
+      onUnauthorized: () => undefined,
+    });
+    try {
+      await engine.syncNow("startup");
+      const board = await createBoard({ name: "Lost ack board" }, "local-user", getDb());
+      await engine.syncNow("initial");
+
+      await updateBoard(board.id, { name: "Committed but lost" }, "local-user", getDb());
+      remote.loseNextPushResponse = true;
+      const failed = await engine.syncNow("lost-response");
+      expect(failed.phase).toBe("error");
+
+      // The server holds "Committed but lost" at a newer revision that this
+      // client never learned. The next edit continues the same device chain
+      // and must be accepted rather than reported as a self-conflict.
+      await updateBoard(board.id, { name: "Edit after timeout" }, "local-user", getDb());
+      const recovered = await engine.syncNow("after-timeout");
+
+      expect(remote.entity(userId, "board", board.id)?.data.name).toBe(
+        "Edit after timeout",
+      );
+      expect(remote.conflictCount(userId)).toBe(0);
+      expect(recovered).toMatchObject({ phase: "idle", lastConflictCount: 0 });
+    } finally {
+      remote.loseNextPushResponse = false;
+      api.close();
+      await mirror.close();
+    }
+  });
+
   it("surfaces a conflict for user resolution instead of retrying it", async () => {
     const userId = "user-conflict";
     const user = { id: userId, name: "Conflict", email: "conflict@example.test" };
@@ -843,6 +1048,95 @@ describe("cross-device premium sync lifecycle", () => {
         );
       });
     } finally {
+      await mirrorA.close();
+      await mirrorB.close();
+    }
+  });
+
+  it("does not advance a pending edit's base when a pull skips it", async () => {
+    const userId = "user-pull-race";
+    const user = { id: userId, name: "Pull race", email: "pull-race@example.test" };
+    const mirrorA = await createTestDatabase();
+    const mirrorB = await createTestDatabase();
+    await mirrorA.client.execute(LOCAL_USER_STUB);
+    await mirrorB.client.execute(LOCAL_USER_STUB);
+
+    const clientA = clientFor(user);
+    const clientB = clientFor(user);
+    const withApi = async <T,>(
+      db: TestDatabase,
+      client: ReturnType<typeof clientFor>,
+      operation: (origin: string) => Promise<T>,
+    ): Promise<T> => {
+      await activateDatabase(db.url);
+      const api = await startLocalApi(userId);
+      try {
+        return await operation(api.url);
+      } finally {
+        api.close();
+      }
+    };
+    const engineFor = (
+      origin: string,
+      client: ReturnType<typeof clientFor>,
+    ) =>
+      new SyncEngine({
+        getClient: () => client as unknown as PremiumApiClient,
+        getLocalOrigin: () => origin,
+        isOnline: () => true,
+        log: () => undefined,
+        onStatus: () => undefined,
+        onUnauthorized: () => undefined,
+      });
+
+    try {
+      let boardId = "";
+      await withApi(mirrorA, clientA, async (origin) => {
+        const engine = engineFor(origin, clientA);
+        await engine.syncNow("startup");
+        const board = await createBoard(
+          { name: "Shared board" },
+          "local-user",
+          getDb(),
+        );
+        boardId = board.id;
+        await engine.syncNow("initial");
+      });
+
+      await withApi(mirrorB, clientB, async (origin) => {
+        await engineFor(origin, clientB).syncNow("startup");
+      });
+
+      // Device A advances the cloud state while B still has the old revision.
+      await withApi(mirrorA, clientA, async (origin) => {
+        await updateBoard(boardId, { name: "A edit" }, "local-user", getDb());
+        await engineFor(origin, clientA).syncNow("a-edit");
+      });
+
+      // B starts a pull with no pending work. A local edit lands while the pull
+      // request is in flight. The skipped remote change must not rewrite the
+      // edit's causal base, or the follow-up push would silently overwrite A.
+      await withApi(mirrorB, clientB, async (origin) => {
+        const engine = engineFor(origin, clientB);
+        remote.nextPullDelayMs = 500;
+        const cycle = engine.syncNow("pull-race");
+        await remote.waitForPullStart();
+        await updateBoard(boardId, { name: "B edit" }, "local-user", getDb());
+        await cycle;
+
+        const conflicts = await listSyncConflicts();
+        expect(conflicts).toHaveLength(1);
+        expect(conflicts[0]).toMatchObject({
+          entityType: "board",
+          entityId: boardId,
+          incomingData: expect.objectContaining({ name: "B edit" }),
+          winningData: expect.objectContaining({ name: "A edit" }),
+        });
+      });
+
+      expect(remote.entity(userId, "board", boardId)?.data.name).toBe("A edit");
+    } finally {
+      remote.nextPullDelayMs = 0;
       await mirrorA.close();
       await mirrorB.close();
     }

@@ -25,9 +25,10 @@ export interface LocalSyncChange {
   data: Record<string, unknown>;
   updatedAt: string;
   /**
-   * The server revision this entity was last seen at, or null when the entity
-   * has never round-tripped through the cloud (a brand-new local creation).
-   * The push sends this so the server can resolve the edit causally.
+   * The server revision this entity was at when this local snapshot was
+   * queued, or null when the entity has never round-tripped through the cloud
+   * (a brand-new local creation). Captured at insert time; a later pull must
+   * not rewrite it.
    */
   baseRevision: number | null;
 }
@@ -365,12 +366,9 @@ export async function listPendingChanges(
 ): Promise<LocalSyncChange[]> {
   const client = getClient();
   const result = await client.execute({
-    sql: `select c.id, c.entity_type, c.entity_id, c.deleted, c.data, c.updated_at,
-                 r.revision as base_revision
-          from sync_changes c
-          left join sync_entity_revisions r
-            on r.entity_type = c.entity_type and r.entity_id = c.entity_id
-          where c.id > ? order by c.id asc limit ?`,
+    sql: `select id, entity_type, entity_id, deleted, data, updated_at, base_revision
+          from sync_changes
+          where id > ? order by id asc limit ?`,
     args: [afterId, limit],
   });
   return result.rows.map((row) => {
@@ -405,11 +403,10 @@ export interface AcceptedSyncChange {
 }
 
 /**
- * Record the revisions the server assigned to accepted pushes and delete the
- * acknowledged outbox rows in one transaction. Recording the revision here —
- * instead of waiting for the pull — means edits queued between a successful
- * push and the next pull (rapid consecutive card moves) already carry the
- * correct base revision and cannot be rejected as self-conflicts.
+ * Record the revisions the server resolved for a push (accepted or ignored)
+ * and delete the acknowledged outbox rows in one transaction. Recording the
+ * revision here — instead of waiting for the pull — means edits queued between
+ * a successful push and the next pull already carry the correct base revision.
  */
 export async function acknowledgeChanges(
   throughId: number,
@@ -501,9 +498,10 @@ export async function applyRemoteChanges(
         continue;
       }
       if (await keepLocalIfNewer(tx, change)) {
-        // The local row wins for now; keep the tombstone revision so the
-        // queued edit can causally supersede it on the next push.
-        await storeEntityRevision(tx, change);
+        // The local row wins for now. Do not advance this entity's revision:
+        // the queued edit must keep the base it was actually created against.
+        // The push then either proves same-device continuity or becomes a real
+        // conflict instead of silently overwriting another device.
         skipped.push({
           entityType: change.entityType,
           entityId: change.entityId,
@@ -525,7 +523,6 @@ export async function applyRemoteChanges(
         });
         continue;
       }
-      await storeEntityRevision(tx, change);
       if (await keepLocalIfNewer(tx, change)) {
         skipped.push({
           entityType: change.entityType,
@@ -535,8 +532,12 @@ export async function applyRemoteChanges(
         continue;
       }
       const reason = await applyUpsert(tx, change);
-      if (reason) skipped.push({ entityType: change.entityType, entityId: change.entityId, reason });
-      else applied += 1;
+      if (reason) {
+        skipped.push({ entityType: change.entityType, entityId: change.entityId, reason });
+      } else {
+        await storeEntityRevision(tx, change);
+        applied += 1;
+      }
     }
 
     await tx.execute({
@@ -940,14 +941,16 @@ export async function keepLocalConflict(
       args: [entityType, entityId],
     });
     await tx.execute({
-      sql: `insert into sync_changes (entity_type, entity_id, deleted, data, updated_at)
-            values (?, ?, ?, ?, ?)`,
+      sql: `insert into sync_changes
+              (entity_type, entity_id, deleted, data, updated_at, base_revision)
+            values (?, ?, ?, ?, ?, ?)`,
       args: [
         entityType,
         entityId,
         localDeleted ? 1 : 0,
         stringifyJson(localData),
         localUpdatedAt,
+        latestRevision,
       ],
     });
     await tx.execute({
@@ -1100,34 +1103,20 @@ async function localTimestamp(
 
 /**
  * A remote pull must not overwrite an unsynced local edit. Keep the local row,
- * queue it for the next push, and report it so the UI can explain the outcome.
+ * leave its immutable base revision untouched, and report it so the next push
+ * can either prove same-device continuity or surface a real conflict.
  */
 async function keepLocalIfNewer(
   tx: Transaction,
   change: RemoteSyncChange,
 ): Promise<boolean> {
-  if (change.entityType === "task_label") return false;
-
-  // An unsynced local edit on an entity that has already round-tripped the
-  // cloud (its outbox row joins a non-null base revision) is always newer than
-  // the pull cursor and must win locally. Clock comparison is not reliable
-  // across devices; the follow-up push resolves causality with the base
-  // revision recorded from the push response or from this pull.
-  // Bootstrap rows carry a null base revision, so a fresh mirror's first pull
-  // is unaffected and still fills the local database.
-  const pendingBase = await tx.execute({
-    sql: `select r.revision as base_revision
-          from sync_changes c
-          left join sync_entity_revisions r
-            on r.entity_type = c.entity_type and r.entity_id = c.entity_id
-          where c.entity_type = ? and c.entity_id = ?
-          order by c.id desc limit 1`,
+  // Any pending outbox row is an unsynced local edit, regardless of whether the
+  // entity has round-tripped the cloud yet. Clock comparison is not involved.
+  const pending = await tx.execute({
+    sql: "select 1 as found from sync_changes where entity_type = ? and entity_id = ? limit 1",
     args: [change.entityType, change.entityId],
   });
-  const baseRevision = pendingBase.rows[0]?.base_revision;
-  if (baseRevision !== null && baseRevision !== undefined) {
-    return true;
-  }
+  if (pending.rows.length > 0) return true;
 
   const remote = Date.parse(change.updatedAt);
   if (!Number.isFinite(remote)) return false;
@@ -1147,14 +1136,9 @@ async function keepLocalIfNewer(
   const local = await localTimestamp(tx, change.entityType, change.entityId);
   if (local === null) return false;
   if (local <= remote) return false;
+  if (change.entityType === "task_label") return false;
 
-  const pending = await tx.execute({
-    sql: "select 1 as found from sync_changes where entity_type = ? and entity_id = ? limit 1",
-    args: [change.entityType, change.entityId],
-  });
-  if (pending.rows.length === 0) {
-    await queueCurrentEntity(tx, change.entityType, change.entityId);
-  }
+  await queueCurrentEntity(tx, change.entityType, change.entityId);
   return true;
 }
 

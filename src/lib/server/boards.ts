@@ -42,6 +42,7 @@ import {
   type SceneImageStorage,
 } from "./images";
 import { deleteBoardCache } from "./image-cache";
+import { imageIdsReferencedElsewhere } from "./image-references";
 import { ensureDefaultProject } from "./projects";
 import { taskImageIdsForBoards } from "./task-images";
 import { DEFAULT_PROJECT_NAME } from "@/lib/constants";
@@ -397,7 +398,13 @@ export async function deleteBoard(
     .delete(boards)
     .where(and(eq(boards.id, boardId), eq(boards.ownerId, ownerId)));
 
-  await removeSceneImages(images, imageIds);
+  const shared = await imageIdsReferencedElsewhere(database, imageIds, [
+    boardId,
+  ]);
+  await removeSceneImages(
+    images,
+    [...imageIds].filter((imageId) => !shared.has(imageId)),
+  );
 }
 
 export async function listBoardTaskCount(

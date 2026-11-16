@@ -43,6 +43,8 @@ export class WhiteboardSaveLoop {
   private lastSaved = "";
   private pending: string | null = null;
   private inFlight = false;
+  /** Send the next queued state even when it is content-equivalent. */
+  private forceNext = false;
   private readonly save: (serialized: string) => Promise<string>;
   private readonly onStatus: (status: WhiteboardSaveStatus) => void;
   private readonly now: () => number;
@@ -89,7 +91,15 @@ export class WhiteboardSaveLoop {
    * finishes. States that differ from the stored scene only in how images are
    * referenced (`masar://` ids or embedded data) count as already saved.
    */
-  change(serialized: string): void {
+  change(serialized: string, options: { force?: boolean } = {}): void {
+    if (options.force) {
+      // Used to retry cloud externalisation of images that are already
+      // persisted as embedded data URLs. Content equivalence would otherwise
+      // skip the save, so the retry could never reach the server.
+      this.pending = serialized;
+      this.forceNext = true;
+      return;
+    }
     if (serialized === this.lastSaved) {
       this.pending = this.inFlight ? serialized : null;
       return;
@@ -102,7 +112,8 @@ export class WhiteboardSaveLoop {
   }
 
   /** Persist the pending state now (no-op while a save is already running). */
-  flush(): void {
+  flush(options: { force?: boolean } = {}): void {
+    if (options.force) this.forceNext = true;
     void this.drain();
   }
 
@@ -112,10 +123,14 @@ export class WhiteboardSaveLoop {
     try {
       for (;;) {
         const serialized = this.pending;
-        if (serialized === null) break;
+        if (serialized === null) {
+          this.forceNext = false;
+          break;
+        }
         if (
-          serialized === this.lastSaved ||
-          sameSceneContent(serialized, this.lastSaved)
+          !this.forceNext &&
+          (serialized === this.lastSaved ||
+            sameSceneContent(serialized, this.lastSaved))
         ) {
           // The queued state matches the stored scene; only its image
           // references differ. Adopt the stored scene instead of re-saving
@@ -124,6 +139,7 @@ export class WhiteboardSaveLoop {
           this.onStatus({ phase: "saved", at: this.now() });
           break;
         }
+        this.forceNext = false;
         this.onStatus({ phase: "saving" });
         try {
           const saved = await this.save(serialized);

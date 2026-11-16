@@ -12,8 +12,16 @@ import { eq } from "drizzle-orm";
 
 import { getClient, getDb } from "@/db";
 import { boards, imageCache, taskImages } from "@/db/schema";
-import { createBoard, getBoardDetail } from "@/lib/server/boards";
-import { deleteTaskImage, addTaskImage } from "@/lib/server/task-images";
+import {
+  createBoard,
+  deleteBoard,
+  getBoardDetail,
+} from "@/lib/server/boards";
+import {
+  addTaskImage,
+  deleteTaskImage,
+  reuploadTaskImage,
+} from "@/lib/server/task-images";
 import {
   createTask,
   deleteTask,
@@ -217,6 +225,77 @@ describe("task image attachments", () => {
     expect(rows).toHaveLength(1);
   });
 
+  it("promotes embedded attachments to R2 in place and updates duplicates", async () => {
+    const { task } = await makeTask();
+    const { storage, removed } = fakeImageStorage();
+    const embeddedUrl = pngDataUrl();
+    const first = await addTaskImage(
+      task.id,
+      { dataURL: embeddedUrl, name: "first.png" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+    const second = await addTaskImage(
+      task.id,
+      { dataURL: embeddedUrl, name: "second.png" },
+      LOCAL_USER_ID,
+      test.db,
+    );
+
+    const result = await reuploadTaskImage(
+      task.id,
+      first.id,
+      "image-42",
+      LOCAL_USER_ID,
+      test.db,
+      storage,
+    );
+
+    expect(result).toEqual({ url: "/api/images/image-42", updated: 2 });
+    expect(removed).toEqual([]);
+    const detail = await getTaskDetail(task.id, LOCAL_USER_ID, test.db);
+    expect(detail.images.map((image) => image.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
+    expect(detail.images.map((image) => image.url)).toEqual([
+      "/api/images/image-42",
+      "/api/images/image-42",
+    ]);
+
+    // Idempotent when the attachment is already canonical.
+    const retry = await reuploadTaskImage(
+      task.id,
+      first.id,
+      "image-43",
+      LOCAL_USER_ID,
+      test.db,
+      storage,
+    );
+    expect(retry).toEqual({ url: "/api/images/image-42", updated: 0 });
+  });
+
+  it("requires premium storage to promote an embedded attachment", async () => {
+    const { task } = await makeTask();
+    const image = await addTaskImage(
+      task.id,
+      { dataURL: pngDataUrl() },
+      LOCAL_USER_ID,
+      test.db,
+    );
+
+    await expect(
+      reuploadTaskImage(
+        task.id,
+        image.id,
+        "image-44",
+        LOCAL_USER_ID,
+        test.db,
+        null,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
   it("removes the cache copy and R2 object of an unreferenced image", async () => {
     const { board, task } = await makeTask();
     const { storage, removed } = fakeImageStorage();
@@ -303,6 +382,22 @@ describe("task image attachments", () => {
         .from(imageCache)
         .where(eq(imageCache.fileId, "image-9")),
     ).toHaveLength(0);
+  });
+
+  it("deletes a board's task images without treating them as external references", async () => {
+    const { board, task } = await makeTask();
+    const { storage, removed } = fakeImageStorage();
+    await addTaskImage(
+      task.id,
+      { imageId: "image-board" },
+      LOCAL_USER_ID,
+      test.db,
+      storage,
+    );
+
+    await deleteBoard(board.id, LOCAL_USER_ID, test.db, storage);
+
+    expect(removed).toEqual(["image-board"]);
   });
 
   it("cleans up attachments when the task itself is deleted", async () => {

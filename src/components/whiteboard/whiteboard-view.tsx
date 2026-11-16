@@ -23,6 +23,7 @@ import { PageSurface } from "@/components/layout/page-surface";
 import { useWorkspace } from "@/components/layout/workspace-provider";
 import { useTheme } from "@/components/theme-provider";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { ImageUploadDock } from "@/components/shared/image-upload-dock";
 import { SaveIndicator } from "@/components/shared/save-indicator";
 import { SpaceDescription } from "@/components/shared/space-description";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,8 @@ import {
   SUPPORTED_IMAGE_FORMATS_LABEL,
 } from "@/lib/image-file";
 import { useDelayedLoading } from "@/lib/use-delayed-loading";
+import { useImageUploads } from "@/lib/use-image-uploads";
+import { useOnline } from "@/lib/use-online";
 import { useOnSyncComplete } from "@/lib/use-sync-refresh";
 import type { BoardSummary, WhiteboardScene } from "@/lib/types";
 import {
@@ -50,7 +53,10 @@ import {
   type WhiteboardSaveStatus,
 } from "@/lib/whiteboard-save-loop";
 import {
+  fileIdsWithEmbeddedImages,
   imageReferenceId,
+  parseSceneDocument,
+  referencedFileIds,
   sceneImageReferences,
   serializeWhiteboardScene,
 } from "@/lib/whiteboard-scene";
@@ -151,7 +157,8 @@ function unsupportedUploadFiles(files: File[]): File[] {
 export function WhiteboardView({ board: initialBoard }: { board: BoardSummary }) {
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
-  const { projects, refresh } = useWorkspace();
+  const { projects, refresh, imageStorage } = useWorkspace();
+  const online = useOnline();
   const [board, setBoard] = React.useState(initialBoard);
   const readOnly =
     projects.find((project) => project.id === board.projectId)?.archived ?? false;
@@ -189,6 +196,25 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
     cachedFileIds: Set<string>;
     skipFileIds: Set<string>;
   } | null>(null);
+  /** File ids that were already on the canvas when the current scene loaded. */
+  const initialFileIdsRef = React.useRef<Set<string>>(new Set());
+  /** New files registered with the upload dock for this board. */
+  const trackedFileIdsRef = React.useRef<Set<string>>(new Set());
+  /** File ids still embedded in the loaded scene (not yet in R2). */
+  const embeddedFileIdsRef = React.useRef<Set<string>>(new Set());
+  const embeddedStatusRegisteredRef = React.useRef(false);
+  const uploadSequenceRef = React.useRef(0);
+  const uploads = useImageUploads();
+  const {
+    start: startUpload,
+    update: updateUpload,
+    finish: finishUpload,
+    dismiss: dismissUpload,
+    clear: clearUploads,
+  } = uploads;
+  const imageStorageRef = React.useRef(imageStorage);
+  imageStorageRef.current = imageStorage;
+
   /**
    * Owns dirty-state tracking and serializes saves so slow image uploads can
    * never produce overlapping PUTs or stale canonical scenes.
@@ -197,18 +223,72 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
   if (loopRef.current === null) {
     loopRef.current = new WhiteboardSaveLoop({
       save: async (serialized) => {
-        const result = await api<{ scene: WhiteboardScene }>(
-          `/api/boards/${boardIdRef.current}/scene`,
-          {
-            method: "PUT",
-            body: JSON.stringify({ scene: serialized }),
-          },
+        const embeddedFileIds = fileIdsWithEmbeddedImages(
+          serialized,
+          externalImagesRef.current,
         );
+        const inFlight = new Set(embeddedFileIds);
+        for (const fileId of inFlight) {
+          updateUpload(fileId, {
+            phase: imageStorageRef.current ? "uploading" : "saving",
+            progress: null,
+            message: null,
+          });
+        }
+
+        let result: { scene: WhiteboardScene };
+        try {
+          result = await api<{ scene: WhiteboardScene }>(
+            `/api/boards/${boardIdRef.current}/scene`,
+            {
+              method: "PUT",
+              body: JSON.stringify({ scene: serialized }),
+            },
+          );
+        } catch (error) {
+          for (const fileId of inFlight) {
+            finishUpload(fileId, "failed", {
+              message: errorMessage(error),
+              retryable: imageStorageRef.current,
+            });
+          }
+          throw error;
+        }
+
         const saved = result.scene.scene || "{}";
         // The server may have replaced embedded images with references, so the
         // canonical saved scene (not the request body) is what we compare
         // against next time.
         externalImagesRef.current = sceneImageReferences(saved);
+        for (const fileId of inFlight) {
+          if (externalImagesRef.current.has(fileId)) {
+            finishUpload(fileId, "done", { autoDismissMs: 3_000 });
+          } else if (imageStorageRef.current) {
+            finishUpload(fileId, "failed", {
+              message: "Cloud upload failed. Stored on this device.",
+              retryable: true,
+            });
+          } else {
+            finishUpload(fileId, "local", {
+              message: "Stored on this device",
+              autoDismissMs: 4_000,
+            });
+          }
+        }
+        // A retried image can become referenced in a later save even when it
+        // was not the file that triggered this one.
+        const savedFileIds = new Set(
+          Object.keys(parseSceneDocument(saved)?.files ?? {}),
+        );
+        for (const fileId of trackedFileIdsRef.current) {
+          if (externalImagesRef.current.has(fileId)) {
+            finishUpload(fileId, "done", { autoDismissMs: 3_000 });
+          } else if (!savedFileIds.has(fileId)) {
+            // The image was removed before the save finished; its dock item
+            // no longer represents anything on the canvas.
+            dismissUpload(fileId);
+          }
+        }
         return saved;
       },
       onStatus: (next) => {
@@ -254,6 +334,19 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
     },
     [],
   );
+
+  // Reset per-board upload and image tracking when the board changes.
+  React.useEffect(() => {
+    initialFileIdsRef.current = new Set();
+    trackedFileIdsRef.current = new Set();
+    embeddedFileIdsRef.current = new Set();
+    embeddedStatusRegisteredRef.current = false;
+    cachedFilesRef.current = new Set();
+    externalImagesRef.current = new Map();
+    uploadSequenceRef.current = 0;
+    clearUploads();
+    setInitialData(null);
+  }, [board.id, clearUploads]);
 
   // Load the persisted scene once.
   React.useEffect(() => {
@@ -306,6 +399,33 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         if (!active) return;
         loopRef.current!.setSavedScene(raw);
         externalImagesRef.current = hydrated.references;
+        initialFileIdsRef.current = new Set(Object.keys(hydrated.files));
+        const embeddedFileIds = fileIdsWithEmbeddedImages(
+          source,
+          hydrated.references,
+        );
+        embeddedFileIdsRef.current = new Set(embeddedFileIds);
+
+        // Surface embedded images in premium workspaces before continuing a
+        // pending save, so its upload progress has a dock item to update.
+        if (imageStorageRef.current && !readOnly) {
+          let index = 0;
+          for (const fileId of embeddedFileIds) {
+            if (trackedFileIdsRef.current.has(fileId)) continue;
+            trackedFileIdsRef.current.add(fileId);
+            startUpload({
+              id: fileId,
+              name: `Image ${++index}`,
+              retryable: true,
+            });
+            finishUpload(fileId, "local", {
+              message: "Stored on this device. Upload to cloud storage.",
+              retryable: true,
+            });
+          }
+          embeddedStatusRegisteredRef.current = true;
+        }
+
         // Files that still hold a `masar://` reference are not renderable
         // yet; leave them out so the background remote fill can add them (a
         // file already present in the scene is never updated by addFiles).
@@ -359,6 +479,86 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
       mountedRef.current = false;
     };
   }, []);
+
+  // Archived boards are read-only; embedded images stay local.
+  React.useEffect(() => {
+    if (embeddedStatusRegisteredRef.current || !imageStorage || readOnly) {
+      return;
+    }
+    embeddedStatusRegisteredRef.current = true;
+    let index = 0;
+    for (const fileId of embeddedFileIdsRef.current) {
+      if (trackedFileIdsRef.current.has(fileId)) continue;
+      trackedFileIdsRef.current.add(fileId);
+      startUpload({
+        id: fileId,
+        name: `Image ${++index}`,
+        retryable: true,
+      });
+      finishUpload(fileId, "local", {
+        message: "Stored on this device. Upload to cloud storage.",
+        retryable: true,
+      });
+    }
+  }, [imageStorage, readOnly, startUpload, finishUpload]);
+
+  /**
+   * Re-send the current scene even though its content is unchanged, so the
+   * server can retry externalising embedded images. Queued first so the save
+   * loop bypasses its embedded-vs-reference equivalence check.
+   */
+  const retryImages = React.useCallback(() => {
+    const excalidraw = apiRef.current;
+    const loop = loopRef.current;
+    if (!excalidraw || !loop) return;
+
+    const elements = excalidraw.getSceneElements();
+    const files = excalidraw.getFiles() as unknown as Record<string, unknown>;
+    const usedFiles = referencedFileIds(elements);
+    const embedded = Object.keys(files).filter(
+      (fileId) =>
+        usedFiles.has(fileId) && !externalImagesRef.current.has(fileId),
+    );
+    if (embedded.length === 0) return;
+
+    for (const fileId of embedded) {
+      if (!trackedFileIdsRef.current.has(fileId)) {
+        trackedFileIdsRef.current.add(fileId);
+        startUpload({
+          id: fileId,
+          name: `Image ${++uploadSequenceRef.current}`,
+          retryable: true,
+        });
+      }
+      updateUpload(fileId, {
+        phase: "queued",
+        progress: null,
+        message: null,
+        retryable: true,
+      });
+    }
+
+    const serialized = serializeWhiteboardScene(
+      {
+        elements,
+        appState: excalidraw.getAppState() as unknown as Record<string, unknown>,
+        files,
+      },
+      externalImagesRef.current,
+    );
+    loop.change(serialized, { force: true });
+    loop.flush();
+  }, [startUpload, updateUpload]);
+
+  // Retry local-only images when connectivity returns.
+  const previousOnlineRef = React.useRef(online);
+  React.useEffect(() => {
+    const wasOnline = previousOnlineRef.current;
+    previousOnlineRef.current = online;
+    if (!wasOnline && online && imageStorageRef.current && !readOnly) {
+      retryImages();
+    }
+  }, [online, readOnly, retryImages]);
 
   /**
    * Excalidraw owns its file input, paste handler, and drop handler. Block
@@ -522,6 +722,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
       // Retain newly added images in the local cache immediately so they
       // survive navigation before the scene save lands. Existing files and
       // externally stored images are skipped.
+      const newlyTracked: string[] = [];
       for (const [fileId, file] of Object.entries(files)) {
         if (cachedFilesRef.current.has(fileId)) continue;
         const dataURL = (file as { dataURL?: unknown }).dataURL;
@@ -531,6 +732,18 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         }
         cachedFilesRef.current.add(fileId);
         if (externalImagesRef.current.has(fileId)) continue;
+        if (
+          !initialFileIdsRef.current.has(fileId) &&
+          !trackedFileIdsRef.current.has(fileId)
+        ) {
+          trackedFileIdsRef.current.add(fileId);
+          newlyTracked.push(fileId);
+          startUpload({
+            id: fileId,
+            name: `Image ${++uploadSequenceRef.current}`,
+            retryable: true,
+          });
+        }
         void api(
           `/api/boards/${boardIdRef.current}/images/${encodeURIComponent(fileId)}/cache`,
           {
@@ -550,6 +763,23 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
       );
       const loop = loopRef.current;
       if (!loop) return;
+
+      // Drop dock entries for images that were added and removed again before
+      // a save could include them.
+      const serializedFileIds = new Set(
+        Object.keys(parseSceneDocument(serialized)?.files ?? {}),
+      );
+      for (const fileId of trackedFileIdsRef.current) {
+        if (
+          !newlyTracked.includes(fileId) &&
+          !serializedFileIds.has(fileId) &&
+          !externalImagesRef.current.has(fileId)
+        ) {
+          trackedFileIdsRef.current.delete(fileId);
+          dismissUpload(fileId);
+        }
+      }
+
       loop.change(serialized);
       if (loop.isContentSaved(serialized)) {
         forgetPendingScene(boardIdRef.current);
@@ -573,12 +803,19 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
         current.phase === "unsaved" ? current : { phase: "unsaved" },
       );
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
+      if (newlyTracked.length > 0) {
+        // Start storing new images immediately instead of leaving the dock
+        // idle for the full debounce window.
         debounceRef.current = null;
-        loopRef.current?.flush();
-      }, SAVE_DEBOUNCE_MS);
+        loop.flush();
+      } else {
+        debounceRef.current = setTimeout(() => {
+          debounceRef.current = null;
+          loopRef.current?.flush();
+        }, SAVE_DEBOUNCE_MS);
+      }
     },
-    [readOnly],
+    [readOnly, startUpload, dismissUpload],
   );
 
   // Flush an outstanding edit on unmount so navigating away never loses work.
@@ -639,7 +876,7 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
 
   return (
     <>
-    <PageSurface className="flex h-full flex-col">
+    <PageSurface className="relative flex h-full flex-col">
       <div className="flex items-center gap-3 border-b border-border/60 bg-background/65 px-4 py-3 sm:px-6">
         <PenLine className="size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
@@ -722,6 +959,10 @@ export function WhiteboardView({ board: initialBoard }: { board: BoardSummary })
           />
         )}
       </div>
+      <ImageUploadDock
+        uploads={uploads}
+        onRetry={imageStorage && !readOnly ? retryImages : undefined}
+      />
     </PageSurface>
     <BoardSettingsDialog
       open={settingsOpen}

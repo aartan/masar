@@ -386,6 +386,109 @@ test.describe("note workflows", () => {
     }
   });
 
+  test("shows upload progress while a note image is stored in cloud storage", async ({
+    page,
+  }) => {
+    const noteName = uniqueName("E2E Note Upload Progress");
+    let boardId: string | undefined;
+    const imageId = "image-e2e-note";
+
+    try {
+      const board = await createBoard(page.request, noteName, { type: "note" });
+      boardId = board.id;
+
+      // Simulate a premium workspace and a slow R2 upload. The local image
+      // cache endpoint still hits the real server.
+      await page.route("**/api/me", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            user: {
+              id: "local-user",
+              name: "Premium Person",
+              email: "premium@example.test",
+              premium: true,
+              imageStorage: true,
+            },
+          }),
+        }),
+      );
+      await page.route("**/api/images", async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.continue();
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1_200));
+        await route.fulfill({
+          status: 201,
+          contentType: "application/json",
+          body: JSON.stringify({ image: { id: imageId } }),
+        });
+      });
+      await page.route(`**/api/images/${imageId}*`, async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "image/png",
+          body: PNG,
+        });
+      });
+
+      await page.goto(`/boards/${boardId}`);
+      const editor = page.locator(".masar-note .bn-editor");
+      await expect(editor).toBeVisible();
+      await editor.click();
+      await page.keyboard.type("Cloud upload feedback");
+
+      const content = page.locator(".masar-note-content");
+      const contentBox = await content.boundingBox();
+      const editorBox = await editor.boundingBox();
+      if (!contentBox || !editorBox) {
+        throw new Error("Could not measure the note surface");
+      }
+
+      const dataTransfer = await page.evaluateHandle(
+        ({ base64, fileName }) => {
+          const bytes = Uint8Array.from(atob(base64), (char) =>
+            char.charCodeAt(0),
+          );
+          const transfer = new DataTransfer();
+          transfer.items.add(
+            new File([bytes], fileName, { type: "image/png" }),
+          );
+          return transfer;
+        },
+        { base64: PNG.toString("base64"), fileName: "cloud.png" },
+      );
+      const point = {
+        clientX: contentBox.x + 2,
+        clientY: editorBox.y + 10,
+      };
+      await content.dispatchEvent("dragenter", { dataTransfer, ...point });
+      await content.dispatchEvent("dragover", { dataTransfer, ...point });
+      await content.dispatchEvent("drop", { dataTransfer, ...point });
+      await dataTransfer.dispose();
+
+      // Immediate feedback while the upload is in flight.
+      await expect(page.getByText(/Uploading 1 image/)).toBeVisible();
+      await expect(
+        editor.locator('[data-content-type="image"]'),
+      ).toHaveCount(1);
+      await expect(
+        editor.locator('[data-content-type="image"] img'),
+      ).toHaveAttribute("src", `/api/images/${imageId}`);
+      await expect(page.getByText("Uploaded to cloud storage")).toBeVisible();
+      await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+
+      await page.reload({ waitUntil: "networkidle" });
+      await expect(
+        page.locator('.masar-note .bn-editor [data-content-type="image"]'),
+      ).toHaveCount(1);
+    } finally {
+      if (boardId) await deleteBoard(page.request, boardId);
+    }
+  });
+
   test("uploads images dropped anywhere on the note surface", async ({
     page,
   }) => {

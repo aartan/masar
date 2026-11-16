@@ -350,3 +350,65 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
 }
+
+/*
+ * BlockNote's image placeholder while `uploadFile` is pending. Replace its
+ * plain "Loading..." text with a spinner and a clearer upload label, and give
+ * the empty block a visible skeleton so a drop never looks ignored.
+ */
+@keyframes masar-image-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.masar-note .bn-file-loading-preview {
+  display: flex;
+  min-height: 8rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  color: var(--muted-foreground);
+  font-size: 0 !important;
+  background:
+    linear-gradient(
+      110deg,
+      color-mix(in oklab, var(--muted) 70%, transparent) 8%,
+      color-mix(in oklab, var(--muted) 35%, transparent) 18%,
+      color-mix(in oklab, var(--muted) 70%, transparent) 33%
+    );
+  background-size: 200% 100%;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  animation: masar-image-shimmer 1.6s linear infinite;
+}
+
+.masar-note .bn-file-loading-preview::before {
+  content: "";
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 9999px;
+  animation: masar-image-spin 0.75s linear infinite;
+}
+
+.masar-note .bn-file-loading-preview::after {
+  content: "Uploading image…";
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+@keyframes masar-image-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .masar-note .bn-file-loading-preview,
+  .masar-note .bn-file-loading-preview::before {
+    animation: none;
+  }
+}

@@ -233,13 +233,10 @@ export function NoteFormattingToolbar({
   editor,
   noteWidth,
   onNoteWidthChange,
-  uploadFile,
 }: {
   editor: BlockNoteEditor;
   noteWidth: NoteWidth;
   onNoteWidthChange: (width: NoteWidth) => void;
-  /** Upload one image and resolve its URL (shared with the editor session). */
-  uploadFile: (file: File) => Promise<string>;
 }) {
   // Re-render on selection and content changes so every control reflects the
   // current cursor state (block type, active styles, undo availability).
@@ -357,29 +354,52 @@ export function NoteFormattingToolbar({
 
   const insertImage = async (file: File) => {
     const referenceBlock = editor.getTextCursorPosition().block;
-    let url: string;
-    try {
-      url = await uploadFile(file);
-    } catch {
-      // uploadFile already reports validation and storage failures.
-      return;
-    }
-
+    let imageBlock: { id: string } | undefined;
     try {
       if (!editor.getBlock(referenceBlock.id)) return;
-      const [imageBlock] = editor.insertBlocks(
-        [{ type: "image", props: { url } }],
+      [imageBlock] = editor.insertBlocks(
+        [{ type: "image", props: { url: "" } }],
         referenceBlock.id,
         "after",
       );
       if (!imageBlock) {
         throw new Error("BlockNote did not insert the image block");
       }
-      editor.focus();
     } catch (error) {
       toast.error("Could not add image", {
         description: errorMessage(error),
       });
+      return;
+    }
+
+    const upload = editor.uploadFile;
+    if (!upload) {
+      if (editor.getBlock(imageBlock.id)) {
+        editor.removeBlocks([imageBlock.id]);
+      }
+      toast.error("Could not add image");
+      return;
+    }
+
+    try {
+      const result = await upload(file, imageBlock.id);
+      const url =
+        typeof result === "string"
+          ? result
+          : (result as { props?: { url?: unknown } }).props?.url;
+      if (typeof url !== "string") {
+        throw new Error("The image upload returned no URL.");
+      }
+      if (editor.getBlock(imageBlock.id)) {
+        editor.updateBlock(imageBlock.id, { props: { url } });
+      }
+      editor.focus();
+    } catch {
+      // The shared upload callback reports validation/storage errors and
+      // removes the placeholder; make sure it is gone if it could not.
+      if (editor.getBlock(imageBlock.id)) {
+        editor.removeBlocks([imageBlock.id]);
+      }
     }
   };
 

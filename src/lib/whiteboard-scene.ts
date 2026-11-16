@@ -132,6 +132,27 @@ export function serializeWhiteboardScene(
   });
 }
 
+/**
+ * File ids whose persisted scene still carries embedded image bytes. Files
+ * already represented by a `masar://` reference are excluded. Used to show
+ * local-only image status and to retry cloud externalisation.
+ */
+export function fileIdsWithEmbeddedImages(
+  raw: string,
+  references: ReadonlyMap<string, string> = new Map(),
+): string[] {
+  const document = parseSceneDocument(raw);
+  if (!document) return [];
+  const ids: string[] = [];
+  for (const [fileId, file] of Object.entries(document.files)) {
+    if (references.has(fileId)) continue;
+    if (typeof file.dataURL === "string" && file.dataURL.startsWith("data:")) {
+      ids.push(fileId);
+    }
+  }
+  return ids;
+}
+
 /** Map every stored image reference in a scene back to its file id. */
 export function sceneImageReferences(raw: string): Map<string, string> {
   const references = new Map<string, string>();

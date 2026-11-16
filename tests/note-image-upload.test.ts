@@ -46,15 +46,32 @@ describe("uploadNoteImage", () => {
   });
 
   it("uploads through shared storage, caches the bytes and returns the canonical URL", async () => {
-    vi.mocked(uploadImageFile).mockResolvedValue({
-      imageId: "image-1",
-      file: FILE,
-      contentType: "image/png",
+    const onProgress = vi.fn();
+    const onStoredInCloud = vi.fn();
+    vi.mocked(uploadImageFile).mockImplementation(
+      async (_file, _kind, options) => {
+        options?.onProgress?.({ phase: "uploading", fraction: 0.5 });
+        options?.onProgress?.({ phase: "processing", fraction: null });
+        return {
+          imageId: "image-1",
+          file: FILE,
+          contentType: "image/png",
+        };
+      },
+    );
+
+    const url = await uploadNoteImage("board-1", FILE, {
+      onProgress,
+      onStoredInCloud,
     });
 
-    const url = await uploadNoteImage("board-1", FILE);
-
     expect(url).toBe("/api/images/image-1");
+    expect(onStoredInCloud).toHaveBeenCalledWith(true);
+    expect(onProgress.mock.calls.map(([progress]) => progress.phase)).toEqual([
+      "uploading",
+      "processing",
+      "caching",
+    ]);
     // The bytes were cached locally, keyed by the image id.
     expect(api).toHaveBeenCalledWith(
       "/api/boards/board-1/images/image-1/cache",
@@ -63,6 +80,18 @@ describe("uploadNoteImage", () => {
         body: JSON.stringify({ dataURL: DATA_URL }),
       }),
     );
+  });
+
+  it("reports a local fallback without contacting storage", async () => {
+    const onStoredInCloud = vi.fn();
+    const url = await uploadNoteImage("board-1", FILE, {
+      imageStorageAvailable: false,
+      onStoredInCloud,
+    });
+
+    expect(url).toBe(DATA_URL);
+    expect(onStoredInCloud).toHaveBeenCalledWith(false);
+    expect(uploadImageFile).not.toHaveBeenCalled();
   });
 
   it("still returns the canonical URL when caching the bytes fails", async () => {
@@ -79,14 +108,16 @@ describe("uploadNoteImage", () => {
   });
 
   it("falls back to an embedded data URL when image storage is unavailable", async () => {
+    const onStoredInCloud = vi.fn();
     vi.mocked(uploadImageFile).mockRejectedValue(
       new ClientApiError("Could not reach image storage.", 502),
     );
 
-    const url = await uploadNoteImage("board-1", FILE);
+    const url = await uploadNoteImage("board-1", FILE, { onStoredInCloud });
 
     expect(url).toBe(DATA_URL);
     expect(blobToDataUrl).toHaveBeenCalledWith(FILE);
+    expect(onStoredInCloud).toHaveBeenCalledWith(false);
     // No cache write is attempted for the embedded fallback.
     expect(api).not.toHaveBeenCalled();
     expect(isImageStorageUnavailable).toHaveBeenCalled();

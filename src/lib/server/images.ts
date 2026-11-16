@@ -75,6 +75,17 @@ export function imageStorageConfigured(
   );
 }
 
+/**
+ * Whether this local API is serving a premium sync mirror with image storage
+ * credentials. This is the single availability check shared by the image
+ * proxy, whiteboard save externalisation and the renderer's capability flag.
+ */
+export function imageStorageEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return Boolean(env.MASAR_SYNC_SCOPE?.trim()) && imageStorageConfigured(env);
+}
+
 interface ErrorBody {
   error?: string;
 }
@@ -213,7 +224,7 @@ export function imageStorageClientFromEnv(
 export function premiumImageClient(
   env: NodeJS.ProcessEnv = process.env,
 ): ImageStorageClient | null {
-  if (!env.MASAR_SYNC_SCOPE?.trim()) return null;
+  if (!imageStorageEnabled(env)) return null;
   return imageStorageClientFromEnv(env);
 }
 

@@ -55,12 +55,14 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  process.env.MASAR_SYNC_SCOPE = "image-test-user";
   process.env.MASAR_API_URL = API_URL;
   process.env.MASAR_SYNC_TOKEN = TOKEN;
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  delete process.env.MASAR_SYNC_SCOPE;
   delete process.env.MASAR_API_URL;
   delete process.env.MASAR_SYNC_TOKEN;
 });
@@ -91,6 +93,21 @@ function stubFetch(
   vi.stubGlobal("fetch", mock);
   return mock;
 }
+
+describe("image storage capability", () => {
+  it("reports the same capability used by uploads and whiteboard saves", async () => {
+    const premium = await request("/api/me");
+    expect(await premium.json()).toMatchObject({
+      user: { imageStorage: true },
+    });
+
+    delete process.env.MASAR_SYNC_SCOPE;
+    const local = await request("/api/me");
+    expect(await local.json()).toMatchObject({
+      user: { imageStorage: false },
+    });
+  });
+});
 
 describe("image proxy routes", () => {
   it("uploads multipart images with the premium session token", async () => {
@@ -171,6 +188,19 @@ describe("image proxy routes", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
     expect(calls).toEqual([`DELETE ${API_URL}/v1/images/image-1`]);
+  });
+
+  it("requires the premium sync scope for the image proxy", async () => {
+    delete process.env.MASAR_SYNC_SCOPE;
+    const fetchMock = stubFetch(() => Response.json({}));
+
+    const response = await request("/api/images", {
+      method: "POST",
+      body: uploadBody(),
+    });
+
+    expect(response.status).toBe(409);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("responds 409 when premium image storage is not configured", async () => {
@@ -328,11 +358,13 @@ describe("image cache routes", () => {
     expect(missing.status).toBe(404);
   });
 
-  it("rejects a cache write without premium image storage", async () => {
+  it("caches images without premium image storage", async () => {
     const boardId = await makeWhiteboard();
     delete process.env.MASAR_API_URL;
     delete process.env.MASAR_SYNC_TOKEN;
 
+    // The local cache is SQLite-only, so the free workspace can keep bytes
+    // durable before a scene or note save lands.
     const response = await request(
       `/api/boards/${boardId}/images/file-a/cache`,
       {
@@ -341,11 +373,13 @@ describe("image cache routes", () => {
         body: JSON.stringify({ dataURL: DATA_URL }),
       },
     );
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(201);
 
-    // Reading is still allowed (it just reports nothing cached).
     const get = await request(`/api/boards/${boardId}/images/file-a/cache`);
-    expect(get.status).toBe(404);
+    expect(get.status).toBe(200);
+    expect(new Uint8Array(await get.arrayBuffer())).toEqual(
+      new Uint8Array(PNG_BYTES),
+    );
   });
 
   it("caches images for a kanban board carrying task attachments", async () => {

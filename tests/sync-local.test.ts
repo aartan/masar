@@ -457,7 +457,8 @@ describe("local sync outbox", () => {
 
     // The remote change claims a newer clock than the local edit. Clock
     // comparison alone would let it overwrite the unsynced edit; the pending
-    // row must win locally and be re-pushed with the healed base revision.
+    // row must keep the base it was created against so the server can detect
+    // whether the remote change was concurrent.
     const newer = new Date(now + 120_000).toISOString();
     const result = await applyRemoteChanges(2, [
       {
@@ -485,10 +486,11 @@ describe("local sync outbox", () => {
       .from(boards)
       .where(eq(boards.id, "remote-board-3"));
     expect(row?.name).toBe("Local unsynced");
-    // The pending edit now carries the revision the skipped change had.
+    // Skipping the remote change must not rewrite the pending edit's causal
+    // base; otherwise a real cross-device change would be silently overwritten.
     const pending = await listPendingChanges(0, 10);
     const change = pending.find((item) => item.entityId === "remote-board-3");
-    expect(change?.baseRevision).toBe(2);
+    expect(change?.baseRevision).toBe(1);
   });
 
   it("records accepted push revisions atomically with the outbox ack", async () => {
@@ -1036,20 +1038,15 @@ describe("local sync outbox", () => {
     ).toBe(true);
   });
 
-  it("keeps the tombstone revision when a newer local edit survives a remote delete", async () => {
+  it("keeps the local edit's base when it survives a remote delete", async () => {
     await prepareSync("remote-user-a");
     const { board } = await makeBoard("Keep me");
     const now = Date.now();
-
-    await applyRemoteChanges(1, [
-      {
-        entityType: "board",
-        entityId: board.id,
-        deleted: false,
-        data: boardData(board, "Remote original", now - 5_000),
-        updatedAt: new Date(now - 5_000).toISOString(),
-        revision: 1,
-      },
+    // Simulate an entity that already round-tripped the cloud: its bootstrap
+    // outbox rows have been acked and revision 1 is known locally.
+    await getClient().execute("delete from sync_changes");
+    await acknowledgeChanges(0, [
+      { entityType: "board", entityId: board.id, revision: 1 },
     ]);
     await updateBoard(board.id, { name: "Local newer" }, LOCAL_USER_ID, test.db);
 
@@ -1069,10 +1066,10 @@ describe("local sync outbox", () => {
       "select revision from sync_entity_revisions where entity_type = 'board' and entity_id = ?",
       [board.id],
     );
-    expect(Number(revisions.rows[0]?.revision)).toBe(2);
+    expect(Number(revisions.rows[0]?.revision)).toBe(1);
     const pending = await listPendingChanges(0, 50);
     const boardChange = pending.find((change) => change.entityId === board.id);
-    expect(boardChange?.baseRevision).toBe(2);
+    expect(boardChange?.baseRevision).toBe(1);
   });
 
   it("promotes local children when a remote folder tombstone arrives", async () => {

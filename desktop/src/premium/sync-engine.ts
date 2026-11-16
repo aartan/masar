@@ -39,6 +39,9 @@ export class SyncEngine {
   private inFlight: Promise<SyncStatus> | null = null;
   private interval: NodeJS.Timeout | null = null;
   private debounce: NodeJS.Timeout | null = null;
+  private rerunTimer: NodeJS.Timeout | null = null;
+  /** A local change arrived while a cycle was already running. */
+  private rerunRequested = false;
 
   constructor(private readonly options: SyncEngineOptions) {}
 
@@ -56,8 +59,11 @@ export class SyncEngine {
   stop(): void {
     if (this.interval) clearInterval(this.interval);
     if (this.debounce) clearTimeout(this.debounce);
+    if (this.rerunTimer) clearTimeout(this.rerunTimer);
     this.interval = null;
     this.debounce = null;
+    this.rerunTimer = null;
+    this.rerunRequested = false;
   }
 
   disconnect(): void {
@@ -79,9 +85,22 @@ export class SyncEngine {
   }
 
   syncNow(reason = "manual"): Promise<SyncStatus> {
-    if (this.inFlight) return this.inFlight;
+    if (this.inFlight) {
+      // Do not lose a local-change notification that arrives during a long
+      // request. Run one more cycle as soon as this one drains.
+      this.rerunRequested = true;
+      return this.inFlight;
+    }
     this.inFlight = this.run(reason).finally(() => {
       this.inFlight = null;
+      if (this.rerunRequested) {
+        this.rerunRequested = false;
+        this.rerunTimer = setTimeout(() => {
+          this.rerunTimer = null;
+          if (this.options.getClient()) void this.syncNow("queued");
+        }, 0);
+        this.rerunTimer.unref?.();
+      }
     });
     return this.inFlight;
   }
@@ -211,13 +230,28 @@ export class SyncEngine {
       const first = data.changes[0]!;
       const last = data.changes[data.changes.length - 1]!;
 
-      const pushChanges = data.changes.map<PushChange>((change) => ({
+      // A sync can overlap local edits. Two snapshots of the same entity that
+      // were queued during the previous request must not be pushed together:
+      // only the newest snapshot is meaningful, and sending both makes the
+      // second one look concurrent to the server.
+      const newestByEntity = new Map<string, LocalSyncChange>();
+      for (const change of data.changes) {
+        const key = `${change.entityType}\u0000${change.entityId}`;
+        const current = newestByEntity.get(key);
+        if (!current || change.id > current.id) newestByEntity.set(key, change);
+      }
+      const changesToPush = [...newestByEntity.values()].sort(
+        (a, b) => a.id - b.id,
+      );
+
+      const pushChanges = changesToPush.map<PushChange>((change) => ({
         entityType: change.entityType,
         entityId: change.entityId,
         deleted: change.deleted,
         data: change.data,
         updatedAt: change.updatedAt,
         baseRevision: change.baseRevision,
+        clientSequence: change.id,
       }));
       // Retrying the exact same request must reuse the key; retrying the same
       // outbox row after a conflict resolution is a different request and must
@@ -256,13 +290,12 @@ export class SyncEngine {
 
       // Conflict rows are safe in sync_conflicts now; the outbox rows can be
       // removed rather than retried. Pull will skip these entities until the
-      // user resolves them. Recording the accepted revisions in the same local
-      // transaction means an edit made before the next pull (rapid consecutive
-      // card moves) pushes with the correct base revision instead of a stale
-      // one that the server would reject as a self-conflict.
+      // user resolves them. Record both accepted and ignored revisions in the
+      // same local transaction so an edit made before the next pull already
+      // carries the correct base revision.
       await this.localRequest("POST", "/api/sync/ack", {
         throughId: last.id,
-        accepted: response.acceptedChanges ?? [],
+        accepted: response.resolvedChanges ?? response.acceptedChanges ?? [],
       });
       lastId = last.id;
     }

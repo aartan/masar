@@ -53,6 +53,7 @@ export function NoteEditorSession({
       )}
       <NoteEditorContent
         editor={editor}
+        readOnly={readOnly}
         noteWidth={noteWidth}
         outlineOpen={outlineOpen}
         onOutlineClose={onOutlineClose}

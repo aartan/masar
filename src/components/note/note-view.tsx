@@ -107,20 +107,25 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
   }, [board.id]);
 
   /**
-   * Focus the end of the document as soon as the note opens so writing can
-   * start immediately. BlockNoteView mounts the editor asynchronously, so
-   * retry briefly until the editor DOM exists.
+   * Focus the title of a brand-new empty note so writing can start
+   * immediately. Existing notes are left untouched: opening one must not
+   * steal focus, place an invisible caret at the end of a long document or
+   * jump its scroll position. BlockNoteView mounts the editor
+   * asynchronously, so retry briefly until the editor DOM exists.
    */
   React.useEffect(() => {
-    if (!editor || readOnly) return;
+    if (!editor || readOnly || !noteIsEmpty) return;
     let cancelled = false;
     const attempt = (remaining: number) => {
       if (cancelled) return;
       const element = editor.domElement;
       if (element) {
-        const blocks = editor.document;
-        const lastBlock = blocks[blocks.length - 1];
-        if (lastBlock) editor.setTextCursorPosition(lastBlock, "end");
+        // A click may have focused and positioned the editor while the DOM
+        // was mounting; never override that user intent.
+        const active = window.document.activeElement;
+        if (active && element.contains(active)) return;
+        const firstBlock = editor.document[0];
+        if (firstBlock) editor.setTextCursorPosition(firstBlock, "end");
         editor.focus();
         return;
       }
@@ -132,7 +137,32 @@ export function NoteView({ board: initialBoard }: { board: BoardSummary }) {
     return () => {
       cancelled = true;
     };
-  }, [editor, readOnly]);
+  }, [editor, readOnly, noteIsEmpty]);
+
+  /**
+   * Cmd/Ctrl+S is muscle memory in a note editor. Autosave already persists
+   * changes, so this shortcut simply flushes the pending save immediately
+   * (and retries a failed one) instead of opening the browser's save dialog.
+   */
+  const getSaveLoop = autosave.loop;
+  React.useEffect(() => {
+    if (readOnly) return;
+    const handleSaveShortcut = (event: KeyboardEvent) => {
+      if (
+        !(event.metaKey || event.ctrlKey) ||
+        event.altKey ||
+        event.shiftKey ||
+        event.key.toLowerCase() !== "s" ||
+        event.isComposing
+      ) {
+        return;
+      }
+      event.preventDefault();
+      getSaveLoop()?.flush();
+    };
+    window.addEventListener("keydown", handleSaveShortcut);
+    return () => window.removeEventListener("keydown", handleSaveShortcut);
+  }, [getSaveLoop, readOnly]);
 
   // Create the editor once the document for the current board is ready.
   const { setSavedDocument, adoptAndFlush, markSaved } = autosave;

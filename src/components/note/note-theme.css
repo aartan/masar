@@ -47,6 +47,7 @@
   color: var(--primary);
   text-decoration: underline;
   text-underline-offset: 2px;
+  cursor: pointer;
 }
 
 .masar-note .bn-editor :not(pre) > code {
@@ -128,8 +129,20 @@
  * all three stay comfortable to read.
  */
 .masar-note .bn-editor {
+  flex: 1 1 auto;
   font-size: 0.9375rem;
   line-height: 1.7;
+}
+
+/*
+ * The note column is a writing canvas, not just the text inside it. The
+ * editor grows to fill the available height so empty space below the document
+ * stays editable, and both the editor and its surrounding canvas show the
+ * text cursor. Interactive content inside the editor keeps its own cursor.
+ */
+.masar-note [data-note-editable="true"],
+.masar-note :where(.bn-editor[contenteditable="true"]) {
+  cursor: text;
 }
 
 .masar-note .bn-editor [data-content-type="heading"] [data-level="1"] {

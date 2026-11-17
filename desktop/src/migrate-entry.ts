@@ -10,8 +10,8 @@
  * app's working directory is not the repo root.
  */
 import { createClient } from "@libsql/client";
-import { drizzle } from "drizzle-orm/libsql";
-import { migrate } from "drizzle-orm/libsql/migrator";
+
+import { migrateDatabase } from "../../src/db/migrate";
 
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL;
@@ -21,9 +21,8 @@ async function main(): Promise<void> {
   if (!migrationsFolder) throw new Error("MASAR_MIGRATIONS_DIR is not set");
 
   const client = createClient({ url });
-  const db = drizzle(client);
   try {
-    await migrate(db, { migrationsFolder });
+    await migrateDatabase(client, migrationsFolder);
     console.log("migrations applied");
   } finally {
     client.close();

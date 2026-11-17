@@ -1,12 +1,10 @@
 import "./load-env";
 
 import { createClient } from "@libsql/client";
-import { drizzle } from "drizzle-orm/libsql";
-import { migrate } from "drizzle-orm/libsql/migrator";
 import { resolve } from "node:path";
 
 import { resolveDatabaseConfig } from "../src/db/config";
-import * as schema from "../src/db/schema";
+import { migrateDatabase } from "../src/db/migrate";
 
 async function main() {
   const config = resolveDatabaseConfig();
@@ -16,12 +14,9 @@ async function main() {
     url: config.url,
     authToken: config.authToken,
   });
-  const db = drizzle(client, { schema });
 
   try {
-    await migrate(db, {
-      migrationsFolder: resolve(process.cwd(), "drizzle"),
-    });
+    await migrateDatabase(client, resolve(process.cwd(), "drizzle"));
     console.log("[masar] Migrations complete.");
   } finally {
     client.close();

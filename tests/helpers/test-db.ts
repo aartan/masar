@@ -5,10 +5,10 @@ import { join } from "node:path";
 
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import { migrate } from "drizzle-orm/libsql/migrator";
 
-import * as schema from "@/db/schema";
 import type { AppDatabase } from "@/db";
+import { migrateDatabase } from "@/db/migrate";
+import * as schema from "@/db/schema";
 
 /**
  * Creates a throwaway SQLite/libSQL database with every migration applied.
@@ -21,9 +21,7 @@ export async function createTestDatabase() {
   const client = createClient({ url });
   const db = drizzle(client, { schema });
 
-  await migrate(db, {
-    migrationsFolder: join(process.cwd(), "drizzle"),
-  });
+  await migrateDatabase(client, join(process.cwd(), "drizzle"));
 
   return {
     db,

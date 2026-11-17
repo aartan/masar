@@ -251,6 +251,121 @@ export function FolderSettingsDialog({
   );
 }
 
+export function MoveFolderDialog({
+  folder,
+  folders,
+  open,
+  onOpenChange,
+  onMoved,
+}: {
+  folder: FolderSummary | null;
+  folders: FolderSummary[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onMoved?: (destination: {
+    projectId: string;
+    folderId: string | null;
+  }) => void;
+}) {
+  const [destination, setDestination] = React.useState(ROOT_VALUE);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    if (open && folder) {
+      setDestination(folder.parentId ?? ROOT_VALUE);
+      setLoading(false);
+    }
+  }, [open, folder]);
+
+  const destinations = React.useMemo(() => {
+    if (!folder) return [];
+    const blocked = folderSubtreeIds(folders, folder.id);
+    return folders
+      .filter(
+        (item) =>
+          item.projectId === folder.projectId && !blocked.has(item.id),
+      )
+      .map((item) => ({ item, label: folderPathLabel(folders, item.id) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [folder, folders]);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!folder || loading) return;
+    const parentId = destination === ROOT_VALUE ? null : destination;
+    if (parentId === folder.parentId) {
+      onOpenChange(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      await api(`/api/folders/${folder.id}/move`, {
+        method: "POST",
+        body: JSON.stringify({ parentId, index: 100000 }),
+      });
+      toast.success("Folder moved");
+      onOpenChange(false);
+      onMoved?.({ projectId: folder.projectId, folderId: parentId });
+    } catch (error) {
+      toast.error("Could not move folder", {
+        description: errorMessage(error),
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Move folder</DialogTitle>
+          <DialogDescription>
+            Choose a new location for <strong>{folder?.name}</strong>. Spaces and
+            subfolders inside it move with it.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-2">
+            <Label htmlFor="move-folder-location">Location</Label>
+            <Select
+              value={destination}
+              onValueChange={setDestination}
+              disabled={loading}
+            >
+              <SelectTrigger id="move-folder-location" autoFocus>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ROOT_VALUE}>Project root</SelectItem>
+                {destinations.map(({ item, label }) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={loading}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading && <Loader2 className="size-4 animate-spin" />}
+              Move folder
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function DeleteFolderDialog({
   folder,
   folders,

@@ -25,14 +25,17 @@ import {
   CalendarDays,
   ChevronRight,
   ChevronsUpDown,
+  ExternalLink,
   FileText,
   Folder,
+  FolderInput,
   FolderOpen,
   FolderPlus,
   GripVertical,
   Keyboard,
   LayoutDashboard,
   LayoutGrid,
+  MoreHorizontal,
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
@@ -48,21 +51,32 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { MoveSpaceDialog } from "@/components/board/space-dialogs";
 import { Logo } from "@/components/brand/logo";
+import {
+  SidebarContextMenuContent,
+  SidebarDropdownMenuContent,
+  type SidebarMenuAction,
+} from "@/components/layout/sidebar-menu";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Kbd } from "@/components/shared/empty-state";
+import { InlineRenameInput } from "@/components/shared/inline-rename-input";
 import { useTheme, type Theme } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   CreateProjectDialog,
   DeleteProjectDialog,
-  RenameProjectDialog,
 } from "@/components/project/project-dialogs";
 import {
   CreateFolderDialog,
   DeleteFolderDialog,
-  FolderSettingsDialog,
+  MoveFolderDialog,
 } from "@/components/project/folder-dialogs";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -84,6 +98,7 @@ import {
 import { api, errorMessage } from "@/lib/client-api";
 import {
   buildProjectHierarchy,
+  folderAncestors,
   folderSubtreeIds,
   type FolderTreeNode,
   type ProjectHierarchy,
@@ -136,6 +151,29 @@ interface DragData {
   parentId?: string | null;
 }
 
+type RenameTargetType = "project" | "folder" | "space";
+
+interface RenameTarget {
+  type: RenameTargetType;
+  id: string;
+}
+
+interface RenameControls {
+  renaming: RenameTarget | null;
+  startRename: (type: RenameTargetType, id: string) => void;
+  commitRename: (
+    type: RenameTargetType,
+    id: string,
+    name: string,
+  ) => Promise<boolean>;
+  cancelRename: (type: RenameTargetType, id: string) => void;
+}
+
+interface MoveDestination {
+  projectId: string;
+  folderId: string | null;
+}
+
 function byPosition(
   a: { position: number; createdAt: string },
   b: { position: number; createdAt: string },
@@ -170,7 +208,6 @@ export function SidebarContent({
   const dndId = React.useId();
 
   const [createProjectOpen, setCreateProjectOpen] = React.useState(false);
-  const [renameProject, setRenameProject] = React.useState<ProjectSummary | null>(null);
   const [deleteProject, setDeleteProject] = React.useState<ProjectSummary | null>(null);
   const [collapsedProjects, setCollapsedProjects] = React.useState<Set<string>>(
     () => new Set(),
@@ -183,11 +220,17 @@ export function SidebarContent({
     parentId: string | null;
     parentName?: string;
   } | null>(null);
-  const [folderSettings, setFolderSettings] =
-    React.useState<FolderSummary | null>(null);
   const [deleteFolder, setDeleteFolder] = React.useState<FolderSummary | null>(
     null,
   );
+  const [moveFolder, setMoveFolder] = React.useState<FolderSummary | null>(
+    null,
+  );
+  const [moveSpace, setMoveSpace] = React.useState<BoardSummary | null>(null);
+  const [deleteSpace, setDeleteSpace] = React.useState<BoardSummary | null>(
+    null,
+  );
+  const [renaming, setRenaming] = React.useState<RenameTarget | null>(null);
 
   const activeProjectId = React.useMemo(() => {
     if (pathname.startsWith("/projects/")) {
@@ -225,6 +268,96 @@ export function SidebarContent({
       next.delete(folderId);
       return next;
     });
+  }
+
+  function revealLocation({ projectId, folderId }: MoveDestination) {
+    setCollapsedProjects((current) => {
+      if (!current.has(projectId)) return current;
+      const next = new Set(current);
+      next.delete(projectId);
+      return next;
+    });
+    if (!folderId) return;
+    const chain = [
+      ...folderAncestors(folders, folderId).map((folder) => folder.id),
+      folderId,
+    ];
+    setCollapsedFolders((current) => {
+      if (chain.every((id) => !current.has(id))) return current;
+      const next = new Set(current);
+      for (const id of chain) next.delete(id);
+      return next;
+    });
+  }
+
+  const renameControls: RenameControls = {
+    renaming,
+    startRename: (type, id) => setRenaming({ type, id }),
+    cancelRename: (type, id) =>
+      setRenaming((current) =>
+        current?.type === type && current.id === id ? null : current,
+      ),
+    commitRename: async (type, id, name) => {
+      try {
+        if (type === "project") {
+          await api(`/api/projects/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ name }),
+          });
+          toast.success("Project renamed");
+        } else if (type === "folder") {
+          await api(`/api/folders/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ name }),
+          });
+          toast.success("Folder renamed");
+        } else {
+          await api(`/api/boards/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ name }),
+          });
+          toast.success("Space renamed");
+        }
+        setRenaming((current) =>
+          current?.type === type && current.id === id ? null : current,
+        );
+        await onRefresh();
+        return true;
+      } catch (error) {
+        const label =
+          type === "project"
+            ? "project"
+            : type === "folder"
+              ? "folder"
+              : "space";
+        toast.error(`Could not rename ${label}`, {
+          description: errorMessage(error),
+        });
+        return false;
+      }
+    },
+  };
+
+  async function handleDeleteSpace(board: BoardSummary) {
+    try {
+      await api(`/api/boards/${board.id}`, { method: "DELETE" });
+      setDeleteSpace(null);
+      toast.success("Space deleted");
+      if (pathname === `/boards/${board.id}`) {
+        onNavigate?.();
+        navigate("/");
+      }
+      await onRefresh();
+    } catch (error) {
+      toast.error("Could not delete space", {
+        description: errorMessage(error),
+      });
+    }
+  }
+
+  function handleLocationChanged(destination: MoveDestination) {
+    revealLocation(destination);
+    void onRefresh();
   }
 
   const active = React.useMemo(
@@ -702,13 +835,15 @@ export function SidebarContent({
                           parentName,
                         })
                       }
-                      onFolderSettings={setFolderSettings}
+                      renameControls={renameControls}
+                      onMoveFolder={setMoveFolder}
                       onDeleteFolder={setDeleteFolder}
+                      onMoveSpace={setMoveSpace}
+                      onDeleteSpace={setDeleteSpace}
                       onOpenProject={() => {
                         onNavigate?.();
                         navigate(`/projects/${project.id}`);
                       }}
-                      onRename={() => setRenameProject(project)}
                       onArchive={() => void handleArchive(project)}
                     />
                   ))}
@@ -829,12 +964,6 @@ export function SidebarContent({
         onOpenChange={setCreateProjectOpen}
         onDone={refresh}
       />
-      <RenameProjectDialog
-        project={renameProject}
-        open={renameProject !== null}
-        onOpenChange={(open) => !open && setRenameProject(null)}
-        onDone={refresh}
-      />
       <DeleteProjectDialog
         project={deleteProject}
         open={deleteProject !== null}
@@ -851,12 +980,18 @@ export function SidebarContent({
           onDone={refresh}
         />
       )}
-      <FolderSettingsDialog
-        folder={folderSettings}
+      <MoveFolderDialog
+        folder={moveFolder}
         folders={folders}
-        open={folderSettings !== null}
-        onOpenChange={(open) => !open && setFolderSettings(null)}
-        onDone={refresh}
+        open={moveFolder !== null}
+        onOpenChange={(open) => !open && setMoveFolder(null)}
+        onMoved={handleLocationChanged}
+      />
+      <MoveSpaceDialog
+        board={moveSpace}
+        open={moveSpace !== null}
+        onOpenChange={(open) => !open && setMoveSpace(null)}
+        onMoved={handleLocationChanged}
       />
       <DeleteFolderDialog
         folder={deleteFolder}
@@ -864,6 +999,28 @@ export function SidebarContent({
         open={deleteFolder !== null}
         onOpenChange={(open) => !open && setDeleteFolder(null)}
         onDeleted={refresh}
+      />
+      <ConfirmDialog
+        open={deleteSpace !== null}
+        onOpenChange={(open) => !open && setDeleteSpace(null)}
+        title={`Delete ${deleteSpace?.name ?? "space"}?`}
+        description={
+          deleteSpace?.type === "kanban" ? (
+            <>
+              All {deleteSpace.taskCount}{" "}
+              {deleteSpace.taskCount === 1 ? "task" : "tasks"} across{" "}
+              {deleteSpace.columnCount}{" "}
+              {deleteSpace.columnCount === 1 ? "column" : "columns"} will be
+              permanently deleted. This cannot be undone.
+            </>
+          ) : (
+            "This space and its contents will be permanently deleted. This cannot be undone."
+          )
+        }
+        confirmLabel="Delete space"
+        onConfirm={() =>
+          deleteSpace ? handleDeleteSpace(deleteSpace) : undefined
+        }
       />
     </div>
   );
@@ -892,15 +1049,17 @@ function SortableProjectGroup({
   draggingBoard,
   draggingFolder,
   collapsedFolders,
+  renameControls,
   onNavigate,
   onToggleExpanded,
   onToggleFolder,
   onCreateBoard,
   onCreateFolder,
-  onFolderSettings,
+  onMoveFolder,
   onDeleteFolder,
+  onMoveSpace,
+  onDeleteSpace,
   onOpenProject,
-  onRename,
   onArchive,
 }: {
   project: ProjectSummary;
@@ -910,15 +1069,17 @@ function SortableProjectGroup({
   draggingBoard: boolean;
   draggingFolder: boolean;
   collapsedFolders: Set<string>;
+  renameControls: RenameControls;
   onNavigate?: () => void;
   onToggleExpanded: () => void;
   onToggleFolder: (folderId: string) => void;
   onCreateBoard: (folderId?: string | null) => void;
   onCreateFolder: (parentId: string | null, parentName?: string) => void;
-  onFolderSettings: (folder: FolderSummary) => void;
+  onMoveFolder: (folder: FolderSummary) => void;
   onDeleteFolder: (folder: FolderSummary) => void;
+  onMoveSpace: (board: BoardSummary) => void;
+  onDeleteSpace: (board: BoardSummary) => void;
   onOpenProject: () => void;
-  onRename: () => void;
   onArchive: () => void;
 }) {
   const {
@@ -942,6 +1103,63 @@ function SortableProjectGroup({
     } satisfies DragData,
   });
 
+  const labelRef = React.useRef<HTMLButtonElement>(null);
+  const wasRenamingRef = React.useRef(false);
+  const renameRequestedRef = React.useRef(false);
+  const renaming =
+    renameControls.renaming?.type === "project" &&
+    renameControls.renaming.id === project.id;
+
+  React.useEffect(() => {
+    if (wasRenamingRef.current && !renaming) labelRef.current?.focus();
+    wasRenamingRef.current = renaming;
+  }, [renaming]);
+
+  function requestRename() {
+    renameRequestedRef.current = true;
+    renameControls.startRename("project", project.id);
+  }
+
+  function handleCloseAutoFocus(event: Event) {
+    if (!renameRequestedRef.current) return;
+    renameRequestedRef.current = false;
+    event.preventDefault();
+  }
+
+  const actions: SidebarMenuAction[] = [
+    {
+      key: "open",
+      label: "Open project",
+      icon: ExternalLink,
+      onSelect: onOpenProject,
+    },
+    {
+      key: "new-space",
+      label: "New space",
+      icon: Plus,
+      onSelect: () => onCreateBoard(null),
+    },
+    {
+      key: "new-folder",
+      label: "New folder",
+      icon: FolderPlus,
+      onSelect: () => onCreateFolder(null),
+    },
+    {
+      key: "rename",
+      label: "Rename",
+      icon: Pencil,
+      separatorBefore: true,
+      onSelect: requestRename,
+    },
+    {
+      key: "archive",
+      label: "Archive",
+      icon: Archive,
+      onSelect: onArchive,
+    },
+  ];
+
   const projectActive = pathname === `/projects/${project.id}`;
   const dragging = draggingBoard || draggingFolder;
 
@@ -949,75 +1167,127 @@ function SortableProjectGroup({
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
+      data-project-id={project.id}
       className={cn("group/project", isDragging && "relative z-20 opacity-60")}
     >
-      <div
-        className={cn(
-          "flex h-8 items-center gap-1 rounded-lg pr-1 text-[13px] transition-colors",
-          projectActive
-            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-            : "text-sidebar-foreground/90 hover:bg-sidebar-accent/50",
-          isOver && dragging && "ring-2 ring-primary/60",
-        )}
-      >
-        <button
-          type="button"
-          onClick={onToggleExpanded}
-          className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-sidebar-foreground"
-          aria-label={expanded ? "Collapse project" : "Expand project"}
-          aria-expanded={expanded}
-        >
-          <ChevronRight
-            className={cn("size-3.5 transition-transform", expanded && "rotate-90")}
-          />
-        </button>
-        <button
-          type="button"
-          onClick={onOpenProject}
-          className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <span className="truncate">{project.name}</span>
-          {project.boardCount > 0 && (
-            <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
-              {project.boardCount}
-            </span>
-          )}
-        </button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+      <ContextMenu>
+        <ContextMenuTrigger asChild disabled={renaming}>
+          <div
+            className={cn(
+              "flex h-8 items-center gap-1 rounded-lg pr-1 text-[13px] transition-colors",
+              projectActive
+                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                : "text-sidebar-foreground/90 hover:bg-sidebar-accent/50",
+              isOver && dragging && "ring-2 ring-primary/60",
+            )}
+          >
             <button
               type="button"
-              className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/50 transition-colors group-hover/project:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:text-sidebar-foreground"
-              aria-label={`Add to ${project.name}`}
-              title="Add a space or folder"
+              onClick={onToggleExpanded}
+              className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-sidebar-foreground"
+              aria-label={expanded ? "Collapse project" : "Expand project"}
+              aria-expanded={expanded}
             >
-              <Plus className="size-3.5" />
+              <ChevronRight
+                className={cn(
+                  "size-3.5 transition-transform",
+                  expanded && "rotate-90",
+                )}
+              />
             </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-[170px]">
-            <DropdownMenuItem onSelect={() => onCreateBoard(null)}>
-              <Plus />
-              New space
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => onCreateFolder(null)}>
-              <FolderPlus />
-              New folder
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <ProjectActionsMenu onRename={onRename} onArchive={onArchive} />
-        <button
-          ref={setActivatorNodeRef}
-          type="button"
-          data-drag-handle=""
-          className="grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground/0 transition-colors group-hover/project:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:cursor-grabbing"
-          aria-label={`Reorder project ${project.name}`}
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="size-3.5" />
-        </button>
-      </div>
+            {renaming ? (
+              <div className="flex h-full min-w-0 flex-1 items-center gap-1.5">
+                <InlineRenameInput
+                  initialValue={project.name}
+                  ariaLabel={`Rename ${project.name}`}
+                  className="font-medium"
+                  onCommit={(name) =>
+                    renameControls.commitRename("project", project.id, name)
+                  }
+                  onCancel={() =>
+                    renameControls.cancelRename("project", project.id)
+                  }
+                />
+              </div>
+            ) : (
+              <button
+                ref={labelRef}
+                type="button"
+                onClick={onOpenProject}
+                onKeyDown={(event) => {
+                  if (event.key === "F2") {
+                    event.preventDefault();
+                    requestRename();
+                  }
+                }}
+                aria-current={projectActive ? "page" : undefined}
+                aria-keyshortcuts="F2"
+                className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="truncate">{project.name}</span>
+                {project.boardCount > 0 && (
+                  <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
+                    {project.boardCount}
+                  </span>
+                )}
+              </button>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/50 transition-colors group-hover/project:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:text-sidebar-foreground"
+                  aria-label={`Add to ${project.name}`}
+                  title="Add a space or folder"
+                >
+                  <Plus className="size-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-[170px]">
+                <DropdownMenuItem onSelect={() => onCreateBoard(null)}>
+                  <Plus />
+                  New space
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onCreateFolder(null)}>
+                  <FolderPlus />
+                  New folder
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:text-sidebar-foreground sm:text-muted-foreground/0 sm:group-hover/project:text-muted-foreground sm:group-focus-within/project:text-muted-foreground"
+                  aria-label={`More actions for ${project.name}`}
+                >
+                  <MoreHorizontal className="size-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <SidebarDropdownMenuContent
+                actions={actions}
+                align="start"
+                onCloseAutoFocus={handleCloseAutoFocus}
+              />
+            </DropdownMenu>
+            <button
+              ref={setActivatorNodeRef}
+              type="button"
+              data-drag-handle=""
+              className="grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground/0 transition-colors group-hover/project:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground active:cursor-grabbing"
+              aria-label={`Reorder project ${project.name}`}
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className="size-3.5" />
+            </button>
+          </div>
+        </ContextMenuTrigger>
+        <SidebarContextMenuContent
+          actions={actions}
+          onCloseAutoFocus={handleCloseAutoFocus}
+        />
+      </ContextMenu>
 
       {expanded && (
         <div
@@ -1041,12 +1311,15 @@ function SortableProjectGroup({
                   expanded={!collapsedFolders.has(node.folder.id)}
                   dragging={dragging}
                   collapsedFolders={collapsedFolders}
+                  renameControls={renameControls}
                   onNavigate={onNavigate}
                   onToggleFolder={onToggleFolder}
                   onCreateBoard={onCreateBoard}
                   onCreateFolder={onCreateFolder}
-                  onFolderSettings={onFolderSettings}
+                  onMoveFolder={onMoveFolder}
                   onDeleteFolder={onDeleteFolder}
+                  onMoveSpace={onMoveSpace}
+                  onDeleteSpace={onDeleteSpace}
                 />
               ))}
             </ul>
@@ -1062,7 +1335,10 @@ function SortableProjectGroup({
                   key={board.id}
                   board={board}
                   active={pathname === `/boards/${board.id}`}
+                  renameControls={renameControls}
                   onNavigate={onNavigate}
+                  onMove={() => onMoveSpace(board)}
+                  onDelete={() => onDeleteSpace(board)}
                 />
               ))}
             </ul>
@@ -1080,12 +1356,15 @@ function SortableFolderNode({
   expanded,
   dragging,
   collapsedFolders,
+  renameControls,
   onNavigate,
   onToggleFolder,
   onCreateBoard,
   onCreateFolder,
-  onFolderSettings,
+  onMoveFolder,
   onDeleteFolder,
+  onMoveSpace,
+  onDeleteSpace,
 }: {
   node: FolderTreeNode;
   projectId: string;
@@ -1093,12 +1372,15 @@ function SortableFolderNode({
   expanded: boolean;
   dragging: boolean;
   collapsedFolders: Set<string>;
+  renameControls: RenameControls;
   onNavigate?: () => void;
   onToggleFolder: (folderId: string) => void;
   onCreateBoard: (folderId?: string | null) => void;
   onCreateFolder: (parentId: string | null, parentName?: string) => void;
-  onFolderSettings: (folder: FolderSummary) => void;
+  onMoveFolder: (folder: FolderSummary) => void;
   onDeleteFolder: (folder: FolderSummary) => void;
+  onMoveSpace: (board: BoardSummary) => void;
+  onDeleteSpace: (board: BoardSummary) => void;
 }) {
   const folder = node.folder;
   const {
@@ -1126,89 +1408,197 @@ function SortableFolderNode({
       folderId: folder.id,
     } satisfies DragData,
   });
+
+  const labelRef = React.useRef<HTMLButtonElement>(null);
+  const wasRenamingRef = React.useRef(false);
+  const renameRequestedRef = React.useRef(false);
+  const renaming =
+    renameControls.renaming?.type === "folder" &&
+    renameControls.renaming.id === folder.id;
+
+  React.useEffect(() => {
+    if (wasRenamingRef.current && !renaming) labelRef.current?.focus();
+    wasRenamingRef.current = renaming;
+  }, [renaming]);
+
+  function requestRename() {
+    renameRequestedRef.current = true;
+    renameControls.startRename("folder", folder.id);
+  }
+
+  function handleCloseAutoFocus(event: Event) {
+    if (!renameRequestedRef.current) return;
+    renameRequestedRef.current = false;
+    event.preventDefault();
+  }
+
+  const actions: SidebarMenuAction[] = [
+    {
+      key: "new-space",
+      label: "New space",
+      icon: Plus,
+      onSelect: () => onCreateBoard(folder.id),
+    },
+    {
+      key: "new-subfolder",
+      label: "New subfolder",
+      icon: FolderPlus,
+      onSelect: () => onCreateFolder(folder.id, folder.name),
+    },
+    {
+      key: "rename",
+      label: "Rename",
+      icon: Pencil,
+      separatorBefore: true,
+      onSelect: requestRename,
+    },
+    {
+      key: "move",
+      label: "Move to",
+      icon: FolderInput,
+      onSelect: () => onMoveFolder(folder),
+    },
+    {
+      key: "delete",
+      label: "Delete folder",
+      icon: Trash2,
+      variant: "destructive",
+      separatorBefore: true,
+      onSelect: () => onDeleteFolder(folder),
+    },
+  ];
+
   const Icon = expanded ? FolderOpen : Folder;
   const spaceCount = countSpaces(node);
 
   return (
-    <li className="group/folder">
-      <div
-        ref={setNodeRef}
-        style={{ transform: CSS.Transform.toString(transform), transition }}
-        className={cn(
-          "flex h-8 items-center gap-1 rounded-lg pr-1 text-[13px] transition-colors",
-          pathname === `/projects/${projectId}` &&
-            "text-sidebar-foreground/80",
-          isOver && dragging && "ring-2 ring-primary/40",
-          isDragging && "relative z-20 opacity-60",
-          "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-        )}
-      >
-        <button
-          type="button"
-          onClick={() => onToggleFolder(folder.id)}
-          className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-sidebar-foreground"
-          aria-label={expanded ? `Collapse ${folder.name}` : `Expand ${folder.name}`}
-          aria-expanded={expanded}
-        >
-          <ChevronRight
-            className={cn("size-3.5 transition-transform", expanded && "rotate-90")}
-          />
-        </button>
-        <button
-          type="button"
-          onClick={() => onToggleFolder(folder.id)}
-          className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate">{folder.name}</span>
-          {spaceCount > 0 && (
-            <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
-              {spaceCount}
-            </span>
-          )}
-        </button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+    <li className="group/folder" data-folder-id={folder.id}>
+      <ContextMenu>
+        <ContextMenuTrigger asChild disabled={renaming}>
+          <div
+            ref={setNodeRef}
+            style={{ transform: CSS.Transform.toString(transform), transition }}
+            className={cn(
+              "flex h-8 items-center gap-1 rounded-lg pr-1 text-[13px] transition-colors",
+              pathname === `/projects/${projectId}` &&
+                "text-sidebar-foreground/80",
+              isOver && dragging && "ring-2 ring-primary/40",
+              isDragging && "relative z-20 opacity-60",
+              "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+            )}
+          >
             <button
               type="button"
-              className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/50 transition-colors group-hover/folder:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:text-sidebar-foreground"
-              aria-label={`Add to ${folder.name}`}
-              title="Add a space or folder"
+              onClick={() => onToggleFolder(folder.id)}
+              className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground hover:text-sidebar-foreground"
+              aria-label={
+                expanded ? `Collapse ${folder.name}` : `Expand ${folder.name}`
+              }
+              aria-expanded={expanded}
             >
-              <Plus className="size-3.5" />
+              <ChevronRight
+                className={cn(
+                  "size-3.5 transition-transform",
+                  expanded && "rotate-90",
+                )}
+              />
             </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-[170px]">
-            <DropdownMenuItem onSelect={() => onCreateBoard(folder.id)}>
-              <Plus />
-              New space
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() => onCreateFolder(folder.id, folder.name)}
+            {renaming ? (
+              <div className="flex h-full min-w-0 flex-1 items-center gap-1.5">
+                <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                <InlineRenameInput
+                  initialValue={folder.name}
+                  ariaLabel={`Rename ${folder.name}`}
+                  onCommit={(name) =>
+                    renameControls.commitRename("folder", folder.id, name)
+                  }
+                  onCancel={() =>
+                    renameControls.cancelRename("folder", folder.id)
+                  }
+                />
+              </div>
+            ) : (
+              <button
+                ref={labelRef}
+                type="button"
+                onClick={() => onToggleFolder(folder.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "F2") {
+                    event.preventDefault();
+                    requestRename();
+                  }
+                }}
+                aria-keyshortcuts="F2"
+                className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">{folder.name}</span>
+                {spaceCount > 0 && (
+                  <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">
+                    {spaceCount}
+                  </span>
+                )}
+              </button>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/50 transition-colors group-hover/folder:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:text-sidebar-foreground"
+                  aria-label={`Add to ${folder.name}`}
+                  title="Add a space or folder"
+                >
+                  <Plus className="size-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-[170px]">
+                <DropdownMenuItem onSelect={() => onCreateBoard(folder.id)}>
+                  <Plus />
+                  New space
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => onCreateFolder(folder.id, folder.name)}
+                >
+                  <FolderPlus />
+                  New subfolder
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:text-sidebar-foreground sm:text-muted-foreground/0 sm:group-hover/folder:text-muted-foreground sm:group-focus-within/folder:text-muted-foreground"
+                  aria-label={`More actions for ${folder.name}`}
+                >
+                  <MoreHorizontal className="size-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <SidebarDropdownMenuContent
+                actions={actions}
+                align="start"
+                onCloseAutoFocus={handleCloseAutoFocus}
+              />
+            </DropdownMenu>
+            <button
+              ref={setActivatorNodeRef}
+              type="button"
+              data-drag-handle=""
+              className="grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground/0 transition-colors group-hover/folder:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:cursor-grabbing"
+              aria-label={`Move folder ${folder.name}`}
+              title="Drag to reorder or move into another folder"
+              {...attributes}
+              {...listeners}
             >
-              <FolderPlus />
-              New folder
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <FolderActionsMenu
-          folder={folder}
-          onSettings={() => onFolderSettings(folder)}
-          onDelete={() => onDeleteFolder(folder)}
+              <GripVertical className="size-3.5" />
+            </button>
+          </div>
+        </ContextMenuTrigger>
+        <SidebarContextMenuContent
+          actions={actions}
+          onCloseAutoFocus={handleCloseAutoFocus}
         />
-        <button
-          ref={setActivatorNodeRef}
-          type="button"
-          data-drag-handle=""
-          className="grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground/0 transition-colors group-hover/folder:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:cursor-grabbing"
-          aria-label={`Move folder ${folder.name}`}
-          title="Drag to reorder or move into another folder"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="size-3.5" />
-        </button>
-      </div>
+      </ContextMenu>
 
       {expanded && (
         <div
@@ -1232,12 +1622,15 @@ function SortableFolderNode({
                   expanded={!collapsedFolders.has(child.folder.id)}
                   dragging={dragging}
                   collapsedFolders={collapsedFolders}
+                  renameControls={renameControls}
                   onNavigate={onNavigate}
                   onToggleFolder={onToggleFolder}
                   onCreateBoard={onCreateBoard}
                   onCreateFolder={onCreateFolder}
-                  onFolderSettings={onFolderSettings}
+                  onMoveFolder={onMoveFolder}
                   onDeleteFolder={onDeleteFolder}
+                  onMoveSpace={onMoveSpace}
+                  onDeleteSpace={onDeleteSpace}
                 />
               ))}
             </ul>
@@ -1253,7 +1646,10 @@ function SortableFolderNode({
                   key={board.id}
                   board={board}
                   active={pathname === `/boards/${board.id}`}
+                  renameControls={renameControls}
                   onNavigate={onNavigate}
+                  onMove={() => onMoveSpace(board)}
+                  onDelete={() => onDeleteSpace(board)}
                 />
               ))}
             </ul>
@@ -1261,72 +1657,6 @@ function SortableFolderNode({
         </div>
       )}
     </li>
-  );
-}
-
-function FolderActionsMenu({
-  folder,
-  onSettings,
-  onDelete,
-}: {
-  folder: FolderSummary;
-  onSettings: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/0 transition-colors group-hover/folder:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground data-[state=open]:text-sidebar-foreground"
-          aria-label={`Folder actions for ${folder.name}`}
-        >
-          <Settings2 className="size-3.5" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[190px]">
-        <DropdownMenuItem onSelect={onSettings}>
-          <Pencil />
-          Rename or move
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onDelete} className="text-destructive">
-          <Trash2 />
-          Delete folder
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function ProjectActionsMenu({
-  onRename,
-  onArchive,
-}: {
-  onRename: () => void;
-  onArchive: () => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground/0 transition-colors group-hover/project:text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground data-[state=open]:text-sidebar-foreground"
-          aria-label="Project actions"
-        >
-          <Settings2 className="size-3.5" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-[160px]">
-        <DropdownMenuItem onSelect={onRename}>
-          <Pencil />
-          Rename
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onArchive}>
-          <Archive />
-          Archive
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 
@@ -1356,44 +1686,74 @@ function ArchivedSection({
       </button>
       {open && (
         <ul className="mt-0.5 space-y-0.5">
-          {projects.map((project) => (
-            <li
-              key={project.id}
-              className="group/archived flex h-8 items-center gap-1 rounded-lg px-2 text-[12.5px] text-muted-foreground"
-            >
-              <Archive className="size-3.5 shrink-0 opacity-50" />
-              <button
-                type="button"
-                onClick={() => onOpen(project)}
-                className="min-w-0 flex-1 truncate text-left hover:text-sidebar-foreground hover:underline"
-              >
-                {project.name}
-              </button>
-              <div className="ml-auto flex items-center gap-0.5">
-                <Tooltip>
-                  <TooltipTrigger asChild>
+          {projects.map((project) => {
+            const actions: SidebarMenuAction[] = [
+              {
+                key: "open",
+                label: "Open project",
+                icon: ExternalLink,
+                onSelect: () => onOpen(project),
+              },
+              {
+                key: "restore",
+                label: "Restore",
+                icon: ArchiveRestore,
+                separatorBefore: true,
+                onSelect: () => onRestore(project),
+              },
+              {
+                key: "delete",
+                label: "Delete project",
+                icon: Trash2,
+                variant: "destructive",
+                separatorBefore: true,
+                onSelect: () => onDelete(project),
+              },
+            ];
+            return (
+              <ContextMenu key={project.id}>
+                <ContextMenuTrigger asChild>
+                  <li
+                    data-project-id={project.id}
+                    className="group/archived flex h-8 items-center gap-1 rounded-lg px-2 text-[12.5px] text-muted-foreground"
+                  >
+                    <Archive className="size-3.5 shrink-0 opacity-50" />
                     <button
                       type="button"
-                      onClick={() => onRestore(project)}
-                      className="grid size-5 place-items-center rounded text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                      aria-label={`Restore ${project.name}`}
+                      onClick={() => onOpen(project)}
+                      className="min-w-0 flex-1 truncate text-left hover:text-sidebar-foreground hover:underline"
                     >
-                      <ArchiveRestore className="size-3.5" />
+                      {project.name}
                     </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">Restore</TooltipContent>
-                </Tooltip>
-                <button
-                  type="button"
-                  onClick={() => onDelete(project)}
-                  className="grid size-5 place-items-center rounded text-muted-foreground/0 transition-colors group-hover/archived:text-muted-foreground hover:bg-sidebar-accent hover:text-destructive"
-                  aria-label={`Delete ${project.name}`}
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
-              </div>
-            </li>
-          ))}
+                    <div className="ml-auto flex items-center gap-0.5">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={() => onRestore(project)}
+                            className="grid size-5 place-items-center rounded text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                            aria-label={`Restore ${project.name}`}
+                          >
+                            <ArchiveRestore className="size-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">Restore</TooltipContent>
+                      </Tooltip>
+                      <button
+                        type="button"
+                        onClick={() => onDelete(project)}
+                        className="grid size-5 place-items-center rounded text-muted-foreground/0 transition-colors group-hover/archived:text-muted-foreground hover:bg-sidebar-accent hover:text-destructive"
+                        aria-label={`Delete ${project.name}`}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </li>
+                </ContextMenuTrigger>
+                <SidebarContextMenuContent actions={actions} />
+              </ContextMenu>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -1442,12 +1802,19 @@ function CompactProjectLink({
 function SortableBoardLink({
   board,
   active,
+  renameControls,
   onNavigate,
+  onMove,
+  onDelete,
 }: {
   board: BoardSummary;
   active: boolean;
+  renameControls: RenameControls;
   onNavigate?: () => void;
+  onMove: () => void;
+  onDelete: () => void;
 }) {
+  const navigate = useNavigate();
   const {
     attributes,
     listeners,
@@ -1464,9 +1831,67 @@ function SortableBoardLink({
       folderId: board.folderId,
     } satisfies DragData,
   });
+  const labelRef = React.useRef<HTMLAnchorElement>(null);
+  const wasRenamingRef = React.useRef(false);
+  const renameRequestedRef = React.useRef(false);
+  const renaming =
+    renameControls.renaming?.type === "space" &&
+    renameControls.renaming.id === board.id;
   const handlePointerDown = listeners?.onPointerDown as
     | React.PointerEventHandler<HTMLElement>
     | undefined;
+
+  React.useEffect(() => {
+    if (wasRenamingRef.current && !renaming) labelRef.current?.focus();
+    wasRenamingRef.current = renaming;
+  }, [renaming]);
+
+  function openBoard() {
+    onNavigate?.();
+    navigate(`/boards/${board.id}`);
+  }
+
+  function requestRename() {
+    renameRequestedRef.current = true;
+    renameControls.startRename("space", board.id);
+  }
+
+  function handleCloseAutoFocus(event: Event) {
+    if (!renameRequestedRef.current) return;
+    renameRequestedRef.current = false;
+    event.preventDefault();
+  }
+
+  const actions: SidebarMenuAction[] = [
+    {
+      key: "open",
+      label: "Open",
+      icon: ExternalLink,
+      onSelect: openBoard,
+    },
+    {
+      key: "rename",
+      label: "Rename",
+      icon: Pencil,
+      separatorBefore: true,
+      onSelect: requestRename,
+    },
+    {
+      key: "move",
+      label: "Move to",
+      icon: FolderInput,
+      onSelect: onMove,
+    },
+    {
+      key: "delete",
+      label: "Delete space",
+      icon: Trash2,
+      variant: "destructive",
+      separatorBefore: true,
+      onSelect: onDelete,
+    },
+  ];
+
   const TypeIcon = BOARD_TYPE_ICON[board.type] ?? LayoutGrid;
 
   return (
@@ -1476,54 +1901,108 @@ function SortableBoardLink({
       data-board-id={board.id}
       className={cn("group/board", isDragging && "relative z-20 opacity-60")}
     >
-      <div
-        className={cn(
-          "flex h-8 items-center gap-1 rounded-lg pr-1 text-[13px] transition-colors",
-          active
-            ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-            : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-        )}
-      >
-        <Link
-          to={`/boards/${board.id}`}
-          onClick={onNavigate}
-          onPointerDown={handlePointerDown}
-          draggable={false}
-          className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <TypeIcon
+      <ContextMenu>
+        <ContextMenuTrigger asChild disabled={renaming}>
+          <div
             className={cn(
-              "size-3.5 shrink-0",
-              active ? "opacity-100" : "opacity-80",
+              "flex h-8 items-center gap-1 rounded-lg pr-1 text-[13px] transition-colors",
+              active
+                ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
             )}
-          />
-          <span className="truncate">{board.name}</span>
-          {board.type === "kanban" && board.taskCount > 0 && (
-            <span
-              className={cn(
-                "ml-auto text-[10px] tabular-nums",
-                active
-                  ? "text-sidebar-accent-foreground/80"
-                  : "text-muted-foreground",
-              )}
+          >
+            {renaming ? (
+              <div className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2">
+                <TypeIcon
+                  className={cn(
+                    "size-3.5 shrink-0",
+                    active ? "opacity-100" : "opacity-80",
+                  )}
+                />
+                <InlineRenameInput
+                  initialValue={board.name}
+                  ariaLabel={`Rename ${board.name}`}
+                  onCommit={(name) =>
+                    renameControls.commitRename("space", board.id, name)
+                  }
+                  onCancel={() =>
+                    renameControls.cancelRename("space", board.id)
+                  }
+                />
+              </div>
+            ) : (
+              <Link
+                ref={labelRef}
+                to={`/boards/${board.id}`}
+                onClick={onNavigate}
+                onPointerDown={handlePointerDown}
+                onKeyDown={(event) => {
+                  if (event.key === "F2") {
+                    event.preventDefault();
+                    requestRename();
+                  }
+                }}
+                draggable={false}
+                aria-current={active ? "page" : undefined}
+                aria-keyshortcuts="F2"
+                className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <TypeIcon
+                  className={cn(
+                    "size-3.5 shrink-0",
+                    active ? "opacity-100" : "opacity-80",
+                  )}
+                />
+                <span className="truncate">{board.name}</span>
+                {board.type === "kanban" && board.taskCount > 0 && (
+                  <span
+                    className={cn(
+                      "ml-auto text-[10px] tabular-nums",
+                      active
+                        ? "text-sidebar-accent-foreground/80"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {board.taskCount}
+                  </span>
+                )}
+              </Link>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="grid size-5 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:text-sidebar-foreground sm:text-muted-foreground/0 sm:group-hover/board:text-muted-foreground sm:group-focus-within/board:text-muted-foreground"
+                  aria-label={`More actions for ${board.name}`}
+                >
+                  <MoreHorizontal className="size-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <SidebarDropdownMenuContent
+                actions={actions}
+                align="start"
+                onCloseAutoFocus={handleCloseAutoFocus}
+              />
+            </DropdownMenu>
+            <button
+              ref={setActivatorNodeRef}
+              type="button"
+              data-drag-handle=""
+              className="grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:cursor-grabbing sm:text-muted-foreground/0 sm:group-hover/board:text-muted-foreground sm:group-focus-within/board:text-muted-foreground"
+              aria-label={`Reorder space ${board.name}`}
+              title="Drag to reorder or move between projects"
+              {...attributes}
+              {...listeners}
             >
-              {board.taskCount}
-            </span>
-          )}
-        </Link>
-        <button
-          ref={setActivatorNodeRef}
-          type="button"
-          data-drag-handle=""
-          className="grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:cursor-grabbing sm:text-muted-foreground/0 sm:group-hover/board:text-muted-foreground sm:group-focus-within/board:text-muted-foreground"
-          aria-label={`Reorder space ${board.name}`}
-          title="Drag to reorder or move between projects"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="size-3.5" />
-        </button>
-      </div>
+              <GripVertical className="size-3.5" />
+            </button>
+          </div>
+        </ContextMenuTrigger>
+        <SidebarContextMenuContent
+          actions={actions}
+          onCloseAutoFocus={handleCloseAutoFocus}
+        />
+      </ContextMenu>
     </li>
   );
 }

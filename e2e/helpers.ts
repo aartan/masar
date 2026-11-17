@@ -15,6 +15,13 @@ export interface ApiProject {
   name: string;
 }
 
+export interface ApiFolder {
+  id: string;
+  projectId: string;
+  parentId: string | null;
+  name: string;
+}
+
 export interface ApiColumn {
   id: string;
   name: string;
@@ -70,6 +77,20 @@ export async function createBoard(
   expect(response.ok(), `Board creation failed with ${response.status()}`).toBeTruthy();
   const body = (await response.json()) as { board: ApiBoard };
   return body.board;
+}
+
+export async function createFolder(
+  request: APIRequestContext,
+  name: string,
+  projectId: string,
+  parentId: string | null = null,
+): Promise<ApiFolder> {
+  const response = await request.post("/api/folders", {
+    data: { name, projectId, parentId },
+  });
+  expect(response.ok(), `Folder creation failed with ${response.status()}`).toBeTruthy();
+  const body = (await response.json()) as { folder: ApiFolder };
+  return body.folder;
 }
 
 export async function getBoardDetail(

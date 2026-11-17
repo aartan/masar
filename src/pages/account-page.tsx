@@ -27,6 +27,8 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   billingIntervalLabel,
+  entitlementEndDate,
+  entitlementEndLabel,
   entitlementSummary,
   formatBillingAmount,
   formatBillingDate,
@@ -465,12 +467,14 @@ function ConnectedAccount({
     premium.subscription?.currency,
   );
   const interval = billingIntervalLabel(premium.subscription?.interval);
-  const periodEnd = formatBillingDate(
-    entitlement?.currentPeriodEnd ?? premium.subscription?.currentPeriodEnd,
+  const endDate = formatBillingDate(
+    entitlement
+      ? entitlementEndDate(entitlement)
+      : premium.subscription?.currentPeriodEnd,
   );
-  const trialEnd = formatBillingDate(
-    entitlement?.trialEnd ?? premium.subscription?.trialEnd,
-  );
+  const endLabel = entitlement
+    ? entitlementEndLabel(entitlement)
+    : "Current period ends";
   const showSubscribe = premium.billingConfigured && !entitlement?.entitled;
   const hasEndedSubscription =
     entitlement?.reason === "expired" || entitlement?.reason === "canceled";
@@ -521,8 +525,7 @@ function ConnectedAccount({
                   price ? `${price}${interval ? ` / ${interval}` : ""}` : null
                 }
               />
-              <Detail label="Trial ends" value={trialEnd} />
-              <Detail label="Current period ends" value={periodEnd} />
+              <Detail label={endLabel} value={endDate} />
             </dl>
           </>
         )}

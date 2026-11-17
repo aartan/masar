@@ -1,17 +1,61 @@
 import type { EntitlementView } from "@/lib/premium-types";
 
+function parseBillingDate(
+  value: string | Date | null | undefined,
+): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export function formatBillingDate(
   value: string | Date | null | undefined,
 ): string | null {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
+  const date = parseBillingDate(value);
+  if (!date) return null;
   return new Intl.DateTimeFormat("en-US", {
     month: "long",
     day: "numeric",
     year: "numeric",
     timeZone: "UTC",
   }).format(date);
+}
+
+/**
+ * The date that describes the next lifecycle event for the current
+ * entitlement. Stripe keeps trial timestamps after a trial converts to a paid
+ * subscription, so `trialEnd` is only authoritative while trialing.
+ */
+export function entitlementEndDate(
+  entitlement: EntitlementView,
+): Date | null {
+  const periodEnd = parseBillingDate(entitlement.currentPeriodEnd);
+  if (entitlement.reason === "trialing") {
+    return parseBillingDate(entitlement.trialEnd) ?? periodEnd;
+  }
+  if (entitlement.reason === "expired" || entitlement.reason === "canceled") {
+    return periodEnd ?? parseBillingDate(entitlement.trialEnd);
+  }
+  return periodEnd;
+}
+
+/** Human-readable label for the date returned by `entitlementEndDate`. */
+export function entitlementEndLabel(entitlement: EntitlementView): string {
+  switch (entitlement.reason) {
+    case "trialing":
+      return "Trial ends";
+    case "active":
+      return "Renews on";
+    case "canceling":
+      return "Access ends";
+    case "payment_issue":
+      return entitlement.entitled ? "Access continues until" : "Ended on";
+    case "expired":
+    case "canceled":
+      return "Ended on";
+    default:
+      return "Current period ends";
+  }
 }
 
 export function formatBillingAmount(
@@ -71,9 +115,7 @@ export function statusTone(
 export function entitlementSummary(
   entitlement: EntitlementView,
 ): { title: string; description: string } {
-  const end = formatBillingDate(
-    entitlement.trialEnd ?? entitlement.currentPeriodEnd,
-  );
+  const end = formatBillingDate(entitlementEndDate(entitlement));
 
   switch (entitlement.reason) {
     case "trialing":
